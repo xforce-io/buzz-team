@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "buzz_team": "0.1.0",
+  "python": ">=3.11",
+  "platform": "macOS (Seatbelt required for restricted identities)",
+  "observed_baseline": {
+    "desktop": "0.5.23",
+    "grok": "1.0.34 (3736acbc8658)",
+    "buzz_cli_sha256": "6034d9bcf04ee765b057bb8f374825c2107a4d0e53d28e9a1c36ba502b70bc57",
+    "harness_sha256": "e0d7bbcfc3128657ef5442e478629f36f9f89944b77920c13422994272a95366",
+    "harness_source_commit": null,
+    "harness_source_note": "二进制来自本机定制构建；源码对应关系待验证，不用当前检出 SHA 冒充构建来源。",
+    "client_verified": false
+  },
+  "required_harness_options": ["--agent-command", "--agent-args", "--session-policy", "--agent-owner"],
+  "adapters": {
+    "grok": {"status": "migration-candidate", "authentication": "existing-home-only"},
+    "acp-command": {"status": "contract-only", "authentication": "executor-owned"},
+    "claude-code": {"status": "not-certified"},
+    "codex": {"status": "not-certified"}
+  }
+}

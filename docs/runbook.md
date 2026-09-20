@@ -1,0 +1,49 @@
+# 安装、预览迁移与发布
+
+## 所有权与认证
+
+Desktop 管理 agent 生命周期，buzz-team 不运行额外守护进程。通用包安装到实例之外，实例仅含私有配置、薄入口、备份及证据。执行器认证和会话保持原地；不复制、不改写、不回退 auth.json，不调用登录命令。
+
+## 安装
+
+使用 Python >=3.11 创建仓库外虚拟环境，通过 `python -m pip install <源码目录>` 或 `uv pip install --python <虚拟环境/python> <源码目录>` 非 editable 安装。记录实际源 SHA；工作树必须干净。下文 `buzz-team` 指该安装生成的绝对可执行文件路径，`INSTANCE` 等参数由操作者填写，不预置机器路径。
+
+```sh
+buzz-team --instance /absolute/instance init --legacy /absolute/legacy/runtime.local.json --desktop-config /absolute/managed-agents.json --app /Applications/Buzz.app
+buzz-team --instance /absolute/instance prepare
+buzz-team --instance /absolute/instance doctor
+buzz-team --instance /absolute/instance status
+```
+
+init 不绑定客户端，prepare 不重写身份状态。路径不得重叠。已有实例拒绝覆盖。不要拷贝整个旧目录。
+
+## 预合入验证环境
+
+本项目允许有界的**本机迁移预览**：使用现有 Desktop 和相同身份状态，先观察空闲、停止旧进程，再临时切换新绑定，绝不启动并行身份消费者。该预览用于 S3/S4，不算生产发布；完成后恢复旧绑定。用户已批准迁移预览和原地认证复用；真实业务变更不在授权范围。
+
+```sh
+buzz-team --instance /absolute/instance stop --idle-confirmed
+buzz-team --instance /absolute/instance status
+buzz-team --instance /absolute/instance bind
+buzz-team --instance /absolute/instance start
+```
+
+status 必须确认进程退出；bind 也会强制检查。保存返回的 receipt 路径，按项目验证手册完成客户端验证。进程尚未退出时等待，不能强杀活跃任务。CLI start 返回请求已发出，不代表客户端健康通过。
+
+## 回退
+
+```sh
+buzz-team --instance /absolute/instance stop --idle-confirmed
+buzz-team --instance /absolute/instance rollback --receipt /absolute/instance/backups/receipt-id/receipt.json
+open -a /Applications/Buzz.app
+```
+
+回退后 CLI start 会因新实例未绑定而拒绝，使用 Desktop 正常入口启动旧环境。当前配置若与绑定后的快照不同，rollback 拒绝覆盖；由操作者核对差异，仅恢复本次启动绑定字段，再保存新的核验记录。不可整体覆盖后续设置或恢复备份 OAuth。
+
+## 正式发布
+
+冻结候选 → 测试与客户端预览 → 独立审查 PASS → 当前候选人工批准 → CI/交付校验 → 合入 → 从合入版本安装 → 空闲停机切换 → 客户端健康核验。升级安装放实例之外；不改写旧安装以保留回退能力。不满足门禁不能把预览称作已发布。
+
+## 已知限制
+
+受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限。尚无完整 skills 白名单或 memory ready 门禁。doctor 的兼容指纹校验不证明模型质量、缓存效率或客户端端到端成功。这些项目以独立 Issue 跟踪。
