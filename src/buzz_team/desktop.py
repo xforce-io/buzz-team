@@ -5,6 +5,7 @@ import copy
 import datetime
 import json
 import os
+import plistlib
 from pathlib import Path
 import subprocess
 import uuid
@@ -15,20 +16,48 @@ from .runtime import Runtime
 
 
 def live_processes(config: Config) -> list[int]:
-    raw = subprocess.check_output(["ps", "-axo", "pid=,comm="], text=True)
+    raw = subprocess.check_output(["ps", "-ww", "-axo", "pid=,comm=,args="], text=True,
+                                  errors="surrogateescape")
     app = str(Path(config.data["desktop"]["app"]).resolve()) + "/"
     harness = str(Path(config.data["binaries"]["harness"]).resolve())
+    executors = {str(Path(spec["command"]).resolve()) for spec in config.data["adapters"].values()}
+    commands = executors | {harness}
     result = []
     for line in raw.splitlines():
         parts = line.strip().split(None, 1)
-        if len(parts) == 2 and (parts[1].startswith(app) or parts[1] == harness):
-            result.append(int(parts[0]))
+        if len(parts) == 2:
+            # ps does not quote argv; match full configured paths at token boundaries,
+            # including interpreted executors whose comm is Python/Node/a shell.
+            command = parts[1]
+            matched = command.startswith(app) or any(
+                command == path or command.startswith(path + " ") or
+                (" " + path + " ") in (" " + command + " ")
+                for path in commands)
+            if matched:
+                result.append(int(parts[0]))
     return result
 
 
 def require_stopped(config: Config):
     if live_processes(config):
-        raise ValueError("Desktop or harness still running; wait for idle and stop before binding")
+        raise ValueError("Desktop, harness or executor still running; wait for idle and stop before binding")
+
+
+def check_app(config: Config) -> list[str]:
+    app = Path(config.data["desktop"]["app"])
+    try:
+        info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
+        if not isinstance(info, dict):
+            return ["Desktop: invalid application metadata"]
+        name = info.get("CFBundleExecutable")
+        if not isinstance(name, str) or not name or Path(name).name != name:
+            return ["Desktop: invalid application executable"]
+        executable = app / "Contents/MacOS" / name
+        if not executable.is_file() or not os.access(executable, os.X_OK):
+            return ["Desktop: missing executable"]
+    except (OSError, ValueError, plistlib.InvalidFileException):
+        return ["Desktop: missing or invalid application bundle"]
+    return []
 
 
 def selected_rows(config: Config | dict, rows: list) -> dict:
@@ -143,6 +172,8 @@ def rollback(config: Config, receipt: Path):
         restore_fields(row, {k: v for k, v in old.items() if k != "env_vars"},
                        {k: v for k, v in new.items() if k != "env_vars"})
         restore_fields(row.setdefault("env_vars", {}), old.get("env_vars", {}), new.get("env_vars", {}))
+        if "env_vars" not in old and not row["env_vars"]:
+            row.pop("env_vars")
     require_stopped(config)
     if path.read_text() != current_text:
         raise ValueError("Desktop configuration changed during rollback")

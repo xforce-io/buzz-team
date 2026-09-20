@@ -4,6 +4,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+from pathlib import Path
+
+from .instance import digest
 
 
 def strip_reply_to(args):
@@ -73,5 +76,9 @@ def rewrite(real: str, args: list[str]) -> list[str]:
 
 def run(config, args):
     real = config.data["binaries"]["buzz"]
+    if digest(Path(real)) != config.data["compatibility"]["sha256"].get("buzz"):
+        raise ValueError("buzz executable differs from pinned baseline")
     forwarded = rewrite(real, args)
+    if digest(Path(real)) != config.data["compatibility"]["sha256"].get("buzz"):
+        raise ValueError("buzz executable differs from pinned baseline")
     os.execv(real, [real, *forwarded])

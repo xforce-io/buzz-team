@@ -1,6 +1,7 @@
 import copy
 import json
 import os
+import plistlib
 from pathlib import Path
 import subprocess
 import sys
@@ -39,6 +40,9 @@ class Fixture(unittest.TestCase):
         self.legacy = self.root / "legacy.json"
         self.desktop_file = self.root / "managed-agents.json"
         self.app = self.root / "Buzz.app"
+        (self.app / "Contents/MacOS").mkdir(parents=True)
+        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Buzz"}))
+        (self.app / "Contents/MacOS/Buzz").symlink_to(self.fake)
         self.rows = [{"pubkey": "a" * 64, "relay_url": "ws://localhost:3000", "system_prompt": "private prompt",
                       "private_key": "test-only-secret", "acp_command": "/old/harness", "agent_command": "/old/executor",
                       "env_vars": {"GROK_HOME": str(self.base / "grok"), "BUZZ_ACP_SESSION_POLICY": "channel"}}]
@@ -146,6 +150,76 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_doctor_rejects_non_executable_adapter(self):
+        executor = self.root / "adapter-no-exec"
+        executor.write_text("not executable")
+        for name, spec in self.config.data["adapters"].items():
+            spec["command"] = str(executor)
+            self.config.data["compatibility"]["executor_sha256"][name] = digest(executor)
+        self.save()
+        checked = self.cli("doctor")
+        self.assertEqual(checked.returncode, 2)
+        self.assertIn("not executable", checked.stdout)
+        original = self.desktop_file.read_bytes()
+        self.assertEqual(self.cli("bind").returncode, 2)
+        self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_doctor_rejects_invalid_app_before_binding(self):
+        original = self.desktop_file.read_bytes()
+        for value in (None, {"CFBundleExecutable": "missing"}, {"CFBundleExecutable": "../escape"}):
+            with self.subTest(value=value):
+                info = self.app / "Contents/Info.plist"
+                info.write_bytes(b"invalid" if value is None else plistlib.dumps(value))
+                self.assertEqual(self.cli("doctor").returncode, 2)
+                self.assertEqual(self.cli("bind").returncode, 2)
+                self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_buzz_rejects_drift_before_metadata_or_send(self):
+        self.fake.write_text("changed")
+        with patch("buzz_team.buzz_cli.rewrite") as rewrite, patch("os.execv") as execute:
+            with self.assertRaisesRegex(ValueError, "pinned baseline"):
+                buzz_cli.run(self.config, ["messages", "send"])
+            rewrite.assert_not_called()
+            execute.assert_not_called()
+
+    def test_buzz_rechecks_drift_after_metadata(self):
+        def change_binary(real, args):
+            self.fake.write_text("changed")
+            return args
+        with patch("buzz_team.buzz_cli.rewrite", side_effect=change_binary), patch("os.execv") as execute:
+            with self.assertRaisesRegex(ValueError, "pinned baseline"):
+                buzz_cli.run(self.config, ["messages", "send"])
+            execute.assert_not_called()
+
+    def test_orphan_executor_blocks_binding(self):
+        prepare(self.config)
+        original = self.desktop_file.read_bytes()
+        for command in (str(self.fake), "/usr/bin/python3 " + str(self.fake)):
+            with self.subTest(command=command), patch("buzz_team.desktop.subprocess.check_output",
+                    return_value=f"123 {command} acp\n456 /unrelated unrelated\n"):
+                self.assertEqual(desktop.live_processes(self.config), [123])
+                with self.assertRaisesRegex(ValueError, "executor still running"):
+                    desktop.bind(self.config)
+                self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_rollback_restores_absent_env_container_and_retains_new_values(self):
+        prepare(self.config)
+        for added in (False, True):
+            with self.subTest(added=added), patch("buzz_team.desktop.live_processes", return_value=[]):
+                rows = copy.deepcopy(self.rows)
+                del rows[0]["env_vars"]
+                write_json(self.desktop_file, rows)
+                result = desktop.bind(self.config)
+                if added:
+                    current = json.loads(self.desktop_file.read_text())
+                    current[0]["env_vars"]["NEW_SETTING"] = "keep"
+                    write_json(self.desktop_file, current)
+                desktop.rollback(self.config, Path(result["receipt"]))
+                restored = json.loads(self.desktop_file.read_text())
+                if added:
+                    rows[0]["env_vars"] = {"NEW_SETTING": "keep"}
+                self.assertEqual(restored, rows)
+
     def cli(self, *args, **extra_env):
         env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"), **extra_env)
         env.pop("BUZZ_RELAY_URL", None)

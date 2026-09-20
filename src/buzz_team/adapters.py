@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import os
 import re
 
 from .config import absolute
@@ -42,8 +43,8 @@ class ACPCommand:
         return self.environment(base, cwd)
 
     def check(self, base: Path) -> list[str]:
-        if not Path(self.spec["command"]).is_file():
-            return ["executor binary missing"]
+        if not Path(self.spec["command"]).is_file() or not os.access(self.spec["command"], os.X_OK):
+            return ["executor binary missing or not executable"]
         if not self.home(base).is_dir():
             return ["executor home missing; initialization is executor-specific"]
         return []

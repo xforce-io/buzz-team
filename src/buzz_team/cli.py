@@ -17,7 +17,7 @@ from .runtime import Runtime
 
 
 def doctor(config: Config):
-    errors = []
+    errors = desktop.check_app(config)
     for name, path in config.data["binaries"].items():
         file = Path(path)
         if not file.is_file() or not os.access(file, os.X_OK):
@@ -32,7 +32,8 @@ def doctor(config: Config):
     counts = {}
     for name, spec in config.data["adapters"].items():
         pin = config.data["compatibility"].get("executor_sha256", {}).get(name)
-        if not pin or not Path(spec["command"]).is_file() or digest(Path(spec["command"])) != pin:
+        if (not pin or not Path(spec["command"]).is_file() or not os.access(spec["command"], os.X_OK)
+                or digest(Path(spec["command"])) != pin):
             errors.append("executor differs from pinned baseline or is not pinned")
     for key in config.data["agents"]:
         runtime = Runtime(config, key)
