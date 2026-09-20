@@ -31,19 +31,22 @@ def require_stopped(config: Config):
         raise ValueError("Desktop or harness still running; wait for idle and stop before binding")
 
 
-def selected_rows(config: Config, rows: list) -> dict:
+def selected_rows(config: Config | dict, rows: list) -> dict:
+    data = config if isinstance(config, dict) else config.data
     selected = {}
     if not isinstance(rows, list):
         raise ValueError("invalid Desktop inventory")
     for row in rows:
+        if not isinstance(row, dict):
+            raise ValueError("invalid Desktop inventory row")
         if not row.get("pubkey") or not row.get("relay_url"):
             continue
         key = identity(row["relay_url"], row["pubkey"])
-        if key in config.data["agents"]:
+        if key in data["agents"]:
             if key in selected:
                 raise ValueError("duplicate Desktop identity")
             selected[key] = row
-    if set(selected) != set(config.data["agents"]):
+    if set(selected) != set(data["agents"]):
         raise ValueError("Desktop identity inventory mismatch")
     return selected
 

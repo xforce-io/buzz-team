@@ -27,15 +27,20 @@ def overlap(a: Path, b: Path) -> bool:
 
 
 class Config:
-    def __init__(self, instance: Path):
+    def __init__(self, instance: Path, *, data: dict | None = None):
         self.instance = instance.resolve()
         self.path = self.instance / "instance.local.json"
-        if not self.path.is_file():
+        if data is None and not self.path.is_file():
             raise ValueError("instance missing; run init first")
-        self.data = json.loads(self.path.read_text())
+        self.data = json.loads(self.path.read_text()) if data is None else data
         c = self.data
+        if not isinstance(c, dict):
+            raise ValueError("instance configuration must be an object")
         if c.get("version") != 2:
             raise ValueError("unsupported instance configuration version")
+        for name in ("production", "policies", "repositories", "agents", "adapters", "binaries", "desktop", "compatibility"):
+            if not isinstance(c.get(name), dict):
+                raise ValueError("missing or invalid configuration section")
         self.state = absolute(c["state_root"])
         self.home = absolute(c["protected_home"])
         self.production = absolute(c["production"]["data_root"])

@@ -32,7 +32,7 @@ class Fixture(unittest.TestCase):
         self.prod = self.root / "production"
         self.prod.mkdir()
         self.fake = self.root / "fake-executor"
-        self.fake.write_text(f"#!{sys.executable}\nimport json,os,sys\nprint(json.dumps({{'args':sys.argv[1:],'cwd':os.getcwd(),'home':os.getenv('GROK_HOME')}}))\n")
+        self.fake.write_text(f"#!{sys.executable}\nimport json,os,sys\nif '--help' in sys.argv:\n print('--agent-command --agent-args --session-policy --agent-owner')\nelse:\n print(json.dumps({{'args':sys.argv[1:],'cwd':os.getcwd(),'home':os.getenv('GROK_HOME'),'other':os.getenv('EXAMPLE_HOME')}}))\n")
         self.fake.chmod(0o700)
         self.instructions = self.root / "instructions.md"
         self.instructions.write_text("Private instructions\n")
@@ -65,6 +65,21 @@ class Fixture(unittest.TestCase):
 
 
 class ConfigurationTests(Fixture):
+    def test_invalid_input_does_not_leave_partial_instance(self):
+        fresh = self.root / "invalid-instance"
+        self.old["policies"]["development"]["production_write"] = "false"
+        write_json(self.legacy, self.old)
+        with self.assertRaises(ValueError):
+            init_legacy(fresh, self.legacy, self.desktop_file, self.app)
+        self.assertFalse(fresh.exists())
+
+    def test_prepare_refuses_live_bound_instance(self):
+        prepare(self.config)
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            desktop.bind(self.config)
+        with patch("buzz_team.desktop.live_processes", return_value=[123]), self.assertRaises(ValueError):
+            prepare(self.config)
+
     def test_conversion_preserves_auth_and_state(self):
         self.assertEqual(self.config.state, self.root / "states")
         self.assertNotIn("credential_sources", self.config.data)
@@ -128,6 +143,80 @@ class ConfigurationTests(Fixture):
     def test_missing_sandbox_does_not_fallback(self):
         with patch.object(Path, "is_file", return_value=False), self.assertRaises(ValueError):
             Runtime(self.config, self.key).command(["true"])
+
+
+class CLITests(Fixture):
+    def cli(self, *args, **extra_env):
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"), **extra_env)
+        env.pop("BUZZ_RELAY_URL", None)
+        return subprocess.run([sys.executable, "-m", "buzz_team.cli", "--instance", str(self.instance), *args],
+                              cwd=self.root, env=env, capture_output=True, text=True, timeout=20)
+
+    def test_doctor_and_status_through_cli(self):
+        checked = self.cli("doctor")
+        if sys.platform == "darwin":
+            self.assertEqual(checked.returncode, 0, checked.stderr)
+            self.assertTrue(json.loads(checked.stdout)["ok"])
+        else:
+            self.assertEqual(checked.returncode, 2)
+            self.assertIn("Seatbelt unavailable", json.loads(checked.stdout)["errors"])
+        status = self.cli("status")
+        self.assertEqual(status.returncode, 0, status.stderr)
+        self.assertFalse(json.loads(status.stdout)["bound"])
+        self.assert_auth_unchanged()
+
+    def test_doctor_detects_binary_drift(self):
+        self.fake.write_text(self.fake.read_text() + "# changed after init\n")
+        result = self.cli("doctor")
+        self.assertEqual(result.returncode, 2)
+        self.assertFalse(json.loads(result.stdout)["ok"])
+
+    def test_launch_checks_pin_even_without_doctor(self):
+        self.fake.write_text(self.fake.read_text() + "# changed after init\n")
+        result = self.cli("launch", "executor", "--", "test", BUZZ_RUNTIME_ID=self.key)
+        self.assertEqual(result.returncode, 2)
+        self.assertIn("pinned baseline", result.stderr)
+        self.assertEqual(result.stdout, "")
+
+    def test_cli_errors_are_structured_without_sensitive_values(self):
+        self.config.path.write_text('["test-secret-content"]')
+        result = self.cli("doctor")
+        self.assertEqual(result.returncode, 2)
+        self.assertNotIn("test-secret-content", result.stderr)
+        self.assertFalse(json.loads(result.stderr)["ok"])
+
+    def test_generic_adapter_executes_without_grok_environment(self):
+        spec = {"kind": "acp-command", "command": str(self.fake), "home_directory": "other",
+                "env": {"EXAMPLE_HOME": "{executor_home}"}}
+        (self.base / "other").mkdir()
+        self.config.data["adapters"] = {"other": spec}
+        self.config.data["agents"][self.key]["adapter"] = "other"
+        self.config.data["compatibility"]["executor_sha256"] = {"other": digest(self.fake)}
+        # Cross-platform contract test explicitly uses the unrestricted fixture policy.
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        result = self.cli("launch", "executor", "--", "acp", "two words", BUZZ_RUNTIME_ID=self.key)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        value = json.loads(result.stdout)
+        self.assertIsNone(value["home"])
+        self.assertEqual(value["other"], str(self.base / "other"))
+        self.assertEqual(value["args"], ["acp", "two words"])
+
+    def test_workspace_real_git_and_reuse_rejection(self):
+        source = self.root / "git-source"
+        subprocess.run(["git", "init", "-b", "main", str(source)], check=True, capture_output=True)
+        subprocess.run(["git", "-C", str(source), "remote", "add", "origin", "https://github.com/example/fixture.git"], check=True)
+        subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
+                        "commit", "--allow-empty", "-m", "fixture"], check=True, capture_output=True)
+        self.config.data["repositories"]["fixture"] = {"source": str(source), "origin": "https://github.com/example/fixture.git"}
+        self.save()
+        result = self.cli("workspace", "1-cli-test", "--repo", "fixture", "--branch", "feat/1-cli-test", "--id", self.key)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        path = Path(json.loads(result.stdout)["path"])
+        self.assertTrue((path / ".git").is_file())
+        retry = self.cli("workspace", "1-cli-test", "--repo", "fixture", "--id", self.key)
+        self.assertEqual(retry.returncode, 2)
+        self.assertIn("refusing overwrite", retry.stderr)
 
 
 class BindingTests(Fixture):

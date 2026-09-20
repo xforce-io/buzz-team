@@ -74,6 +74,14 @@ class Runtime:
         return ["/usr/bin/sandbox-exec", "-p", self.profile(), *argv]
 
     def launch(self, mode: str, args: list[str]):
+        from .instance import digest
+        spec = self.config.data["compatibility"]
+        pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
+        if mode == "harness":
+            pins.append((Path(self.config.data["binaries"]["harness"]), spec["sha256"].get("harness")))
+        for path, expected in pins:
+            if not expected or not path.is_file() or digest(path) != expected:
+                raise ValueError("launch executable differs from pinned baseline; run doctor")
         errors = self.executor.check(self.base)
         if errors:
             raise ValueError("; ".join(errors))

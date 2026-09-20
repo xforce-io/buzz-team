@@ -6,8 +6,6 @@ import json
 import os
 from pathlib import Path
 import shlex
-import shutil
-import subprocess
 import sys
 import tempfile
 
@@ -49,13 +47,11 @@ def init_legacy(instance: Path, legacy: Path, desktop: Path, app: Path):
     if instance.exists() and any(p.name != "README.md" for p in instance.iterdir()):
         raise ValueError("target must be empty apart from README.md")
     old = json.loads(legacy.read_text())
-    if old.get("version") != 1:
+    if not isinstance(old, dict) or old.get("version") != 1:
         raise ValueError("expected legacy configuration version 1")
     state = Path(old["state_root"]).resolve()
     if instance.is_relative_to(state) or state.is_relative_to(instance):
         raise ValueError("instance cannot contain or overlap retained state")
-    instance.mkdir(parents=True, exist_ok=True, mode=0o700)
-    instance.chmod(0o700)
     c = {k: old[k] for k in ("state_root", "protected_home", "production", "policies", "repositories", "agents")}
     c.update(version=2, binaries={k: old["binaries"][k] for k in ("buzz", "harness")},
              adapters={"grok": {"kind": "grok", "command": old["binaries"]["grok"]}},
@@ -63,14 +59,15 @@ def init_legacy(instance: Path, legacy: Path, desktop: Path, app: Path):
              data_environment={"KAIRO_SERVE_ROOT": {"test": "{identity_root}/test-data", "production": old["production"]["data_root"]}},
              compatibility={"sha256": {k: digest(Path(old["binaries"][k])) for k in ("buzz", "harness")}})
     from .desktop import selected_rows
-    inventory = selected_rows(type("Inventory", (), {"data": c})(), json.loads(desktop.read_text()))
+    inventory = selected_rows(c, json.loads(desktop.read_text()))
     c["compatibility"]["executor_sha256"] = {"grok": digest(Path(old["binaries"]["grok"]))}
+    instructions = {}
     for index, agent in enumerate(c["agents"].values()):
         agent["adapter"] = "grok"
         if "instructions" in agent:
             source = Path(agent["instructions"])
             target = instance / "private" / f"instructions-{index}.md"
-            write_private(target, source.read_text())
+            instructions[target] = source.read_text()
             agent["instructions"] = str(target)
         # Skills are existing private resources, not recursively copied or installed.
     for key, row in inventory.items():
@@ -82,17 +79,27 @@ def init_legacy(instance: Path, legacy: Path, desktop: Path, app: Path):
             # Resolve legacy compatibility links without changing the rule contents.
             c["agents"][key]["binding_environment"] = {"BUZZ_ACP_CONFIG": str(source)}
     # No credential_sources or configuration regeneration in v2. Existing adapter homes are authoritative.
-    write_json(instance / "instance.local.json", c)
-    Config(instance)
+    Config(instance, data=c)
+    # Resolve/read/validate every input before writing any part of the instance.
+    origin_digest = digest(legacy)
+    instance.mkdir(parents=True, exist_ok=True, mode=0o700)
+    instance.chmod(0o700)
+    for target, content in instructions.items():
+        write_private(target, content)
     write_json(instance / "migration-origin.json", {"legacy_config": str(legacy.resolve()),
-               "legacy_config_sha256": digest(legacy), "state_root": str(state),
+               "legacy_config_sha256": origin_digest, "state_root": str(state),
                "authentication": "reuse-in-place; never copy or restore"})
+    write_json(instance / "instance.local.json", c)
     return {"instance": str(instance), "identities": len(c["agents"]), "bound": False,
             "authentication": "unchanged: existing executor homes retained"}
 
 
 def prepare(config: Config):
     """Only thin launchers; never rewrite credentials, instructions or adapter settings."""
+    from .desktop import status
+    current = status(config)
+    if current["bound"] and current["desktop_pids"]:
+        raise ValueError("bound instance is running; stop Desktop before preparing launchers")
     executable = Path(sys.executable).absolute()
     q = shlex.quote
     prefix = f"exec {q(str(executable))} -m buzz_team.cli --instance {q(str(config.instance))} "

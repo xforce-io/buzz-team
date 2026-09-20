@@ -12,5 +12,7 @@ logs/
 sessions/
 .venv/
 __pycache__/
+build/
+*.egg-info/
 *.py[cod]
 .DS_Store
