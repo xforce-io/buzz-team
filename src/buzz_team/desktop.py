@@ -6,6 +6,7 @@ import datetime
 import json
 import os
 import plistlib
+import shutil
 from pathlib import Path
 import subprocess
 import uuid
@@ -18,16 +19,35 @@ from .runtime import Runtime
 def live_processes(config: Config) -> list[int]:
     # macOS truncates comm when followed by args, even with -ww. Read them separately.
     raw = "\n".join(subprocess.check_output(["ps", "-ww", "-axo", fields], text=True,
-                                          errors="surrogateescape")
+                                          errors="surrogateescape", timeout=15)
                     for fields in ("pid=,comm=", "pid=,args="))
     app = str(Path(config.data["desktop"]["app"]).resolve()) + "/"
     executors = {spec["command"] for spec in config.data["adapters"].values()}
+    rows = selected_rows(config, json.loads(Path(config.data["desktop"]["managed_agents"]).read_text()))
+    for row in rows.values():
+        for field in ("agent_command", "acp_command"):
+            value = row.get(field)
+            if value:
+                if not isinstance(value, str) or not Path(value).is_absolute():
+                    raise ValueError("Desktop binding command must be an absolute path")
+                executors.add(value)
     executors.update(str(Path(path).resolve()) for path in tuple(executors))
     harness = config.data["binaries"]["harness"]
     commands = executors | {harness, str(Path(harness).resolve())}
-    short_names = {Path(spec["command"]).name for spec in config.data["adapters"].values()}
-    short_names.update(Path(path).name for path in executors)
     result = set()
+    # Identity workspaces remain authoritative even after the adapter changes or
+    # an executor replaces argv with a short title. Do not depend on its old name.
+    lsof = shutil.which("lsof")
+    if not lsof:
+        raise ValueError("lsof unavailable; cannot prove identity workspaces are idle")
+    cwd_info = subprocess.check_output([lsof, "-nP", "-d", "cwd", "-Fpn"],
+                                       text=True, errors="surrogateescape", timeout=15)
+    pid = None
+    for line in cwd_info.splitlines():
+        if line.startswith("p") and line[1:].isdigit():
+            pid = int(line[1:])
+        elif pid is not None and line.startswith("n/") and Path(line[1:]).resolve().is_relative_to(config.state):
+            result.add(pid)
     for line in raw.splitlines():
         parts = line.strip().split(None, 1)
         if len(parts) == 2:
@@ -38,15 +58,6 @@ def live_processes(config: Config) -> list[int]:
                 command == path or command.startswith(path + " ") or
                 (" " + path + " ") in (" " + command + " ")
                 for path in commands)
-            if not matched and command.split()[0] in short_names:
-                # Some executors replace argv/comm with a short title. Scope these
-                # to identity workspaces; unrelated interactive agents stay untouched.
-                cwd_info = subprocess.check_output(
-                    ["/usr/sbin/lsof", "-a", "-p", parts[0], "-d", "cwd", "-Fn"],
-                    text=True, errors="surrogateescape")
-                matched = any(line.startswith("n/") and
-                              Path(line[1:]).resolve().is_relative_to(config.state)
-                              for line in cwd_info.splitlines())
             if matched:
                 result.add(int(parts[0]))
     return sorted(result)

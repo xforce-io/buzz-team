@@ -157,7 +157,7 @@ class CLITests(Fixture):
         for spec in self.config.data["adapters"].values():
             spec["command"] = str(link)
         with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
-                "123 /usr/bin/python3\n", f"123 /usr/bin/python3 {link} acp\n"]):
+                "123 /usr/bin/python3\n", f"123 /usr/bin/python3 {link} acp\n", ""]):
             self.assertEqual(desktop.live_processes(self.config), [123])
 
     def test_malformed_adapter_returns_json_not_traceback(self):
@@ -247,7 +247,7 @@ class CLITests(Fixture):
     def test_process_columns_are_not_truncated_or_double_counted(self):
         executable = str(self.app / "Contents/MacOS/Buzz")
         with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
-                f"123 {executable}\n", f"123 {executable} --arg\n"]) as ps:
+                f"123 {executable}\n", f"123 {executable} --arg\n", ""]) as ps:
             self.assertEqual(desktop.live_processes(self.config), [123])
             self.assertEqual(ps.call_args_list[0].args[0][-1], "pid=,comm=")
             self.assertEqual(ps.call_args_list[1].args[0][-1], "pid=,args=")
@@ -257,6 +257,43 @@ class CLITests(Fixture):
             with self.subTest(cwd=cwd), patch("buzz_team.desktop.subprocess.check_output", side_effect=[
                     "123 fake-executor\n", "", f"p123\nfcwd\nn{cwd}\n"]):
                 self.assertEqual(desktop.live_processes(self.config), expected)
+
+    def test_old_binding_command_survives_adapter_removal(self):
+        original = self.desktop_file.read_bytes()
+        with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
+                "123 /usr/bin/python3\n", "123 /usr/bin/python3 /old/executor acp\n", ""]):
+            with self.assertRaisesRegex(ValueError, "still running"):
+                desktop.bind(self.config)
+        self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_unknown_old_executor_in_identity_workspace_blocks_binding(self):
+        original = self.desktop_file.read_bytes()
+        with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
+                "123 renamed-old-agent\n", "123 renamed-old-agent\n",
+                f"p123\nfcwd\nn{self.base / 'workspace'}\np456\nfcwd\nn{self.root}\n"]):
+            with self.assertRaisesRegex(ValueError, "still running"):
+                desktop.bind(self.config)
+        self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_invalid_data_environment_rejected_before_binding(self):
+        original = self.desktop_file.read_bytes()
+        for value in ([], None, {"EXAMPLE": []}, {"EXAMPLE": {"production": "path"}},
+                      {"EXAMPLE": {"test": 12}}, {"EXAMPLE": {"test": "bad\0value"}},
+                      {"EXAMPLE": {"test": "ok", "other": "bad"}}, {"PATH": {"test": "/bad"}}):
+            with self.subTest(value=value):
+                self.config.data["data_environment"] = value
+                write_json(self.config.path, self.config.data)
+                for command in ("doctor", "bind"):
+                    result = self.cli(command)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertFalse(json.loads(result.stderr)["ok"])
+                    self.assertNotIn("Traceback", result.stderr)
+                self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_data_environment_valid_modes_expand_on_launch(self):
+        self.config.data["data_environment"] = {"EXAMPLE": {"test": "{identity_root}/test-data"}}
+        self.save()
+        self.assertEqual(Runtime(self.config, self.key).env({})["EXAMPLE"], str(self.base / "test-data"))
 
     def test_rollback_restores_absent_env_container_and_retains_new_values(self):
         prepare(self.config)

@@ -39,9 +39,6 @@ class Runtime:
                    PATH=str(self.config.instance / "bin") + os.pathsep + inherited.get("PATH", "/usr/bin:/bin"))
         # Project-specific application environment is instance data, not role-name logic.
         for name, values in self.config.data.get("data_environment", {}).items():
-            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", name) or name.startswith(("BUZZ_", "GROK_", "DYLD_", "LD_", "PYTHON")) or name in {
-                    "HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "CARGO_HOME", "UV_CACHE_DIR"}:
-                raise ValueError("invalid or conflicting data environment")
             value = values[self.policy["data_mode"]]
             env[name] = value.replace("{identity_root}", str(self.base))
         return env

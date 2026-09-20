@@ -5,6 +5,7 @@ import argparse
 import importlib.resources
 import json
 import os
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -18,6 +19,8 @@ from .runtime import Runtime
 
 def doctor(config: Config):
     errors = desktop.check_app(config)
+    if not shutil.which("lsof"):
+        errors.append("lsof unavailable; cannot verify idle identity workspaces")
     for name, path in config.data["binaries"].items():
         file = Path(path)
         if not file.is_file() or not os.access(file, os.X_OK):

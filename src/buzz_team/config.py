@@ -75,6 +75,19 @@ class Config:
                 raise ValueError("missing repository origin")
         for path in c["binaries"].values():
             absolute(path)
+        environment = c.get("data_environment", {})
+        if not isinstance(environment, dict):
+            raise ValueError("data environment must be an object")
+        modes = {c["policies"][agent["policy"]]["data_mode"] for agent in c["agents"].values()}
+        for name, values in environment.items():
+            if (not isinstance(name, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", name)
+                    or name.startswith(("BUZZ_", "GROK_", "DYLD_", "LD_", "PYTHON"))
+                    or name in {"HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "CARGO_HOME", "UV_CACHE_DIR"}):
+                raise ValueError("invalid or conflicting data environment")
+            if (not isinstance(values, dict) or not modes.issubset(values)
+                    or any(mode not in {"test", "production"} or not isinstance(value, str) or "\0" in value
+                           for mode, value in values.items())):
+                raise ValueError("data environment requires string values for configured data modes")
         absolute(c["desktop"]["managed_agents"])
         absolute(c["desktop"]["app"])
 
