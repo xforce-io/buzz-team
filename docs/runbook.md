@@ -6,7 +6,7 @@ Desktop 管理 agent 生命周期，buzz-team 不运行额外守护进程。通�
 
 ## 安装
 
-使用 Python >=3.11 创建仓库外虚拟环境，通过 `python -m pip install <源码目录>` 或 `uv pip install --python <虚拟环境/python> <源码目录>` 非 editable 安装。记录实际源 SHA；工作树必须干净。下文 `buzz-team` 指该安装生成的绝对可执行文件路径，`INSTANCE` 等参数由操作者填写，不预置机器路径。
+使用 Python >=3.11 创建仓库外虚拟环境，通过 `python -m pip install --no-cache-dir <源码目录>` 或 `uv pip install --no-cache --python <虚拟环境/python> <源码目录>` 非 editable 安装。记录实际源 SHA；工作树必须干净。同版本本地源码可能命中旧构建缓存，必须禁用缓存，并逐文件比较安装后的 `buzz_team` 与候选 `src/buzz_team`（忽略 `__pycache__`）；目录名或版本号不能替代产物核验。下文 `buzz-team` 指该安装生成的绝对可执行文件路径，`INSTANCE` 等参数由操作者填写，不预置机器路径。
 
 ```sh
 buzz-team --instance /absolute/instance init --legacy /absolute/legacy/runtime.local.json --desktop-config /absolute/managed-agents.json --app /Applications/Buzz.app
@@ -38,7 +38,7 @@ buzz-team --instance /absolute/instance rollback --receipt /absolute/instance/ba
 open -a /Applications/Buzz.app
 ```
 
-回退后 CLI start 会因新实例未绑定而拒绝，使用 Desktop 正常入口启动旧环境。当前配置若与绑定后的快照不同，rollback 拒绝覆盖；由操作者核对差异，仅恢复本次启动绑定字段，再保存新的核验记录。不可整体覆盖后续设置或恢复备份 OAuth。
+回退后 CLI start 会因新实例未绑定而拒绝，使用 Desktop 正常入口启动旧环境。rollback 只还原本次修改的绑定字段，保留 Desktop 时间戳和无关设置更新；这些绑定字段本身若被后续修改则拒绝覆盖，交操作者核对。不可整体覆盖后续设置或恢复备份 OAuth。
 
 ## 正式发布
 
