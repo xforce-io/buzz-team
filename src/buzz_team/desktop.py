@@ -16,13 +16,15 @@ from .runtime import Runtime
 
 
 def live_processes(config: Config) -> list[int]:
-    raw = subprocess.check_output(["ps", "-ww", "-axo", "pid=,comm=,args="], text=True,
-                                  errors="surrogateescape")
+    # macOS truncates comm when followed by args, even with -ww. Read them separately.
+    raw = "\n".join(subprocess.check_output(["ps", "-ww", "-axo", fields], text=True,
+                                          errors="surrogateescape")
+                    for fields in ("pid=,comm=", "pid=,args="))
     app = str(Path(config.data["desktop"]["app"]).resolve()) + "/"
     harness = str(Path(config.data["binaries"]["harness"]).resolve())
     executors = {str(Path(spec["command"]).resolve()) for spec in config.data["adapters"].values()}
     commands = executors | {harness}
-    result = []
+    result = set()
     for line in raw.splitlines():
         parts = line.strip().split(None, 1)
         if len(parts) == 2:
@@ -34,8 +36,8 @@ def live_processes(config: Config) -> list[int]:
                 (" " + path + " ") in (" " + command + " ")
                 for path in commands)
             if matched:
-                result.append(int(parts[0]))
-    return result
+                result.add(int(parts[0]))
+    return sorted(result)
 
 
 def require_stopped(config: Config):

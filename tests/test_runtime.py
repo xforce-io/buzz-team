@@ -202,6 +202,14 @@ class CLITests(Fixture):
                     desktop.bind(self.config)
                 self.assertEqual(self.desktop_file.read_bytes(), original)
 
+    def test_process_columns_are_not_truncated_or_double_counted(self):
+        executable = str(self.app / "Contents/MacOS/Buzz")
+        with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
+                f"123 {executable}\n", f"123 {executable} --arg\n"]) as ps:
+            self.assertEqual(desktop.live_processes(self.config), [123])
+            self.assertEqual(ps.call_args_list[0].args[0][-1], "pid=,comm=")
+            self.assertEqual(ps.call_args_list[1].args[0][-1], "pid=,args=")
+
     def test_rollback_restores_absent_env_container_and_retains_new_values(self):
         prepare(self.config)
         for added in (False, True):
