@@ -51,8 +51,18 @@ class Runtime:
         lines = ["(version 1)", "(allow default)",
                  f"(deny file-write* (require-all (subpath {q(str(home))}) (require-not (subpath {q(str(self.base))}))))"]
         denied = {str(p) for p in self.base.parents if p != Path("/")}
-        for item in [self.config.production, *self.config.data["production"]["protected_paths"]]:
-            path = Path(item).resolve()
+        # The policy and the code enforcing it cannot be writable by its subject,
+        # even when the administrator places them outside protected_home.
+        control_paths = [self.config.instance, Path(__file__).absolute().parent,
+                         sys.prefix, sys.base_prefix, sys.executable, self.executor.spec["command"],
+                         *self.config.data["binaries"].values(),
+                         self.config.data["desktop"]["managed_agents"],
+                         self.config.data["desktop"]["app"]]
+        protected = [self.config.production, *control_paths,
+                     *self.config.data["production"]["protected_paths"]]
+        # Protect both a symlink entry and its destination against replacement.
+        paths = {path for item in protected for path in (Path(item).absolute(), Path(item).resolve())}
+        for path in sorted(paths):
             if overlap(path, self.base):
                 raise ValueError("protected path overlaps runtime")
             lines.append(f"(deny file-write* (subpath {q(str(path))}))")

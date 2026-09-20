@@ -29,6 +29,7 @@ class ACPCommand:
                 raise ValueError("invalid adapter environment")
             if key.startswith(("BUZZ_", "DYLD_", "LD_", "PYTHON")) or key in {
                 "HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "CARGO_HOME", "UV_CACHE_DIR", "KAIRO_SERVE_ROOT",
+                "XAI_API_KEY", "GROK_CODE_XAI_API_KEY",
             }:
                 raise ValueError("adapter cannot override runtime-owned environment")
 

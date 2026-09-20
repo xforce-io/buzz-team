@@ -44,7 +44,8 @@ class Config:
         self.state = absolute(c["state_root"])
         self.home = absolute(c["protected_home"])
         self.production = absolute(c["production"]["data_root"])
-        if overlap(self.state, self.production) or overlap(self.instance, self.state):
+        if (overlap(self.state, self.production) or overlap(self.instance, self.state)
+                or overlap(self.instance, self.production)):
             raise ValueError("instance, runtime and production boundaries overlap")
         for port in c["production"]["blocked_ports"]:
             if type(port) is not int or not 0 < port < 65536:
@@ -82,7 +83,7 @@ class Config:
         for name, values in environment.items():
             if (not isinstance(name, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", name)
                     or name.startswith(("BUZZ_", "GROK_", "DYLD_", "LD_", "PYTHON"))
-                    or name in {"HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "CARGO_HOME", "UV_CACHE_DIR"}):
+                    or name in {"HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "CARGO_HOME", "UV_CACHE_DIR", "XAI_API_KEY"}):
                 raise ValueError("invalid or conflicting data environment")
             if (not isinstance(values, dict) or not modes.issubset(values)
                     or any(mode not in {"test", "production"} or not isinstance(value, str) or "\0" in value

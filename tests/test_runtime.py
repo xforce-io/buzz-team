@@ -69,6 +69,21 @@ class Fixture(unittest.TestCase):
 
 
 class ConfigurationTests(Fixture):
+    def test_instance_and_production_must_not_overlap(self):
+        for production in (self.instance, self.instance / "data", self.instance.parent):
+            with self.subTest(production=production):
+                data = copy.deepcopy(self.config.data)
+                data["production"]["data_root"] = str(production)
+                with self.assertRaisesRegex(ValueError, "boundaries overlap"):
+                    Config(self.instance, data=data)
+
+    def test_init_rejects_production_overlap_without_writes(self):
+        target = self.prod / "new-instance"
+        with self.assertRaisesRegex(ValueError, "boundaries overlap"):
+            init_legacy(target, self.legacy, self.desktop_file, self.app)
+        self.assertFalse(target.exists())
+        self.assert_auth_unchanged()
+
     def test_protected_home_must_cover_restricted_and_writer_siblings(self):
         other = identity("ws://localhost:3000", "b" * 64)
         self.config.data["policies"]["writer"] = {"production_write": True, "data_mode": "production"}
@@ -161,6 +176,29 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_credential_environment_is_rejected_before_binding(self):
+        original = self.desktop_file.read_bytes()
+        baseline = copy.deepcopy(self.config.data)
+        name = self.config.agent(self.key)["adapter"]
+        for kind in ("grok", "acp-command"):
+            for variable in ("XAI_API_KEY", "GROK_CODE_XAI_API_KEY"):
+                for section in ("adapter", "data"):
+                    with self.subTest(kind=kind, variable=variable, section=section):
+                        data = copy.deepcopy(baseline)
+                        data["adapters"][name]["kind"] = kind
+                        if section == "adapter":
+                            data["adapters"][name]["env"] = {variable: "test-only-secret"}
+                        else:
+                            data["data_environment"][variable] = {"test": "test-only-secret"}
+                        write_json(self.config.path, data)
+                        for command in ("doctor", "bind"):
+                            result = self.cli(command)
+                            self.assertEqual(result.returncode, 2)
+                            self.assertFalse(json.loads(result.stderr)["ok"])
+                            self.assertNotIn("test-only-secret", result.stdout + result.stderr)
+                        self.assertEqual(self.desktop_file.read_bytes(), original)
+                        self.assertFalse((self.instance / "backups").exists())
+
     def test_invalid_adapter_environment_cannot_change_binding(self):
         original = self.desktop_file.read_bytes()
         name = self.config.agent(self.key)["adapter"]
@@ -521,6 +559,44 @@ class ReplyTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS kernel integration; run on migration host")
 class KernelTests(Fixture):
+    def test_control_files_outside_home_are_write_protected(self):
+        prepare(self.config)
+        self.config.data["protected_home"] = str(self.config.state)
+        self.save()
+        package = self.root / "external-code" / "buzz_team"
+        package.mkdir(parents=True)
+        module = package / "runtime.py"
+        module.write_text("test-only code")
+        installation = self.root / "external-install"
+        installation.mkdir()
+        installed = installation / "installed-marker"
+        installed.write_text("original")
+        link = self.root / "install-link"
+        link.symlink_to(installation, target_is_directory=True)
+        targets = [self.config.path, self.instance / "bin/agent-executor", module, installed,
+                   self.desktop_file, self.fake]
+        original = {path: path.read_bytes() for path in targets}
+        runtime = Runtime(self.config, self.key)
+        with patch("buzz_team.runtime.__file__", str(module)), patch("buzz_team.runtime.sys.prefix", str(link)):
+            command = runtime.command([sys.executable, "-c", f'''
+from pathlib import Path
+for name in {[str(p) for p in targets]!r}:
+ try: Path(name).write_text('bad')
+ except PermissionError: pass
+ else: raise AssertionError('control file writable: ' + name)
+for name in {[str(self.instance), str(package), str(link)]!r}:
+ try: Path(name).rename(name + '-moved')
+ except PermissionError: pass
+ else: raise AssertionError('control path replaceable: ' + name)
+Path({str(runtime.cwd / 'allowed-control-test')!r}).write_text('ok')
+'''])
+        result = subprocess.run(command, capture_output=True, text=True, timeout=20)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for path, value in original.items():
+            self.assertEqual(path.read_bytes(), value)
+        self.assertTrue(link.is_symlink())
+        self.assert_auth_unchanged()
+
     def test_production_root_outside_home_is_always_write_protected(self):
         self.config.data["protected_home"] = str(self.config.state)
         self.config.data["production"]["protected_paths"] = []
