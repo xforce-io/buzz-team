@@ -68,7 +68,7 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
                 raise ValueError("unsupported binding environment override")
             env[name] = value
         # The executor home, existing session settings and credentials remain untouched.
-        for name, value in runtime.executor.environment(runtime.base, runtime.cwd).items():
+        for name, value in runtime.executor.binding_environment(runtime.base, runtime.cwd).items():
             if name in env and env[name] != value:
                 raise ValueError("executor environment differs from existing Desktop binding")
             env[name] = value

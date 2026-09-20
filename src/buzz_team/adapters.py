@@ -37,6 +37,10 @@ class ACPCommand:
     def clean_inherited(self, env: dict[str, str]):
         """Executor-specific inherited settings are owned by its adapter."""
 
+    def binding_environment(self, base: Path, cwd: Path) -> dict[str, str]:
+        """Stable settings persisted by Desktop, distinct from launch-time policy."""
+        return self.environment(base, cwd)
+
     def check(self, base: Path) -> list[str]:
         if not Path(self.spec["command"]).is_file():
             return ["executor binary missing"]
@@ -59,6 +63,12 @@ class Grok(ACPCommand):
     def environment(self, base: Path, cwd: Path) -> dict[str, str]:
         return {**super().environment(base, cwd), "GROK_HOME": str(self.home(base)),
                 "GROK_ACP_CWD": str(cwd), "GROK_MEMORY": "0", "GROK_AGENT_DASHBOARD": "0"}
+
+    def binding_environment(self, base: Path, cwd: Path) -> dict[str, str]:
+        # Desktop may normalize optional launch flags out of its persisted inventory.
+        # The wrapper enforces these flags on every launch; they are not identity bindings.
+        return {key: value for key, value in self.environment(base, cwd).items()
+                if key not in {"GROK_MEMORY", "GROK_AGENT_DASHBOARD"}}
 
     def check(self, base: Path) -> list[str]:
         errors = super().check(base)

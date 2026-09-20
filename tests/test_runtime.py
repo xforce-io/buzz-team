@@ -220,6 +220,28 @@ class CLITests(Fixture):
 
 
 class BindingTests(Fixture):
+    def test_optional_grok_flags_are_runtime_owned_not_binding_fields(self):
+        prepare(self.config)
+        for persisted in ({}, {"GROK_MEMORY": "0", "GROK_AGENT_DASHBOARD": "0"}):
+            with self.subTest(persisted=persisted):
+                rows = copy.deepcopy(self.rows)
+                rows[0]["env_vars"].update(persisted)
+                write_json(self.desktop_file, rows)
+                with patch("buzz_team.desktop.live_processes", return_value=[]):
+                    result = desktop.bind(self.config)
+                    bound = json.loads(self.desktop_file.read_text())
+                    for name in ("GROK_MEMORY", "GROK_AGENT_DASHBOARD"):
+                        self.assertEqual(bound[0]["env_vars"].get(name), persisted.get(name))
+                        bound[0]["env_vars"].pop(name, None)
+                    write_json(self.desktop_file, bound)
+                    self.assertTrue(desktop.status(self.config)["bound"])
+                    self.assertEqual(desktop.bind(self.config)["changed"], 0)
+                    desktop.rollback(self.config, Path(result["receipt"]))
+                launched = Runtime(self.config, self.key).env({"GROK_MEMORY": "1", "GROK_AGENT_DASHBOARD": "1"})
+                self.assertEqual(launched["GROK_MEMORY"], "0")
+                self.assertEqual(launched["GROK_AGENT_DASHBOARD"], "0")
+                self.assert_auth_unchanged()
+
     def test_bind_and_rollback_no_secret_or_auth_mutation(self):
         prepare(self.config)
         before = self.desktop_file.read_bytes()
