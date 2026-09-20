@@ -41,7 +41,8 @@ class Fixture(unittest.TestCase):
         self.desktop_file = self.root / "managed-agents.json"
         self.app = self.root / "Buzz.app"
         (self.app / "Contents/MacOS").mkdir(parents=True)
-        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Buzz"}))
+        (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Buzz",
+            "CFBundleIdentifier": "xyz.block.buzz.app", "CFBundleShortVersionString": "0.5.23"}))
         (self.app / "Contents/MacOS/Buzz").symlink_to(self.fake)
         self.rows = [{"pubkey": "a" * 64, "relay_url": "ws://localhost:3000", "system_prompt": "private prompt",
                       "private_key": "test-only-secret", "acp_command": "/old/harness", "agent_command": "/old/executor",
@@ -176,6 +177,35 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_desktop_identity_and_version_fail_closed(self):
+        original = self.desktop_file.read_bytes()
+        info_path = self.app / "Contents/Info.plist"
+        baseline = plistlib.loads(info_path.read_bytes())
+        for field, value in (("CFBundleIdentifier", "example.other.app"),
+                             ("CFBundleShortVersionString", "9.9.9")):
+            with self.subTest(field=field):
+                info_path.write_bytes(plistlib.dumps(dict(baseline, **{field: value})))
+                for command in ("doctor", "bind", "start"):
+                    result = self.cli(command)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertFalse(json.loads(result.stderr or result.stdout)["ok"])
+                self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_init_rejects_non_object_inventory_environment(self):
+        for value in ([], ["item"], "invalid", 42, None, False):
+            with self.subTest(value=value):
+                rows = copy.deepcopy(self.rows)
+                rows[0]["env_vars"] = value
+                write_json(self.desktop_file, rows)
+                target = self.root / "new-instance"
+                result = self.cli("--instance", str(target), "init", "--legacy", str(self.legacy),
+                                  "--desktop-config", str(self.desktop_file), "--app", str(self.app))
+                self.assertEqual(result.returncode, 2)
+                self.assertFalse(json.loads(result.stderr)["ok"])
+                self.assertNotIn("Traceback", result.stderr)
+                self.assertFalse(target.exists())
+                self.assertEqual(json.loads(self.desktop_file.read_text()), rows)
+
     def test_invalid_compatibility_maps_return_json_before_binding(self):
         original = self.desktop_file.read_bytes()
         baseline = copy.deepcopy(self.config.data)

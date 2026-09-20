@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import copy
 import datetime
+import importlib.resources
 import json
 import os
 import plistlib
@@ -74,6 +75,11 @@ def check_app(config: Config) -> list[str]:
         info = plistlib.loads((app / "Contents/Info.plist").read_bytes())
         if not isinstance(info, dict):
             return ["Desktop: invalid application metadata"]
+        manifest = json.loads(importlib.resources.files("buzz_team").joinpath("compatibility.json").read_text())
+        baseline = manifest["observed_baseline"]
+        if (info.get("CFBundleIdentifier") != baseline["desktop_bundle_id"]
+                or info.get("CFBundleShortVersionString") != baseline["desktop"]):
+            return ["Desktop: identity or version differs from compatibility baseline"]
         name = info.get("CFBundleExecutable")
         if not isinstance(name, str) or not name or Path(name).name != name:
             return ["Desktop: invalid application executable"]
@@ -97,6 +103,8 @@ def selected_rows(config: Config | dict, rows: list) -> dict:
             continue
         key = identity(row["relay_url"], row["pubkey"])
         if key in data["agents"]:
+            if "env_vars" in row and not isinstance(row["env_vars"], dict):
+                raise ValueError("Desktop env_vars must be an object")
             if key in selected:
                 raise ValueError("duplicate Desktop identity")
             selected[key] = row
@@ -215,6 +223,9 @@ def status(config: Config):
 
 
 def start(config: Config):
+    errors = check_app(config)
+    if errors:
+        raise ValueError("; ".join(errors))
     if not status(config)["bound"]:
         raise ValueError("instance not bound; refusing to start old binding")
     if live_processes(config):

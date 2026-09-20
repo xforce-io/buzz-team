@@ -5,6 +5,7 @@
   "platform": "macOS (Seatbelt required for restricted identities)",
   "observed_baseline": {
     "desktop": "0.5.23",
+    "desktop_bundle_id": "xyz.block.buzz.app",
     "grok": "1.0.34 (3736acbc8658)",
     "buzz_cli_sha256": "6034d9bcf04ee765b057bb8f374825c2107a4d0e53d28e9a1c36ba502b70bc57",
     "harness_sha256": "e0d7bbcfc3128657ef5442e478629f36f9f89944b77920c13422994272a95366",
