@@ -150,6 +150,48 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_symlinked_interpreted_commands_block_binding(self):
+        link = self.root / "executor-link"
+        link.symlink_to(self.fake)
+        self.config.data["binaries"]["harness"] = str(link)
+        for spec in self.config.data["adapters"].values():
+            spec["command"] = str(link)
+        with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
+                "123 /usr/bin/python3\n", f"123 /usr/bin/python3 {link} acp\n"]):
+            self.assertEqual(desktop.live_processes(self.config), [123])
+
+    def test_malformed_adapter_returns_json_not_traceback(self):
+        for spec in ([], None, {"kind": "acp-command", "command": str(self.fake), "env": []}):
+            with self.subTest(spec=spec):
+                self.config.data["adapters"][self.config.agent(self.key)["adapter"]] = spec
+                write_json(self.config.path, self.config.data)
+                result = self.cli("doctor")
+                self.assertEqual(result.returncode, 2)
+                self.assertFalse(json.loads(result.stderr)["ok"])
+                self.assertNotIn("Traceback", result.stderr)
+
+    def test_generic_launch_cleans_existing_desktop_grok_environment(self):
+        (self.base / "other").mkdir()
+        self.config.data["adapters"] = {"other": {
+            "kind": "acp-command", "command": str(self.fake), "home_directory": "other",
+            "env": {"EXAMPLE_HOME": "{executor_home}"}}}
+        self.config.data["agents"][self.key]["adapter"] = "other"
+        self.config.data["compatibility"]["executor_sha256"] = {"other": digest(self.fake)}
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        prepare(self.config)
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            receipt = desktop.bind(self.config)["receipt"]
+            row = json.loads(self.desktop_file.read_text())[0]
+            self.assertIn("GROK_HOME", row["env_vars"])
+            result = self.cli("launch", "executor", "--", "acp", **row["env_vars"])
+            self.assertEqual(result.returncode, 0, result.stderr)
+            output = json.loads(result.stdout)
+            self.assertIsNone(output["home"])
+            self.assertEqual(output["other"], str(self.base / "other"))
+            desktop.rollback(self.config, Path(receipt))
+        self.assert_auth_unchanged()
+
     def test_doctor_rejects_non_executable_adapter(self):
         executor = self.root / "adapter-no-exec"
         executor.write_text("not executable")

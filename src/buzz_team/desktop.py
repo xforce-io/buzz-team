@@ -21,9 +21,10 @@ def live_processes(config: Config) -> list[int]:
                                           errors="surrogateescape")
                     for fields in ("pid=,comm=", "pid=,args="))
     app = str(Path(config.data["desktop"]["app"]).resolve()) + "/"
-    harness = str(Path(config.data["binaries"]["harness"]).resolve())
-    executors = {str(Path(spec["command"]).resolve()) for spec in config.data["adapters"].values()}
-    commands = executors | {harness}
+    executors = {spec["command"] for spec in config.data["adapters"].values()}
+    executors.update(str(Path(path).resolve()) for path in tuple(executors))
+    harness = config.data["binaries"]["harness"]
+    commands = executors | {harness, str(Path(harness).resolve())}
     short_names = {Path(spec["command"]).name for spec in config.data["adapters"].values()}
     short_names.update(Path(path).name for path in executors)
     result = set()

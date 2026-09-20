@@ -20,7 +20,10 @@ class ACPCommand:
         segment = self.spec.get("home_directory", "executor")
         if not re.fullmatch(r"[a-z][a-z0-9-]*", segment):
             raise ValueError("invalid executor home directory")
-        for key, value in self.spec.get("env", {}).items():
+        environment = self.spec.get("env", {})
+        if not isinstance(environment, dict):
+            raise ValueError("adapter environment must be an object")
+        for key, value in environment.items():
             if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or not isinstance(value, str):
                 raise ValueError("invalid adapter environment")
             if key.startswith(("BUZZ_", "DYLD_", "LD_", "PYTHON")) or key in {
@@ -37,6 +40,9 @@ class ACPCommand:
 
     def clean_inherited(self, env: dict[str, str]):
         """Executor-specific inherited settings are owned by its adapter."""
+        for name in tuple(env):
+            if name.startswith("GROK_") or name == "XAI_API_KEY":
+                env.pop(name)
 
     def binding_environment(self, base: Path, cwd: Path) -> dict[str, str]:
         """Stable settings persisted by Desktop, distinct from launch-time policy."""
@@ -80,6 +86,8 @@ class Grok(ACPCommand):
 
 
 def adapter(spec: dict) -> ACPCommand:
+    if not isinstance(spec, dict):
+        raise ValueError("adapter configuration must be an object")
     classes = {"grok": Grok, "acp-command": ACPCommand}
     kind = spec.get("kind")
     if kind not in classes:
