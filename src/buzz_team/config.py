@@ -55,6 +55,8 @@ class Config:
                 raise ValueError("protected path overlaps runtime")
         if not isinstance(c["agents"], dict) or not c["agents"]:
             raise ValueError("no registered identities")
+        if any(not isinstance(policy, dict) for policy in c["policies"].values()):
+            raise ValueError("policy configuration must be an object")
         from .adapters import adapter
         for key, agent in c["agents"].items():
             if identity(agent["relay_url"], agent["pubkey"]) != key:
