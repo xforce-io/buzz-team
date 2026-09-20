@@ -210,6 +210,12 @@ class CLITests(Fixture):
             self.assertEqual(ps.call_args_list[0].args[0][-1], "pid=,comm=")
             self.assertEqual(ps.call_args_list[1].args[0][-1], "pid=,args=")
 
+    def test_short_executor_title_scoped_to_identity_workspace(self):
+        for cwd, expected in ((self.base / "workspace", [123]), (self.root, [])):
+            with self.subTest(cwd=cwd), patch("buzz_team.desktop.subprocess.check_output", side_effect=[
+                    "123 fake-executor\n", "", f"p123\nfcwd\nn{cwd}\n"]):
+                self.assertEqual(desktop.live_processes(self.config), expected)
+
     def test_rollback_restores_absent_env_container_and_retains_new_values(self):
         prepare(self.config)
         for added in (False, True):

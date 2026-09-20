@@ -24,6 +24,8 @@ def live_processes(config: Config) -> list[int]:
     harness = str(Path(config.data["binaries"]["harness"]).resolve())
     executors = {str(Path(spec["command"]).resolve()) for spec in config.data["adapters"].values()}
     commands = executors | {harness}
+    short_names = {Path(spec["command"]).name for spec in config.data["adapters"].values()}
+    short_names.update(Path(path).name for path in executors)
     result = set()
     for line in raw.splitlines():
         parts = line.strip().split(None, 1)
@@ -35,6 +37,15 @@ def live_processes(config: Config) -> list[int]:
                 command == path or command.startswith(path + " ") or
                 (" " + path + " ") in (" " + command + " ")
                 for path in commands)
+            if not matched and command.split()[0] in short_names:
+                # Some executors replace argv/comm with a short title. Scope these
+                # to identity workspaces; unrelated interactive agents stay untouched.
+                cwd_info = subprocess.check_output(
+                    ["/usr/sbin/lsof", "-a", "-p", parts[0], "-d", "cwd", "-Fn"],
+                    text=True, errors="surrogateescape")
+                matched = any(line.startswith("n/") and
+                              Path(line[1:]).resolve().is_relative_to(config.state)
+                              for line in cwd_info.splitlines())
             if matched:
                 result.add(int(parts[0]))
     return sorted(result)
