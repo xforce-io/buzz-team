@@ -1,0 +1,16 @@
+# 本机配置、凭据与运行状态必须放在仓库外；这些规则仅作补充防线。
+*.local.json
+*.local.toml
+.env
+.env.*
+!.env.example
+auth.json
+credentials.json
+mcp_credentials.json
+runtime/
+logs/
+sessions/
+.venv/
+__pycache__/
+*.py[cod]
+.DS_Store
