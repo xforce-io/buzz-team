@@ -24,10 +24,11 @@ class ACPCommand:
         if not isinstance(environment, dict):
             raise ValueError("adapter environment must be an object")
         for key, value in environment.items():
-            if not re.fullmatch(r"[A-Z][A-Z0-9_]*", key) or not isinstance(value, str):
+            if (not isinstance(key, str) or not re.fullmatch(r"[A-Z][A-Z0-9_]*", key)
+                    or not isinstance(value, str) or "\0" in value):
                 raise ValueError("invalid adapter environment")
             if key.startswith(("BUZZ_", "DYLD_", "LD_", "PYTHON")) or key in {
-                "HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "KAIRO_SERVE_ROOT",
+                "HOME", "PATH", "TMPDIR", "XDG_CACHE_HOME", "CARGO_HOME", "UV_CACHE_DIR", "KAIRO_SERVE_ROOT",
             }:
                 raise ValueError("adapter cannot override runtime-owned environment")
 

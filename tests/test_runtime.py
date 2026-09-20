@@ -69,6 +69,17 @@ class Fixture(unittest.TestCase):
 
 
 class ConfigurationTests(Fixture):
+    def test_protected_home_must_cover_restricted_and_writer_siblings(self):
+        other = identity("ws://localhost:3000", "b" * 64)
+        self.config.data["policies"]["writer"] = {"production_write": True, "data_mode": "production"}
+        self.config.data["agents"][other] = dict(self.config.agent(self.key), pubkey="b" * 64, policy="writer")
+        self.config.data["protected_home"] = str(self.base)
+        with self.assertRaisesRegex(ValueError, "entire identity state root"):
+            self.save()
+        self.config.data["protected_home"] = str(self.config.state)
+        self.save()
+        self.assertIn(str(self.config.state), Runtime(self.config, self.key).profile())
+
     def test_invalid_input_does_not_leave_partial_instance(self):
         fresh = self.root / "invalid-instance"
         self.old["policies"]["development"]["production_write"] = "false"
@@ -150,6 +161,19 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_invalid_adapter_environment_cannot_change_binding(self):
+        original = self.desktop_file.read_bytes()
+        name = self.config.agent(self.key)["adapter"]
+        for env in ({"EXAMPLE": "bad\0value"}, {"CARGO_HOME": "/ignored"}, {"UV_CACHE_DIR": "/ignored"}):
+            with self.subTest(env=env):
+                self.config.data["adapters"][name]["env"] = env
+                write_json(self.config.path, self.config.data)
+                for command in ("doctor", "bind"):
+                    result = self.cli(command)
+                    self.assertEqual(result.returncode, 2)
+                    self.assertFalse(json.loads(result.stderr)["ok"])
+                self.assertEqual(self.desktop_file.read_bytes(), original)
+
     def test_symlinked_interpreted_commands_block_binding(self):
         link = self.root / "executor-link"
         link.symlink_to(self.fake)

@@ -65,8 +65,8 @@ class Config:
                 raise ValueError("unknown data_mode")
             selected = adapter(c["adapters"][agent["adapter"]])
             selected.validate()
-            if not policy["production_write"] and not (self.state / key).is_relative_to(self.home):
-                raise ValueError("restricted runtime must be inside protected_home")
+            if not policy["production_write"] and not self.state.is_relative_to(self.home):
+                raise ValueError("protected_home must cover the entire identity state root")
         for name, repo in c["repositories"].items():
             if not re.fullmatch(r"[a-z0-9-]+", name):
                 raise ValueError("invalid repository name")
