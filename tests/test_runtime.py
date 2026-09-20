@@ -176,6 +176,22 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_invalid_compatibility_maps_return_json_before_binding(self):
+        original = self.desktop_file.read_bytes()
+        baseline = copy.deepcopy(self.config.data)
+        for name in ("sha256", "executor_sha256"):
+            for value in ([], None, "invalid", 1, False):
+                with self.subTest(name=name, value=value):
+                    data = copy.deepcopy(baseline)
+                    data["compatibility"][name] = value
+                    write_json(self.config.path, data)
+                    for command in ("doctor", "bind"):
+                        result = self.cli(command)
+                        self.assertEqual(result.returncode, 2)
+                        self.assertFalse(json.loads(result.stderr)["ok"])
+                        self.assertNotIn("Traceback", result.stderr)
+                    self.assertEqual(self.desktop_file.read_bytes(), original)
+
     def test_invalid_policy_objects_return_json_without_changing_binding(self):
         original = self.desktop_file.read_bytes()
         baseline = copy.deepcopy(self.config.data)

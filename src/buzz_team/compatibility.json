@@ -10,13 +10,14 @@
     "harness_sha256": "e0d7bbcfc3128657ef5442e478629f36f9f89944b77920c13422994272a95366",
     "harness_source_commit": null,
     "harness_source_note": "二进制来自本机定制构建；源码对应关系待验证，不用当前检出 SHA 冒充构建来源。",
-    "client_verified": true,
-    "client_verification": {
-      "candidate_sha": "69c1108a53350732e863e19932ccc524f9ebc944",
-      "date": "2026-09-20",
-      "evidence": "https://github.com/xforce-io/buzz-team/issues/1#issuecomment-5748920266",
-      "scope": "本机指定二进制组合的迁移预览：DM、频道线程、工具结果、权限拒绝与重启恢复；不代表已发布或所有上游版本兼容"
-    }
+    "client_verified": false
+  },
+  "candidate_verification": {
+    "status": "requires-external-exact-sha-evidence",
+    "record": "<instance>/evidence/<candidate_sha>/verification.json",
+    "required_fields": ["candidate_sha", "compatibility_sha256", "client_verified", "acceptance", "client_evidence"],
+    "public_index": "https://github.com/xforce-io/buzz-team/issues/1",
+    "note": "包内清单只声明观察基线，不认证当前候选；冻结SHA后的外部记录才是该候选的客户端验收事实源，禁止沿用其他SHA的通过状态。"
   },
   "required_harness_options": ["--agent-command", "--agent-args", "--session-policy", "--agent-owner"],
   "adapters": {

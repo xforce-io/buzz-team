@@ -23,6 +23,8 @@ description: 验证 buzz-team CLI、实例迁移与真实 Buzz Desktop 行为。
 
 证据保存在实例 evidence/<候选 SHA>/，不进入 Git。记录时间、候选 SHA、命令与返回码、截图或 UI 摘录、测试消息标识、身份数量和认证文件路径/inode 是否一致；不得输出凭据内容或完整进程环境。每个 S* 对应 pass/fail/skip；未实际测试不得 pass。公开 Issue 只贴脱敏摘要，不贴私有对话。
 
+冻结SHA后写同目录verification.json，字段为candidate_sha、compatibility_sha256（实际安装包内清单摘要）、client_verified、acceptance、client_evidence。只有本SHA客户端验证完成才标true；将精确SHA与结果的脱敏索引更新到Issue。不要把当前SHA写回源码制造新的未验收候选，或把历史验证当当前通过。
+
 ## Cleanup
 
 关闭仅为测试启动的额外窗口，不删除测试证据、旧状态或认证。预览结束恢复原 Desktop 绑定；若预览采用保留新绑定，必须有明确用户授权和记录，不能当作发布。遇到回退冲突停止并报告，不强行覆盖新配置。

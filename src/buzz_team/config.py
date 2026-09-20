@@ -41,6 +41,9 @@ class Config:
         for name in ("production", "policies", "repositories", "agents", "adapters", "binaries", "desktop", "compatibility"):
             if not isinstance(c.get(name), dict):
                 raise ValueError("missing or invalid configuration section")
+        for name in ("sha256", "executor_sha256"):
+            if not isinstance(c["compatibility"].get(name), dict):
+                raise ValueError("compatibility digest maps must be objects")
         self.state = absolute(c["state_root"])
         self.home = absolute(c["protected_home"])
         self.production = absolute(c["production"]["data_root"])
