@@ -411,6 +411,18 @@ class CLITests(Fixture):
 
 
 class BindingTests(Fixture):
+    def test_crlf_desktop_configuration_can_rollback(self):
+        prepare(self.config)
+        self.desktop_file.write_bytes(json.dumps(self.rows, indent=2).replace("\n", "\r\n").encode())
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            result = desktop.bind(self.config)
+            receipt = Path(result["receipt"])
+            self.assertEqual(json.loads(receipt.read_text())["before_sha256"],
+                             digest(receipt.parent / "managed-agents.before.json"))
+            desktop.rollback(self.config, receipt)
+        self.assertEqual(json.loads(self.desktop_file.read_text()), self.rows)
+        self.assert_auth_unchanged()
+
     def test_optional_grok_flags_are_runtime_owned_not_binding_fields(self):
         prepare(self.config)
         for persisted in ({}, {"GROK_MEMORY": "0", "GROK_AGENT_DASHBOARD": "0"}):
@@ -509,6 +521,19 @@ class ReplyTests(unittest.TestCase):
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS kernel integration; run on migration host")
 class KernelTests(Fixture):
+    def test_production_root_outside_home_is_always_write_protected(self):
+        self.config.data["protected_home"] = str(self.config.state)
+        self.config.data["production"]["protected_paths"] = []
+        self.save()
+        target = self.prod / "keep"
+        target.write_text("original")
+        runtime = Runtime(self.config, self.key)
+        result = subprocess.run(runtime.command([sys.executable, "-c",
+            f"from pathlib import Path; Path({str(target)!r}).write_text('bad')"]),
+            capture_output=True, text=True, timeout=20)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(target.read_text(), "original")
+
     def test_real_kernel_write_boundary_and_child(self):
         runtime = Runtime(self.config, self.key)
         target = self.prod / "keep"

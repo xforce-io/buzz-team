@@ -51,7 +51,7 @@ class Runtime:
         lines = ["(version 1)", "(allow default)",
                  f"(deny file-write* (require-all (subpath {q(str(home))}) (require-not (subpath {q(str(self.base))}))))"]
         denied = {str(p) for p in self.base.parents if p != Path("/")}
-        for item in self.config.data["production"]["protected_paths"]:
+        for item in [self.config.production, *self.config.data["production"]["protected_paths"]]:
             path = Path(item).resolve()
             if overlap(path, self.base):
                 raise ValueError("protected path overlaps runtime")

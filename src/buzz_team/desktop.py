@@ -149,7 +149,8 @@ def bind(config: Config):
     write_private(backup / "managed-agents.after.json", planned)
     write_json(backup / "receipt.json", {"instance": str(config.instance), "target": str(path),
                "created_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-               "before_sha256": digest(path), "after_sha256": digest(backup / "managed-agents.after.json")})
+               "before_sha256": digest(backup / "managed-agents.before.json"),
+               "after_sha256": digest(backup / "managed-agents.after.json")})
     require_stopped(config)
     if path.read_text() != original:
         raise ValueError("Desktop configuration changed during bind; no overwrite")
