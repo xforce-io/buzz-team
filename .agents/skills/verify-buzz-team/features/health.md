@@ -73,3 +73,7 @@ buzz-team --instance /absolute/instance diagnose
 ```
 
 单元覆盖见 `tests/test_health.py`（分类字段、doctor≠扁平 diagnose、auth 文件缺失消息 ≠ 代理失败、代理对照/不可达归因）。Desktop ACP 活体代理对照由 Hogan 复验。
+
+## Desktop 代理对照
+
+`diagnose` 必须同时看 managed-agents **binding** `env_vars` 与 live ACP **进程**环境（`runtime_pid`）；仅 binding 键不能覆盖 Desktop 烘焙死代理事故。死代理不得只报成 auth 缺失。

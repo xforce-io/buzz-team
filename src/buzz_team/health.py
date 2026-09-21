@@ -7,6 +7,7 @@ import os
 import re
 import shutil
 import socket
+import subprocess
 import sys
 from pathlib import Path
 from typing import Any
@@ -110,8 +111,62 @@ def probe_tcp(host: str, port: int, timeout: float = 1.0) -> str:
         return "fail"
 
 
-def _read_desktop_proxy_maps(config: Config) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
-    """Load per-identity Desktop env proxy maps; missing inventory → empty + fail check."""
+def _parse_ps_environ(blob: str) -> dict[str, str]:
+    """Extract KEY=VALUE pairs of interest from a `ps eww` command blob."""
+    found: dict[str, str] = {}
+    for token in blob.split():
+        if "=" not in token:
+            continue
+        key, _, value = token.partition("=")
+        if key in PROXY_ENV_KEYS and value:
+            found[key] = value
+    return found
+
+
+def _read_process_environ(pid: object) -> dict[str, str]:
+    """Read proxy-related env from a live process; never raises; never returns secrets beyond proxy URLs."""
+    try:
+        pid_i = int(pid)
+    except (TypeError, ValueError):
+        return {}
+    if pid_i <= 0:
+        return {}
+    proc = Path(f"/proc/{pid_i}/environ")
+    if proc.is_file():
+        try:
+            raw = proc.read_bytes().split(b"\0")
+        except OSError:
+            return {}
+        out: dict[str, str] = {}
+        for item in raw:
+            if not item or b"=" not in item:
+                continue
+            key_b, _, val_b = item.partition(b"=")
+            try:
+                key = key_b.decode()
+                val = val_b.decode(errors="replace")
+            except UnicodeDecodeError:
+                continue
+            if key in PROXY_ENV_KEYS and val:
+                out[key] = val
+        return out
+    try:
+        completed = subprocess.run(
+            ["ps", "ewww", "-p", str(pid_i), "-o", "command="],
+            capture_output=True, text=True, timeout=2, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return {}
+    if completed.returncode != 0 or not completed.stdout:
+        return {}
+    return _parse_ps_environ(completed.stdout)
+
+
+def _read_desktop_proxy_maps(
+    config: Config,
+    *,
+    process_reader=_read_process_environ,
+) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
+    """Load per-identity Desktop binding + live ACP process proxy maps."""
     checks: list[dict[str, str]] = []
     maps: list[dict[str, Any]] = []
     path = Path(config.data["desktop"]["managed_agents"])
@@ -131,6 +186,7 @@ def _read_desktop_proxy_maps(config: Config) -> tuple[list[dict[str, Any]], list
     checks.append(check(
         "desktop_inventory", "pass", "buzz_runtime",
         "Desktop managed-agents inventory readable for bound identities"))
+    process_reads = 0
     for key, row in selected.items():
         env = row.get("env_vars") or {}
         if not isinstance(env, dict):
@@ -138,11 +194,30 @@ def _read_desktop_proxy_maps(config: Config) -> tuple[list[dict[str, Any]], list
                 f"desktop_env_vars:{key[:20]}", "fail", "buzz_runtime",
                 "Desktop env_vars is not an object for a bound identity"))
             continue
+        binding_proxy = _proxy_map({str(k): str(v) for k, v in env.items() if isinstance(v, str)})
+        binding_keys = sorted(k for k in PROXY_ENV_KEYS if k in env)
+        proc_env = process_reader(row.get("runtime_pid"))
+        if proc_env:
+            process_reads += 1
+        process_proxy = _proxy_map(proc_env)
+        process_keys = sorted(process_proxy)
         maps.append({
             "identity_ref": key[:20],
-            "proxy": _proxy_map({str(k): str(v) for k, v in env.items() if isinstance(v, str)}),
-            "proxy_keys": sorted(k for k in PROXY_ENV_KEYS if k in env),
+            "proxy": binding_proxy,
+            "proxy_keys": binding_keys,
+            "process_proxy": process_proxy,
+            "process_proxy_keys": process_keys,
+            "runtime_pid": row.get("runtime_pid"),
         })
+    if selected and process_reads == 0:
+        checks.append(check(
+            "desktop_acp_process_env", "unverified", "proxy",
+            "No live ACP process proxy env readable from runtime_pid "
+            "(binding JSON alone cannot cover Desktop-baked proxy accidents)"))
+    elif process_reads:
+        checks.append(check(
+            "desktop_acp_process_env", "pass", "proxy",
+            f"Read proxy-related env from {process_reads} live ACP process(es) via runtime_pid"))
     return maps, checks
 
 
@@ -155,23 +230,24 @@ def contrast_proxies(
     *,
     process_env: dict[str, str] | None = None,
     probe: bool = False,
+    process_reader=_read_process_environ,
 ) -> tuple[dict[str, Any], list[dict[str, str]]]:
-    """Compare Desktop ACP binding proxy keys/endpoints vs CLI process proxy env.
+    """Compare Desktop ACP binding + live process proxy vs CLI process proxy env.
 
     Values are host:port only. Dead/unreachable endpoints are attributed to proxy,
-    never to auth-file absence.
+    never to auth-file absence. Binding JSON without process env is insufficient for
+    Desktop-baked proxy accidents (see issue #11 repro #6).
     """
     checks: list[dict[str, str]] = []
-    desktop_maps, inventory_checks = _read_desktop_proxy_maps(config)
+    desktop_maps, inventory_checks = _read_desktop_proxy_maps(config, process_reader=process_reader)
     checks.extend(inventory_checks)
     cli_map = _cli_proxy_map(process_env)
-    cli_keys = sorted(cli_map)
-    desktop_key_sets = [tuple(item["proxy_keys"]) for item in desktop_maps]
+    cli_keys = sorted(k for k in cli_map if k.lower() != "no_proxy")
     mismatches: list[str] = []
+    process_mismatches: list[str] = []
     for item in desktop_maps:
         d_keys = set(item["proxy_keys"])
         c_keys = set(cli_keys)
-        # Only treat key-set diffs as mismatches when Desktop declares proxy keys.
         if d_keys and d_keys != c_keys:
             only_desktop = sorted(d_keys - c_keys)
             only_cli = sorted(c_keys - d_keys)
@@ -182,33 +258,56 @@ def contrast_proxies(
                 parts.append("cli_only_keys=" + ",".join(only_cli))
             mismatches.append(f"{item['identity_ref']}:{' '.join(parts)}")
         for key, endpoint in item["proxy"].items():
+            if key.lower() == "no_proxy":
+                continue
             cli_ep = cli_map.get(key)
             if endpoint and cli_ep and endpoint != cli_ep:
                 mismatches.append(
-                    f"{item['identity_ref']}:{key} desktop={endpoint} cli={cli_ep}")
+                    f"{item['identity_ref']}:{key} binding={endpoint} cli={cli_ep}")
+        p_keys = set(item.get("process_proxy_keys") or [])
+        for key, endpoint in (item.get("process_proxy") or {}).items():
+            if key.lower() == "no_proxy":
+                continue
+            cli_ep = cli_map.get(key)
+            if endpoint and cli_ep and endpoint != cli_ep:
+                process_mismatches.append(
+                    f"{item['identity_ref']}:{key} acp_process={endpoint} cli={cli_ep}")
+            elif endpoint and not cli_ep:
+                process_mismatches.append(
+                    f"{item['identity_ref']}:{key} acp_process={endpoint} cli=<absent>")
 
     desktop_declares = any(item["proxy_keys"] for item in desktop_maps)
+    process_declares = any(item.get("process_proxy_keys") for item in desktop_maps)
+
     if not desktop_maps:
-        # Inventory failed already, or no rows — still report CLI side.
         status = "unverified" if any(c["status"] == "fail" for c in inventory_checks) else "na"
         checks.append(check(
             "proxy_contrast", status, "proxy",
             "Desktop proxy contrast unavailable; CLI process proxy keys recorded only"))
-    elif not desktop_declares and cli_keys:
-        # Process-level proxy alone is not a binding failure (common operator HTTP_PROXY).
+    elif process_mismatches:
         checks.append(check(
-            "proxy_contrast", "unverified", "proxy",
-            "Desktop bindings declare no proxy keys; CLI process proxy present — "
-            "binding-level contrast not applicable; dead proxy still not auth-file failure"))
+            "proxy_contrast", "fail", "proxy",
+            "Desktop ACP *process* proxy differs from CLI process proxy "
+            f"({len(process_mismatches)} difference(s)); dead/baked proxy is not auth-file failure"))
     elif mismatches and desktop_declares:
         checks.append(check(
             "proxy_contrast", "fail", "proxy",
-            "Desktop ACP proxy settings differ from CLI process proxy "
+            "Desktop ACP *binding* proxy differs from CLI process proxy "
             f"({len(mismatches)} difference(s)); dead proxy is not auth-file failure"))
-    elif not desktop_declares and not cli_keys:
+    elif process_declares and not process_mismatches:
+        checks.append(check(
+            "proxy_contrast", "pass", "proxy",
+            "Desktop ACP process proxy aligns with CLI process proxy (host:port); "
+            "binding JSON may still omit proxy keys"))
+    elif not desktop_declares and not process_declares and cli_keys:
+        checks.append(check(
+            "proxy_contrast", "unverified", "proxy",
+            "Neither Desktop binding nor readable ACP process declared proxy keys; "
+            "CLI process proxy present — contrast incomplete; dead proxy still not auth-file failure"))
+    elif not desktop_declares and not process_declares and not cli_keys:
         checks.append(check(
             "proxy_contrast", "na", "proxy",
-            "No proxy environment keys declared on Desktop bindings or CLI process"))
+            "No proxy environment keys on Desktop binding, ACP process, or CLI"))
     else:
         checks.append(check(
             "proxy_contrast", "pass", "proxy",
@@ -220,6 +319,7 @@ def contrast_proxies(
         endpoints: list[str | None] = list(cli_map.values())
         for item in desktop_maps:
             endpoints.extend(item["proxy"].values())
+            endpoints.extend((item.get("process_proxy") or {}).values())
         for endpoint in endpoints:
             target = _parse_host_port(endpoint)
             if not target or target in seen:
@@ -243,20 +343,32 @@ def contrast_proxies(
                 "No redacted proxy host:port to probe; upstream request still unverified"))
 
     contrast = {
-        "cli_process": {"keys": cli_keys, "endpoints": cli_map},
+        "cli_process": {"keys": cli_keys, "endpoints": {k: cli_map[k] for k in cli_keys}},
         "desktop_bindings": [
             {"identity_ref": m["identity_ref"], "keys": m["proxy_keys"], "endpoints": m["proxy"]}
             for m in desktop_maps
         ],
+        "desktop_acp_processes": [
+            {
+                "identity_ref": m["identity_ref"],
+                "runtime_pid": m.get("runtime_pid"),
+                "keys": m.get("process_proxy_keys") or [],
+                "endpoints": m.get("process_proxy") or {},
+            }
+            for m in desktop_maps
+        ],
         "mismatches": mismatches,
+        "process_mismatches": process_mismatches,
         "tcp_probes": probes,
         "note": (
             "Proxy contrast uses key names and host:port only; "
             "credentials and full URLs are never emitted. "
-            "Auth-file presence does not prove proxy health."
+            "Auth-file presence does not prove proxy health. "
+            "Binding JSON and live ACP process env are contrasted separately."
         ),
     }
     return contrast, checks
+
 
 
 def _git_boundary_check() -> dict[str, str]:
@@ -471,7 +583,6 @@ def summarize(checks: list[dict[str, str]]) -> dict[str, Any]:
         },
         "errors": sorted({c["summary"] for c in fails}),
     }
-
 
 def run(config: Config, *, depth: str = "doctor",
         process_env: dict[str, str] | None = None) -> dict[str, Any]:

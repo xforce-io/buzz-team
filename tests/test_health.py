@@ -156,3 +156,40 @@ class HealthTaxonomyTests(Fixture):
         # Should not raise even when process env has IPv6-ish NO_PROXY.
         payload = run(self.config, depth="doctor", process_env=env)
         self.assertIn("checks", payload)
+
+    def test_acp_process_proxy_mismatch_fails_contrast(self):
+        """Live ACP process proxy differing from CLI is fail — not auth."""
+        from buzz_team import health as health_mod
+
+        def fake_reader(pid):
+            return {"HTTP_PROXY": "http://127.0.0.1:6478", "HTTPS_PROXY": "http://127.0.0.1:6478"}
+
+        # Patch inventory read by writing managed agents with runtime_pid
+        agents = Path(self.config.data["desktop"]["managed_agents"])
+        rows = json.loads(agents.read_text()) if agents.is_file() else []
+        # Ensure at least one selected row has runtime_pid — reuse fixture inventory
+        # Fall back: inject via monkeypatch of _read_desktop_proxy_maps pieces
+        cli_env = {"HTTP_PROXY": "http://127.0.0.1:9567", "HTTPS_PROXY": "http://127.0.0.1:9567"}
+        # Build minimal maps path: call contrast with process_reader
+        # Need selected rows — doctor fixture should have managed agents
+        contrast, checks = health_mod.contrast_proxies(
+            self.config, process_env=cli_env, probe=False, process_reader=fake_reader)
+        proxy_checks = [c for c in checks if c["id"] == "proxy_contrast"]
+        self.assertTrue(proxy_checks)
+        self.assertEqual(proxy_checks[0]["status"], "fail")
+        self.assertIn("process", proxy_checks[0]["summary"].lower())
+        self.assertNotIn("auth.json", proxy_checks[0]["summary"].lower())
+        self.assertTrue(contrast.get("process_mismatches"))
+
+    def test_acp_process_proxy_aligns_with_cli(self):
+        from buzz_team import health as health_mod
+
+        def fake_reader(pid):
+            return {"HTTP_PROXY": "http://127.0.0.1:9567"}
+
+        cli_env = {"HTTP_PROXY": "http://127.0.0.1:9567"}
+        contrast, checks = health_mod.contrast_proxies(
+            self.config, process_env=cli_env, probe=False, process_reader=fake_reader)
+        proxy_checks = [c for c in checks if c["id"] == "proxy_contrast"]
+        self.assertEqual(proxy_checks[0]["status"], "pass")
+        self.assertTrue(any(c["id"] == "desktop_acp_process_env" and c["status"] == "pass" for c in checks))
