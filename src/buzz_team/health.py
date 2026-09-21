@@ -90,6 +90,23 @@ def _proxy_map(env: dict[str, str]) -> dict[str, str | None]:
     return result
 
 
+
+def _canonical_proxy_endpoints(proxy: dict[str, str | None]) -> dict[str, str]:
+    """Collapse HTTP(S)/ALL proxy env aliases to one endpoint per family (ignore NO_PROXY)."""
+    families = {
+        "HTTP_PROXY": ("HTTP_PROXY", "http_proxy"),
+        "HTTPS_PROXY": ("HTTPS_PROXY", "https_proxy"),
+        "ALL_PROXY": ("ALL_PROXY", "all_proxy", "SOCKS_PROXY", "socks_proxy"),
+    }
+    out: dict[str, str] = {}
+    for canon, aliases in families.items():
+        for alias in aliases:
+            value = proxy.get(alias)
+            if value and value not in {"<redacted>", "<bypass-list>"}:
+                out[canon] = value
+                break
+    return out
+
 def _parse_host_port(endpoint: str | None) -> tuple[str, int] | None:
     if not endpoint or endpoint in {"<redacted>", "<bypass-list>"}:
         return None
@@ -319,15 +336,15 @@ def contrast_proxies(
             if endpoint and cli_ep and endpoint != cli_ep:
                 mismatches.append(
                     f"{item['identity_ref']}:{key} binding={endpoint} cli={cli_ep}")
-        p_keys = set(item.get("process_proxy_keys") or [])
-        for key, endpoint in (item.get("process_proxy") or {}).items():
-            if key.lower() == "no_proxy":
-                continue
-            cli_ep = cli_map.get(key)
+        proc_canon = _canonical_proxy_endpoints(item.get("process_proxy") or {})
+        cli_canon = _canonical_proxy_endpoints(cli_map)
+        for key, endpoint in proc_canon.items():
+            cli_ep = cli_canon.get(key)
             if endpoint and cli_ep and endpoint != cli_ep:
                 process_mismatches.append(
                     f"{item['identity_ref']}:{key} acp_process={endpoint} cli={cli_ep}")
-            elif endpoint and not cli_ep:
+            elif endpoint and key not in cli_canon:
+                # Only flag absent CLI family when ACP process has a family CLI lacks entirely.
                 process_mismatches.append(
                     f"{item['identity_ref']}:{key} acp_process={endpoint} cli=<absent>")
 
