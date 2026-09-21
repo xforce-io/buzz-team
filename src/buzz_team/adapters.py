@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 import os
 import re
+import subprocess
 
 from .config import absolute
 
@@ -16,8 +17,11 @@ class ACPCommand:
     def __init__(self, spec: dict):
         self.spec = spec
 
-    def validate_task_session_id(self, session_id: str) -> None:
-        return None
+    def validate_task_session_id(self, session_id: str, workspace: Path | None = None) -> str:
+        return session_id
+
+    def validate_task_session_binding(self, session_id: str, workspace: Path) -> str:
+        return self.validate_task_session_id(session_id, workspace)
 
     def validate(self):
         absolute(self.spec["command"])
@@ -67,9 +71,23 @@ class Grok(ACPCommand):
     capabilities = ("acp-stdio", "existing-home", "existing-session-store")
     supports_task_sessions = True
 
-    def validate_task_session_id(self, session_id: str) -> None:
+    def validate_task_session_id(self, session_id: str, workspace: Path | None = None) -> str:
         if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", session_id):
             raise ValueError("Grok task session must be a UUID")
+        return session_id.lower()
+
+    def validate_task_session_binding(self, session_id: str, workspace: Path) -> str:
+        session_id = self.validate_task_session_id(session_id, workspace)
+        if Path(self.spec["command"]).name == "grok":
+            env = {"GROK_HOME": str(workspace.parent / "grok"), "PATH": os.environ.get("PATH", "")}
+            try:
+                output = subprocess.check_output([self.spec["command"], "sessions", "list", "--limit", "100"],
+                                                 cwd=workspace, env=env, text=True, stderr=subprocess.DEVNULL, timeout=10)
+            except (OSError, subprocess.SubprocessError) as exc:
+                raise ValueError("cannot verify Grok task session") from exc
+            if session_id not in output.lower():
+                raise ValueError("Grok task session not found in workspace")
+        return session_id
 
     def task_session_args(self, session_id: str) -> list[str]:
         return ["--resume", session_id]

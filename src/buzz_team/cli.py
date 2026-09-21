@@ -157,7 +157,9 @@ def main():
                               "scope": args.scope, "task_id": args.task,
                               "workspace": str(workspace)}
                     if args.session_command == "bind":
-                        runtime.executor.validate_task_session_id(args.session_id)
+                        if not runtime.executor.supports_task_sessions:
+                            raise ValueError("executor adapter cannot restore task sessions")
+                        args.session_id = runtime.executor.validate_task_session_binding(args.session_id, workspace)
                         result = _public_session(store.bind(**values, session_id=args.session_id))
                     elif args.session_command == "claim":
                         result = _public_session(store.claim(**values, owner=args.owner))
