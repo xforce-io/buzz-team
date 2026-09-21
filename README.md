@@ -36,11 +36,11 @@ Buzz Desktop 管理生命周期，经实例薄入口调用 buzz-acp 与具体 co
 
 版本基线见[机器可读兼容清单](src/buzz_team/compatibility.json)：Buzz Desktop **0.5.23**、Grok **1.0.34 (3736acbc8658)**；定制 buzz-acp 没有版本输出，使用清单中的 SHA-256 标识。其源码 commit 对应关系尚未证实，不以当前检出 SHA 替代。当前候选客户端验证以 `<instance>/evidence/<candidate_sha>/verification.json` 为事实源，同时绑定完整候选 SHA、包内清单摘要和真实客户端证据；脱敏索引见 [Issue #1](https://github.com/xforce-io/buzz-team/issues/1)。缺少匹配记录即未认证，历史候选通过不自动认证当前版本。
 
-Grok 为首个迁移适配器；acp-command 仅声明通用契约，Claude Code/Codex 尚未产品认证。实例固定本机二进制摘要，doctor 检查变更及桥接必需参数；摘要相同不等于端到端通过。
+Grok 为首个迁移适配器；acp-command 仅声明通用契约，Claude Code/Codex 尚未产品认证。实例固定本机二进制摘要，`doctor`/`diagnose` 检查变更、桥接必需参数及代理对照；摘要相同不等于端到端通过。健康输出区分 pass/fail/unverified/na；`ok` 仅表示无 fail。凭据文件存在性与代理可达性分开归因；CLI 频道读取成功不能冒充 UI/Activity 通过。见 [健康检查](.agents/skills/verify-buzz-team/features/health.md)。
 
 ## 使用
 
-按 [运行手册](docs/runbook.md) 将包非 editable 安装在实例之外，再调用 `buzz-team --help`。通过 `--instance` 显式选择实例，不默认推断身份。`init --legacy` 转换已有本机配置，`prepare` 生成薄入口，`doctor` 预检，`bind` 仅在 Desktop 停止后切换。真实配置与证据不得提交。
+按 [运行手册](docs/runbook.md) 将包非 editable 安装在实例之外，再调用 `buzz-team --help`。通过 `--instance` 显式选择实例，不默认推断身份。`init --legacy` 转换已有本机配置，`prepare` 生成薄入口，`doctor` 静态预检，`diagnose` 加深代理探测，`bind` 仅在 Desktop 停止后切换。真实配置与证据不得提交。
 
 开发检查：`PYTHONPATH=src python3 -m unittest discover -s tests -v`。Linux 跳过 macOS 内核测试，本机迁移验收必须运行这些测试。
 

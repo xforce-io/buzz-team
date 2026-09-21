@@ -9,3 +9,5 @@ Desktop的bundle标识和版本必须匹配包内观察基线；doctor/bind/star
 数据环境的容器、模式和值类型及保留变量名必须在绑定前校验；无效配置返回JSON错误且Desktop绑定不变。
 
 适配器及数据环境中的已知凭据变量必须在doctor/bind前拒绝，不得回显值、写入Desktop或创建备份。受限身份在protected_home外也不能改写实例配置、薄入口、Desktop绑定和运行代码；包括符号链接替换，且正常身份工作区仍可写。
+
+健康检查四类结果、代理对照与 doctor/diagnose 深度差异见 [health.md](health.md)。CLI 频道读取成功不能代替 Desktop UI/Activity 验收。

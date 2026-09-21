@@ -44,6 +44,20 @@ open -a /Applications/Buzz.app
 
 冻结候选 → 测试与客户端预览 → 独立审查 PASS → 当前候选人工批准 → CI/交付校验 → 合入 → 从合入版本安装 → 空闲停机切换 → 客户端健康核验。升级安装放实例之外；不改写旧安装以保留回退能力。不满足门禁不能把预览称作已发布。
 
+## 健康检查语义
+
+`doctor` 做静态/安装预检与 Desktop↔CLI 代理键对照；`diagnose` 共用同一内核，并增加已声明代理端点的 TCP 探测及 `unverified_surfaces` 列表。输出含 `checks[{id,status,component,summary}]`，`status` 为 pass / fail / unverified / na。顶层 `ok` **仅当无 fail**；存在 unverified **不**表示整体健康。
+
+- `grok_credentials_files`：仅检查 auth.json / config.toml 文件存在，与代理可达性、上游请求分开。
+- 死代理或端点不可达归因到 `proxy` 组件，不得只报成 auth 缺失。
+- CLI 频道/消息只读成功 ≠ Desktop Activity/UI 通过；静态检查 ≠ 角色对话验证。
+- Git：真实仓库报告状态；非仓库目录为不适用（na），不是「Git 不可用」。详见验证 Skill `features/health.md`。
+
+```sh
+buzz-team --instance /absolute/instance doctor
+buzz-team --instance /absolute/instance diagnose
+```
+
 ## 已知限制
 
-受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限。尚无完整 skills 白名单或 memory ready 门禁。doctor 的兼容指纹校验不证明模型质量、缓存效率或客户端端到端成功。这些项目以独立 Issue 跟踪。
+受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
