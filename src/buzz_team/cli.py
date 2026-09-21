@@ -15,6 +15,7 @@ from .config import Config
 from . import desktop
 from .instance import digest, init_legacy, prepare
 from .runtime import Runtime
+from .sessions import SessionStore
 
 
 def doctor(config: Config):
@@ -81,6 +82,19 @@ def parser():
     workspace.add_argument("--ref", default="HEAD")
     workspace.add_argument("--branch")
     workspace.add_argument("--id", default=os.environ.get("BUZZ_RUNTIME_ID"))
+    session = sub.add_parser("session", help="管理经过校验的任务会话映射")
+    session_sub = session.add_subparsers(dest="session_command", required=True)
+    bind = session_sub.add_parser("bind", help="绑定任务与执行器会话")
+    bind.add_argument("--task", required=True)
+    bind.add_argument("--community", required=True)
+    bind.add_argument("--identity", required=True)
+    bind.add_argument("--scope", required=True)
+    bind.add_argument("--workspace", required=True)
+    bind.add_argument("--session", required=True, dest="session_id")
+    resolve = session_sub.add_parser("resolve", help="解析任务会话映射")
+    for name in ("task", "community", "identity", "scope", "workspace"):
+        resolve.add_argument(f"--{name}", required=True)
+    session_sub.add_parser("list", help="列出任务会话映射")
     return p
 
 
@@ -110,6 +124,19 @@ def main():
                 result = desktop.rollback(config, args.receipt)
             elif args.command == "workspace":
                 result = {"path": str(Runtime(config, args.id).workspace(args.task, args.repo, args.ref, args.branch))}
+            elif args.command == "session":
+                store = SessionStore(config.instance)
+                if args.session_command == "list":
+                    result = {"bindings": store.list()}
+                else:
+                    config.agent(args.identity)
+                    values = {"community": args.community, "identity": args.identity,
+                              "scope": args.scope, "task_id": args.task,
+                              "workspace": args.workspace}
+                    if args.session_command == "bind":
+                        result = store.bind(**values, session_id=args.session_id)
+                    else:
+                        result = store.resolve(**values)
             elif args.command == "launch":
                 Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(args.mode, args.args[1:] if args.args[:1] == ["--"] else args.args)
                 return 0

@@ -510,6 +510,23 @@ class CLITests(Fixture):
         self.assertEqual(retry.returncode, 2)
         self.assertIn("refusing overwrite", retry.stderr)
 
+    def test_task_session_cli_is_stable_and_conflict_safe(self):
+        common = ("--community", "ws://localhost:3000", "--identity", self.key,
+                  "--scope", "channel-1", "--workspace", str(self.base / "workspace"))
+        for task, session in (("task-a", "ses-a"), ("task-b", "ses-b")):
+            result = self.cli("session", "bind", "--task", task, *common, "--session", session)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(json.loads(result.stdout)["session_id"], session)
+        resolved = self.cli("session", "resolve", "--task", "task-a", *common)
+        self.assertEqual(resolved.returncode, 0, resolved.stderr)
+        self.assertEqual(json.loads(resolved.stdout)["session_id"], "ses-a")
+        conflict = self.cli("session", "bind", "--task", "task-a", *common, "--session", "ses-other")
+        self.assertEqual(conflict.returncode, 2)
+        self.assertIn("conflict", conflict.stderr)
+        listed = self.cli("session", "list")
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual({row["task_id"] for row in json.loads(listed.stdout)["bindings"]}, {"task-a", "task-b"})
+
 
 class BindingTests(Fixture):
     def test_crlf_desktop_configuration_can_rollback(self):
