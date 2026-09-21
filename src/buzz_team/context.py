@@ -63,6 +63,7 @@ def _empty(task_id: str, max_input_tokens: int | None, max_context_tokens: int |
         "peak_context": measurement("unavailable", "unavailable"),
         "turns": [],
         "events": [],
+        "handoff": None,
     }
 
 
@@ -81,6 +82,50 @@ def _validate_ledger(data: object, task_id: str) -> dict:
         raise ValueError("invalid context ledger")
     if not isinstance(data.get("totals"), dict) or not isinstance(data.get("budget"), dict):
         raise ValueError("invalid context ledger")
+    for name in _METRICS:
+        totals = data["totals"].get(name)
+        if (not isinstance(totals, dict) or set(totals) != _QUALITY
+                or any(type(value) is not int or value < 0 for value in totals.values())):
+            raise ValueError("invalid context ledger")
+    for name in ("max_input_tokens", "max_context_tokens"):
+        value = data["budget"].get(name)
+        if value is not None and (type(value) is not int or value <= 0):
+            raise ValueError("invalid context ledger")
+    peak = data.get("peak_context")
+    if (not isinstance(peak, dict) or set(peak) != {"value", "quality"}
+            or (peak["value"] is not None and (type(peak["value"]) is not int or peak["value"] < 0))
+            or peak["quality"] not in _QUALITY
+            or (peak["quality"] == "unavailable" and peak["value"] is not None)
+            or (peak["quality"] != "unavailable" and (type(peak["value"]) is not int or peak["value"] < 0))):
+        raise ValueError("invalid context ledger")
+    seen_turns = set()
+    for turn in data["turns"]:
+        if not isinstance(turn, dict) or not isinstance(turn.get("turn_id"), str) or turn["turn_id"] in seen_turns:
+            raise ValueError("invalid context ledger")
+        seen_turns.add(turn["turn_id"])
+        for name in ("provider", "model", "result_status", "recorded_at"):
+            if not isinstance(turn.get(name), str):
+                raise ValueError("invalid context ledger")
+        for name in _METRICS:
+            value = turn.get(name)
+            if (not isinstance(value, dict) or set(value) != {"value", "quality"}
+                    or value["quality"] not in _QUALITY
+                    or (value["quality"] == "unavailable" and value["value"] is not None)
+                    or (value["quality"] != "unavailable" and (type(value["value"]) is not int or value["value"] < 0))):
+                raise ValueError("invalid context ledger")
+        for name in ("tool_rounds", "retries"):
+            if type(turn.get(name)) is not int or turn[name] < 0:
+                raise ValueError("invalid context ledger")
+    handoff = data.get("handoff")
+    if handoff is not None:
+        required = ("version", "task_id", "created_at", "goal", "constraints", "verified_facts",
+                    "workspace_ref", "tool_results", "pending", "approval_state", "next_step")
+        if (not isinstance(handoff, dict) or any(key not in handoff for key in required)
+                or handoff.get("version") != 1 or handoff.get("task_id") != task_id
+                or any(not isinstance(handoff[key], str) for key in ("created_at", "goal", "workspace_ref", "approval_state", "next_step"))
+                or any(not isinstance(handoff[key], list) or any(not isinstance(item, str) for item in handoff[key])
+                       for key in ("constraints", "verified_facts", "tool_results", "pending"))):
+            raise ValueError("invalid context ledger")
     return data
 
 
@@ -90,7 +135,6 @@ class ContextLedger:
         self.task_id = _task(task_id)
         self.root = self.instance / "private" / "context"
         self.path = self.root / f"{self.task_id}.json"
-        self.handoff_path = self.root / f"{self.task_id}.handoff.json"
         self.lock_path = self.root / f"{self.task_id}.lock"
 
     @contextmanager
@@ -145,7 +189,11 @@ class ContextLedger:
         max_context_tokens = _validate_budget(max_context_tokens, "max context tokens")
         with self._lock():
             if self.path.exists():
-                return self._read()
+                data = self._read()
+                if (max_input_tokens is not None and data["budget"].get("max_input_tokens") != max_input_tokens
+                        or max_context_tokens is not None and data["budget"].get("max_context_tokens") != max_context_tokens):
+                    raise ValueError("context budget conflict")
+                return data
             data = _empty(self.task_id, max_input_tokens, max_context_tokens)
             self._write(data)
             return data
@@ -213,7 +261,9 @@ class ContextLedger:
         }
         with self._lock():
             data = self._read()
-            self._write(payload, self.handoff_path)
+            if not data["turns"]:
+                raise ValueError("handoff requires a completed turn")
+            data["handoff"] = payload
             data["events"].append({"type": "handoff_committed", "at": payload["created_at"]})
             data["status"] = "handoff_ready"
             data["updated_at"] = _now()
@@ -225,5 +275,5 @@ class ContextLedger:
             data = self._read()
             result = {key: data[key] for key in ("version", "task_id", "status", "created_at", "updated_at",
                                                    "budget", "totals", "peak_context", "turns", "events")}
-            result["handoff"] = "available" if self.handoff_path.is_file() else "unavailable"
+            result["handoff"] = "available" if data.get("handoff") is not None else "unavailable"
             return result

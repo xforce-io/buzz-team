@@ -38,18 +38,40 @@ class ContextLedgerTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "open tool calls"):
             self.ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD",
                                 approval_state="approved", open_tool_calls=1)
-        self.assertFalse(self.ledger.handoff_path.exists())
+        self.assertEqual(self.ledger.report()["handoff"], "unavailable")
+        with self.assertRaisesRegex(ValueError, "completed turn"):
+            self.ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD",
+                                approval_state="approved")
+        self.ledger.record(turn_id="turn-1", provider="provider", model="model",
+                           values={"input_tokens": 1, "output_tokens": 1})
         handoff = self.ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD",
                                       approval_state="approved", constraints=["keep behavior"],
                                       facts=["test passed"], pending=["review"],
                                       tool_results=["result digest"])
         self.assertEqual(handoff["task_id"], "task-a")
-        self.assertEqual(self.ledger.handoff_path.stat().st_mode & 0o777, 0o600)
         self.assertEqual(self.ledger.report()["handoff"], "available")
 
     def test_corrupt_ledger_fails_closed(self):
         self.ledger.root.mkdir(parents=True)
         self.ledger.path.write_text("not json")
+        with self.assertRaisesRegex(ValueError, "invalid context ledger"):
+            self.ledger.report()
+
+    def test_structurally_corrupt_ledger_fails_closed(self):
+        self.ledger.start()
+        data = json.loads(self.ledger.path.read_text())
+        data["turns"] = [1]
+        self.ledger.path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "invalid context ledger"):
+            self.ledger.report()
+
+    def test_budget_cannot_change_silently_and_metric_quality_is_consistent(self):
+        self.ledger.start(max_input_tokens=10)
+        with self.assertRaisesRegex(ValueError, "budget conflict"):
+            self.ledger.start(max_input_tokens=20)
+        data = json.loads(self.ledger.path.read_text())
+        data["peak_context"] = {"value": None, "quality": "actual"}
+        self.ledger.path.write_text(json.dumps(data))
         with self.assertRaisesRegex(ValueError, "invalid context ledger"):
             self.ledger.report()
 
