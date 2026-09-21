@@ -338,15 +338,19 @@ def contrast_proxies(
                     f"{item['identity_ref']}:{key} binding={endpoint} cli={cli_ep}")
         proc_canon = _canonical_proxy_endpoints(item.get("process_proxy") or {})
         cli_canon = _canonical_proxy_endpoints(cli_map)
+        cli_endpoints = set(cli_canon.values())
         for key, endpoint in proc_canon.items():
             cli_ep = cli_canon.get(key)
             if endpoint and cli_ep and endpoint != cli_ep:
                 process_mismatches.append(
                     f"{item['identity_ref']}:{key} acp_process={endpoint} cli={cli_ep}")
             elif endpoint and key not in cli_canon:
-                # Only flag absent CLI family when ACP process has a family CLI lacks entirely.
-                process_mismatches.append(
-                    f"{item['identity_ref']}:{key} acp_process={endpoint} cli=<absent>")
+                # ALL_PROXY-only on ACP is fine when CLI already uses same host:port via HTTP(S)_PROXY.
+                if key == "ALL_PROXY" and endpoint in cli_endpoints:
+                    continue
+                if key in {"HTTP_PROXY", "HTTPS_PROXY"}:
+                    process_mismatches.append(
+                        f"{item['identity_ref']}:{key} acp_process={endpoint} cli=<absent>")
 
     desktop_declares = any(item["proxy_keys"] for item in desktop_maps)
     process_declares = any(item.get("process_proxy_keys") for item in desktop_maps)
