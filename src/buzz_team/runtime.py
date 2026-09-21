@@ -7,6 +7,9 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import signal
+import time
+import uuid
 
 from .adapters import adapter
 from .config import Config, overlap
@@ -22,13 +25,14 @@ class Runtime:
         self.cwd = self.base / "workspace"
         self.executor = adapter(config.data["adapters"][self.agent["adapter"]])
 
-    def env(self, inherited: dict[str, str]) -> dict[str, str]:
+    def env(self, inherited: dict[str, str], cwd: Path | None = None) -> dict[str, str]:
+        cwd = cwd or self.cwd
         env = dict(inherited)
         relay = env.get("BUZZ_RELAY_URL")
         if relay and relay.rstrip("/") != self.agent["relay_url"].rstrip("/"):
             raise ValueError("runtime identity belongs to a different community")
         self.executor.clean_inherited(env)
-        env.update(self.executor.environment(self.base, self.cwd))
+        env.update(self.executor.environment(self.base, cwd))
         env.update(BUZZ_RUNTIME_ID=self.key, BUZZ_TEAM_INSTANCE=str(self.config.instance),
                    TMPDIR=str(self.base / "tmp") + "/", XDG_CACHE_HOME=str(self.base / "cache"),
                    UV_CACHE_DIR=str(self.base / "cache/uv"), npm_config_cache=str(self.base / "cache/npm"),
@@ -80,7 +84,8 @@ class Runtime:
             raise ValueError("Seatbelt unavailable; refusing unconfined launch")
         return ["/usr/bin/sandbox-exec", "-p", self.profile(), *argv]
 
-    def launch(self, mode: str, args: list[str]):
+    def launch(self, mode: str, args: list[str], task_id: str | None = None,
+               task_scope: str | None = None):
         from .instance import digest
         spec = self.config.data["compatibility"]
         pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
@@ -89,19 +94,146 @@ class Runtime:
         for path, expected in pins:
             if not expected or not path.is_file() or digest(path) != expected:
                 raise ValueError("launch executable differs from pinned baseline; run doctor")
+        launch_cwd = self.cwd
+        session = None
+        store = None
+        owner = None
+        if task_id:
+            from .sessions import SessionStore
+            task_scope = task_scope or os.environ.get("BUZZ_TASK_SCOPE")
+            if not task_scope:
+                raise ValueError("task scope required")
+            if not self.executor.supports_task_sessions:
+                raise ValueError("executor adapter cannot restore task sessions")
+            inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER")
+            if inherited_owner:
+                workspace = os.environ.get("BUZZ_TASK_WORKSPACE")
+                session_id = os.environ.get("BUZZ_ACP_SESSION_ID")
+                if not workspace or not session_id:
+                    raise ValueError("incomplete inherited task session")
+                store = SessionStore(self.config.instance)
+                session = store.resolve_task(task_id=task_id, identity=self.key,
+                                             community=self.agent["relay_url"], scope=task_scope,
+                                             read_only=True)
+                if (session["state"] != "restoring" or session["restore_owner"] != inherited_owner
+                        or session["session_id"] != session_id or session["workspace"] != str(Path(workspace).resolve())):
+                    raise ValueError("session mapping restore ownership mismatch")
+            else:
+                store = SessionStore(self.config.instance)
+                session = store.resolve_task(task_id=task_id, identity=self.key,
+                                             community=self.agent["relay_url"], scope=task_scope)
+            launch_cwd = Path(session["workspace"]).resolve()
+            if not launch_cwd.is_relative_to(self.base.resolve()) or not launch_cwd.is_dir():
+                raise ValueError("task workspace missing or outside identity")
+            session["session_id"] = self.executor.validate_task_session_id(session["session_id"], launch_cwd)
+            self.executor.validate_task_session_binding(session["session_id"], self.base, launch_cwd)
         errors = self.executor.check(self.base)
         if errors:
             raise ValueError("; ".join(errors))
-        if not self.cwd.is_dir():
+        if not launch_cwd.is_dir():
             raise ValueError("existing identity workspace missing")
-        env = self.env(dict(os.environ))
+        inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER") if session else None
+        claimed = False
+        if session:
+            owner = inherited_owner
+            if inherited_owner and session["restore_owner"] != inherited_owner:
+                raise ValueError("session mapping restore ownership mismatch")
+        env = self.env(dict(os.environ), launch_cwd)
+        if session:
+            env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
+                       BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_TASK_SCOPE=session["scope"],
+                       BUZZ_TASK_WORKSPACE=str(launch_cwd))
+            if self.executor.kind == "grok":
+                env["GROK_SESSION_ID"] = session["session_id"]
+            if owner:
+                env["BUZZ_ACP_SESSION_OWNER"] = owner
         binary = self.executor.spec["command"]
         if mode == "harness":
             binary = self.config.data["binaries"]["harness"]
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
-        os.chdir(self.cwd)
-        command = self.command([binary, *args])
+        task_args = self.executor.task_session_args(session["session_id"]) if session and mode == "executor" else []
+        command = self.command([binary, *task_args, *args])
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
+        if task_id and not inherited_owner:
+            ready_r, ready_w = os.pipe()
+            token = uuid.uuid4().hex
+            child = os.fork()
+            if child == 0:
+                os.close(ready_w)
+                os.setpgid(0, 0)
+                child_owner = f"{os.getpid()}-{token}"
+                env["BUZZ_ACP_SESSION_OWNER"] = child_owner
+                try:
+                    if os.read(ready_r, 1) != b"1":
+                        os._exit(126)
+                    os.close(ready_r)
+                    os.chdir(launch_cwd)
+                    os.execve(command[0], command, env)
+                finally:
+                    os._exit(127)
+            os.close(ready_r)
+            try:
+                os.setpgid(child, child)
+            except ProcessLookupError:
+                pass
+            owner = f"{child}-{token}"
+            exit_code = None
+            try:
+                session = store.claim(community=session["community"], identity=session["identity"],
+                                      scope=session["scope"], task_id=session["task_id"],
+                                      workspace=session["workspace"], owner=owner)
+                claimed = True
+                os.write(ready_w, b"1")
+                os.close(ready_w)
+                previous = {}
+                def forward(signum, _frame):
+                    try:
+                        os.killpg(child, signum)
+                    except ProcessLookupError:
+                        pass
+                for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    previous[signum] = signal.signal(signum, forward)
+                try:
+                    _, status = os.waitpid(child, 0)
+                    exit_code = os.waitstatus_to_exitcode(status)
+                    return 128 + (-exit_code) if exit_code < 0 else exit_code
+                finally:
+                    try:
+                        os.killpg(child, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
+                    deadline = time.monotonic() + 2
+                    while time.monotonic() < deadline:
+                        try:
+                            os.killpg(child, 0)
+                        except ProcessLookupError:
+                            break
+                        time.sleep(0.01)
+                    else:
+                        try:
+                            os.killpg(child, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
+                    for signum, handler in previous.items():
+                        signal.signal(signum, handler)
+            except Exception:
+                try:
+                    os.kill(child, signal.SIGTERM)
+                    os.waitpid(child, 0)
+                except (ProcessLookupError, ChildProcessError):
+                    pass
+                raise
+            finally:
+                try:
+                    os.close(ready_w)
+                except OSError:
+                    pass
+                if claimed and store and owner:
+                    finish = store.release if exit_code == 0 else store.fail
+                    finish(community=session["community"], identity=session["identity"],
+                           scope=session["scope"], task_id=session["task_id"],
+                           workspace=session["workspace"], owner=owner)
+        os.chdir(launch_cwd)
         os.execve(command[0], command, env)
 
     def git(self, args: list[str], cwd: Path) -> str:

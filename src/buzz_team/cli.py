@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.resources
 import json
 import os
@@ -15,6 +16,16 @@ from .config import Config
 from . import desktop
 from .instance import digest, init_legacy, prepare
 from .runtime import Runtime
+from .sessions import SessionStore
+
+
+def _ref(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
+
+
+def _public_session(record: dict[str, str]) -> dict[str, str]:
+    return {"task_ref": _ref(record["task_id"]), "session_ref": _ref(record["session_id"]),
+            "state": record["state"]}
 
 
 def doctor(config: Config):
@@ -71,6 +82,8 @@ def parser():
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--receipt", type=Path, required=True)
     launch = sub.add_parser("launch", help="内部入口：由 Desktop 调用，不手动并行启动")
+    launch.add_argument("--task")
+    launch.add_argument("--scope")
     launch.add_argument("mode", choices=["harness", "executor"])
     launch.add_argument("args", nargs=argparse.REMAINDER)
     buzz = sub.add_parser("buzz", help="内部入口：保留 DM/频道回复行为")
@@ -81,6 +94,24 @@ def parser():
     workspace.add_argument("--ref", default="HEAD")
     workspace.add_argument("--branch")
     workspace.add_argument("--id", default=os.environ.get("BUZZ_RUNTIME_ID"))
+    session = sub.add_parser("session", help="管理经过校验的任务会话映射")
+    session_sub = session.add_subparsers(dest="session_command", required=True)
+    bind = session_sub.add_parser("bind", help="绑定任务与执行器会话")
+    bind.add_argument("--task", required=True)
+    bind.add_argument("--community", required=True)
+    bind.add_argument("--identity", required=True)
+    bind.add_argument("--scope", required=True)
+    bind.add_argument("--workspace", required=True)
+    bind.add_argument("--session", required=True, dest="session_id")
+    resolve = session_sub.add_parser("resolve", help="解析任务会话映射")
+    for name in ("task", "community", "identity", "scope", "workspace"):
+        resolve.add_argument(f"--{name}", required=True)
+    for command in ("claim", "release"):
+        action = session_sub.add_parser(command, help="原子占用或释放任务会话")
+        for name in ("task", "community", "identity", "scope", "workspace"):
+            action.add_argument(f"--{name}", required=True)
+        action.add_argument("--owner", required=True)
+    session_sub.add_parser("list", help="列出任务会话映射")
     return p
 
 
@@ -110,9 +141,38 @@ def main():
                 result = desktop.rollback(config, args.receipt)
             elif args.command == "workspace":
                 result = {"path": str(Runtime(config, args.id).workspace(args.task, args.repo, args.ref, args.branch))}
+            elif args.command == "session":
+                store = SessionStore(config.instance)
+                if args.session_command == "list":
+                    result = {"bindings": [_public_session(row) for row in store.list()]}
+                else:
+                    agent = config.agent(args.identity)
+                    if args.community.rstrip("/") != agent["relay_url"].rstrip("/"):
+                        raise ValueError("community does not match identity")
+                    workspace = Path(args.workspace).resolve()
+                    runtime = Runtime(config, args.identity)
+                    if not workspace.is_dir() or not workspace.is_relative_to(runtime.base):
+                        raise ValueError("workspace does not belong to identity")
+                    values = {"community": args.community, "identity": args.identity,
+                              "scope": args.scope, "task_id": args.task,
+                              "workspace": str(workspace)}
+                    if args.session_command == "bind":
+                        if not runtime.executor.supports_task_sessions:
+                            raise ValueError("executor adapter cannot restore task sessions")
+                        args.session_id = runtime.executor.validate_task_session_binding(args.session_id, runtime.base, workspace)
+                        result = _public_session(store.bind(**values, session_id=args.session_id))
+                    elif args.session_command == "claim":
+                        result = _public_session(store.claim(**values, owner=args.owner))
+                    elif args.session_command == "release":
+                        result = _public_session(store.release(**values, owner=args.owner))
+                    else:
+                        result = _public_session(store.resolve(**values))
             elif args.command == "launch":
-                Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(args.mode, args.args[1:] if args.args[:1] == ["--"] else args.args)
-                return 0
+                task_id = args.task or os.environ.get("BUZZ_TASK_ID")
+                launch_args = args.args[1:] if args.args[:1] == ["--"] else args.args
+                result = Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
+                    args.mode, launch_args, task_id, args.scope or os.environ.get("BUZZ_TASK_SCOPE"))
+                return result if isinstance(result, int) else 0
             elif args.command == "buzz":
                 from .buzz_cli import run
                 run(config, args.args[1:] if args.args[:1] == ["--"] else args.args)

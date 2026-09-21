@@ -33,7 +33,7 @@ class Fixture(unittest.TestCase):
         self.prod = self.root / "production"
         self.prod.mkdir()
         self.fake = self.root / "fake-executor"
-        self.fake.write_text(f"#!{sys.executable}\nimport json,os,sys\nif '--help' in sys.argv:\n print('--agent-command --agent-args --session-policy --agent-owner')\nelse:\n print(json.dumps({{'args':sys.argv[1:],'cwd':os.getcwd(),'home':os.getenv('GROK_HOME'),'other':os.getenv('EXAMPLE_HOME')}}))\n")
+        self.fake.write_text(f"#!{sys.executable}\nimport json,os,sys\nif 'sessions' in sys.argv:\n print(sys.argv[-1])\nelif '--help' in sys.argv:\n print('--agent-command --agent-args --session-policy --agent-owner')\nelse:\n print(json.dumps({{'args':sys.argv[1:],'cwd':os.getcwd(),'home':os.getenv('GROK_HOME'),'other':os.getenv('EXAMPLE_HOME')}}))\n")
         self.fake.chmod(0o700)
         self.instructions = self.root / "instructions.md"
         self.instructions.write_text("Private instructions\n")
@@ -509,6 +509,25 @@ class CLITests(Fixture):
         retry = self.cli("workspace", "1-cli-test", "--repo", "fixture", "--id", self.key)
         self.assertEqual(retry.returncode, 2)
         self.assertIn("refusing overwrite", retry.stderr)
+
+    def test_task_session_cli_is_stable_and_conflict_safe(self):
+        common = ("--community", "ws://localhost:3000", "--identity", self.key,
+                  "--scope", "channel-1", "--workspace", str(self.base / "workspace"))
+        for task, session in (("task-a", "11111111-1111-4111-8111-111111111111"), ("task-b", "22222222-2222-4222-8222-222222222222")):
+            result = self.cli("session", "bind", "--task", task, *common, "--session", session)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("session_ref", json.loads(result.stdout))
+        resolved = self.cli("session", "resolve", "--task", "task-a", *common)
+        self.assertEqual(resolved.returncode, 0, resolved.stderr)
+        self.assertIn("session_ref", json.loads(resolved.stdout))
+        conflict = self.cli("session", "bind", "--task", "task-a", *common, "--session", "33333333-3333-4333-8333-333333333333")
+        self.assertEqual(conflict.returncode, 2)
+        self.assertIn("conflict", conflict.stderr)
+        listed = self.cli("session", "list")
+        self.assertEqual(listed.returncode, 0, listed.stderr)
+        self.assertEqual(len(json.loads(listed.stdout)["bindings"]), 2)
+        self.assertTrue(all(set(row) == {"task_ref", "session_ref", "state"}
+                            for row in json.loads(listed.stdout)["bindings"]))
 
 
 class BindingTests(Fixture):
