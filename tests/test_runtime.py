@@ -12,6 +12,8 @@ from unittest.mock import patch
 from buzz_team.config import Config, identity
 from buzz_team.adapters import adapter
 from buzz_team.runtime import Runtime
+from buzz_team.sessions import SessionStore
+from buzz_team.context import ContextLedger
 from buzz_team.instance import init_legacy, prepare, digest, write_json
 from buzz_team import desktop, buzz_cli
 
@@ -177,6 +179,20 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_task_launch_consumes_mapping_and_handoff_contract(self):
+        task = "launch-task"
+        SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                          scope="channel-1", task_id=task,
+                                          workspace=str(self.base / "workspace"), session_id="11111111-1111-4111-8111-111111111111")
+        ledger = ContextLedger(self.instance, task)
+        ledger.start()
+        ledger.record(turn_id="turn-1", provider="provider", model="model",
+                      values={"input_tokens": 1, "output_tokens": 1})
+        ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD", approval_state="approved")
+        runtime = Runtime(self.config, self.key)
+        with self.assertRaisesRegex(ValueError, "cannot consume context handoff"):
+            runtime.launch("executor", [], task_id=task)
+
     def test_desktop_identity_and_version_fail_closed(self):
         original = self.desktop_file.read_bytes()
         info_path = self.app / "Contents/Info.plist"
@@ -528,6 +544,36 @@ class CLITests(Fixture):
         self.assertEqual(len(json.loads(listed.stdout)["bindings"]), 2)
         self.assertTrue(all(set(row) == {"task_ref", "session_ref", "state"}
                             for row in json.loads(listed.stdout)["bindings"]))
+
+    def test_context_cli_requires_session_and_preserves_handoff_safety(self):
+        common = ("--community", "ws://localhost:3000", "--identity", self.key,
+                  "--scope", "channel-context", "--workspace", str(self.base / "workspace"))
+        missing = self.cli("context", "start", "--task", "task-context")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("session mapping not found", missing.stderr)
+        bound = self.cli("session", "bind", "--task", "task-context", *common, "--session", "22222222-2222-4222-8222-222222222222")
+        self.assertEqual(bound.returncode, 0, bound.stderr)
+        started = self.cli("context", "start", "--task", "task-context", "--max-context-tokens", "100")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        recorded = self.cli("context", "record", "--task", "task-context", "--turn", "turn-1",
+                            "--provider", "test", "--model", "test-model", "--input-tokens", "20",
+                            "--output-tokens", "5", "--context-tokens", "50")
+        self.assertEqual(recorded.returncode, 0, recorded.stderr)
+        rejected = self.cli("context", "handoff", "--task", "task-context", "--goal", "goal",
+                            "--next-step", "next", "--workspace-ref", "HEAD", "--approval-state", "approved",
+                            "--open-tool-calls", "1")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("open tool calls", rejected.stderr)
+        handoff = self.cli("context", "handoff", "--task", "task-context", "--goal", "goal",
+                           "--next-step", "next", "--workspace-ref", "HEAD", "--approval-state", "approved",
+                           "--fact", "verified", "--constraint", "preserve behavior")
+        self.assertEqual(handoff.returncode, 0, handoff.stderr)
+        report = self.cli("context", "report", "--task", "task-context")
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertEqual(json.loads(report.stdout)["handoff"], "available")
+        restored = self.cli("context", "restore", "--task", "task-context")
+        self.assertEqual(restored.returncode, 0, restored.stderr)
+        self.assertEqual(json.loads(restored.stdout)["goal"], "goal")
 
 
 class BindingTests(Fixture):
