@@ -48,31 +48,49 @@ def check(id: str, status: str, component: str, summary: str) -> dict[str, str]:
 
 
 def redact_endpoint(value: str | None) -> str | None:
-    """Return host:port only; never credentials, paths, or query strings."""
+    """Return host:port only; never credentials, paths, or query strings.
+
+    Bypass lists (NO_PROXY) and malformed values must never raise — they become
+    opaque markers so doctor/diagnose cannot crash on operator environment.
+    """
     if value is None:
         return None
     text = value.strip()
     if not text:
         return None
+    # Comma/CIDR bypass lists are not single URLs (common NO_PROXY shape).
+    if "," in text or "/" in text.split(":")[0]:
+        return "<bypass-list>"
     if "://" not in text and "@" not in text and re.fullmatch(r"[^/\s:]+(?::\d+)?", text):
         return text
-    parsed = urlparse(text if "://" in text else f"http://{text}")
-    host = parsed.hostname
-    if not host:
-        # Opaque or malformed — do not leak raw value.
+    try:
+        parsed = urlparse(text if "://" in text else f"http://{text}")
+        host = parsed.hostname
+        if not host:
+            return "<redacted>"
+        port = parsed.port
+    except ValueError:
         return "<redacted>"
-    port = parsed.port
     if port is None:
         return host
     return f"{host}:{port}"
 
 
 def _proxy_map(env: dict[str, str]) -> dict[str, str | None]:
-    return {key: redact_endpoint(env[key]) for key in PROXY_ENV_KEYS if key in env and env[key]}
+    result: dict[str, str | None] = {}
+    for key in PROXY_ENV_KEYS:
+        if key not in env or not env[key]:
+            continue
+        # NO_PROXY is a bypass list — record key presence with opaque marker only.
+        if key.lower() == "no_proxy":
+            result[key] = "<bypass-list>"
+        else:
+            result[key] = redact_endpoint(env[key])
+    return result
 
 
 def _parse_host_port(endpoint: str | None) -> tuple[str, int] | None:
-    if not endpoint or endpoint == "<redacted>":
+    if not endpoint or endpoint in {"<redacted>", "<bypass-list>"}:
         return None
     if ":" in endpoint:
         host, _, port_text = endpoint.rpartition(":")
@@ -153,7 +171,8 @@ def contrast_proxies(
     for item in desktop_maps:
         d_keys = set(item["proxy_keys"])
         c_keys = set(cli_keys)
-        if d_keys != c_keys and (d_keys or c_keys):
+        # Only treat key-set diffs as mismatches when Desktop declares proxy keys.
+        if d_keys and d_keys != c_keys:
             only_desktop = sorted(d_keys - c_keys)
             only_cli = sorted(c_keys - d_keys)
             parts = []
@@ -168,18 +187,25 @@ def contrast_proxies(
                 mismatches.append(
                     f"{item['identity_ref']}:{key} desktop={endpoint} cli={cli_ep}")
 
+    desktop_declares = any(item["proxy_keys"] for item in desktop_maps)
     if not desktop_maps:
         # Inventory failed already, or no rows — still report CLI side.
         status = "unverified" if any(c["status"] == "fail" for c in inventory_checks) else "na"
         checks.append(check(
             "proxy_contrast", status, "proxy",
             "Desktop proxy contrast unavailable; CLI process proxy keys recorded only"))
-    elif mismatches:
+    elif not desktop_declares and cli_keys:
+        # Process-level proxy alone is not a binding failure (common operator HTTP_PROXY).
+        checks.append(check(
+            "proxy_contrast", "unverified", "proxy",
+            "Desktop bindings declare no proxy keys; CLI process proxy present — "
+            "binding-level contrast not applicable; dead proxy still not auth-file failure"))
+    elif mismatches and desktop_declares:
         checks.append(check(
             "proxy_contrast", "fail", "proxy",
             "Desktop ACP proxy settings differ from CLI process proxy "
             f"({len(mismatches)} difference(s)); dead proxy is not auth-file failure"))
-    elif not any(item["proxy_keys"] for item in desktop_maps) and not cli_keys:
+    elif not desktop_declares and not cli_keys:
         checks.append(check(
             "proxy_contrast", "na", "proxy",
             "No proxy environment keys declared on Desktop bindings or CLI process"))

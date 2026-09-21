@@ -146,3 +146,13 @@ class HealthTaxonomyTests(Fixture):
         self.assertFalse(result["ok"])
         self.assertTrue(result["errors"])
         self.assertTrue(any(c["status"] == "fail" and c["component"] == "install" for c in result["checks"]))
+
+    def test_no_proxy_bypass_list_does_not_crash(self):
+        from buzz_team.health import redact_endpoint, run
+        self.assertEqual(redact_endpoint("localhost,127.0.0.1,::1,192.168.0.0/16"), "<bypass-list>")
+        env = dict(os.environ)
+        env["NO_PROXY"] = "localhost,127.0.0.1,::1,192.168.0.0/16,10.0.0.0/8"
+        env["HTTP_PROXY"] = "http://127.0.0.1:9"
+        # Should not raise even when process env has IPv6-ish NO_PROXY.
+        payload = run(self.config, depth="doctor", process_env=env)
+        self.assertIn("checks", payload)
