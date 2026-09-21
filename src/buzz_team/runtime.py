@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import uuid
 
 from .adapters import adapter
 from .config import Config, overlap
@@ -22,13 +23,14 @@ class Runtime:
         self.cwd = self.base / "workspace"
         self.executor = adapter(config.data["adapters"][self.agent["adapter"]])
 
-    def env(self, inherited: dict[str, str]) -> dict[str, str]:
+    def env(self, inherited: dict[str, str], cwd: Path | None = None) -> dict[str, str]:
+        cwd = cwd or self.cwd
         env = dict(inherited)
         relay = env.get("BUZZ_RELAY_URL")
         if relay and relay.rstrip("/") != self.agent["relay_url"].rstrip("/"):
             raise ValueError("runtime identity belongs to a different community")
         self.executor.clean_inherited(env)
-        env.update(self.executor.environment(self.base, self.cwd))
+        env.update(self.executor.environment(self.base, cwd))
         env.update(BUZZ_RUNTIME_ID=self.key, BUZZ_TEAM_INSTANCE=str(self.config.instance),
                    TMPDIR=str(self.base / "tmp") + "/", XDG_CACHE_HOME=str(self.base / "cache"),
                    UV_CACHE_DIR=str(self.base / "cache/uv"), npm_config_cache=str(self.base / "cache/npm"),
@@ -80,7 +82,7 @@ class Runtime:
             raise ValueError("Seatbelt unavailable; refusing unconfined launch")
         return ["/usr/bin/sandbox-exec", "-p", self.profile(), *argv]
 
-    def launch(self, mode: str, args: list[str]):
+    def launch(self, mode: str, args: list[str], task_id: str | None = None):
         from .instance import digest
         spec = self.config.data["compatibility"]
         pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
@@ -89,20 +91,46 @@ class Runtime:
         for path, expected in pins:
             if not expected or not path.is_file() or digest(path) != expected:
                 raise ValueError("launch executable differs from pinned baseline; run doctor")
+        launch_cwd = self.cwd
+        session = None
+        store = None
+        owner = None
+        if task_id:
+            from .sessions import SessionStore
+            store = SessionStore(self.config.instance)
+            session = store.resolve_task(task_id=task_id, identity=self.key, community=self.agent["relay_url"])
+            launch_cwd = Path(session["workspace"])
+            if not launch_cwd.is_relative_to(self.base) or not launch_cwd.is_dir():
+                raise ValueError("task workspace missing or outside identity")
         errors = self.executor.check(self.base)
         if errors:
             raise ValueError("; ".join(errors))
-        if not self.cwd.is_dir():
+        if not launch_cwd.is_dir():
             raise ValueError("existing identity workspace missing")
-        env = self.env(dict(os.environ))
+        if session:
+            owner = f"{os.getpid()}-{uuid.uuid4().hex}"
+            session = store.claim(community=session["community"], identity=session["identity"],
+                                  scope=session["scope"], task_id=session["task_id"],
+                                  workspace=session["workspace"], owner=owner)
+        env = self.env(dict(os.environ), launch_cwd)
+        if session:
+            env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
+                       BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_ACP_SESSION_OWNER=owner)
         binary = self.executor.spec["command"]
         if mode == "harness":
             binary = self.config.data["binaries"]["harness"]
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
-        os.chdir(self.cwd)
+        os.chdir(launch_cwd)
         command = self.command([binary, *args])
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
-        os.execve(command[0], command, env)
+        try:
+            os.execve(command[0], command, env)
+        except Exception:
+            if session and owner:
+                store.release(community=session["community"], identity=session["identity"],
+                              scope=session["scope"], task_id=session["task_id"],
+                              workspace=session["workspace"], owner=owner)
+            raise
 
     def git(self, args: list[str], cwd: Path) -> str:
         return subprocess.check_output(["git", *args], cwd=cwd, env=self.env(dict(os.environ)), text=True, timeout=120).strip()

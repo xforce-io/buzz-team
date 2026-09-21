@@ -82,6 +82,7 @@ def parser():
     rollback = sub.add_parser("rollback")
     rollback.add_argument("--receipt", type=Path, required=True)
     launch = sub.add_parser("launch", help="内部入口：由 Desktop 调用，不手动并行启动")
+    launch.add_argument("--task")
     launch.add_argument("mode", choices=["harness", "executor"])
     launch.add_argument("args", nargs=argparse.REMAINDER)
     buzz = sub.add_parser("buzz", help="内部入口：保留 DM/频道回复行为")
@@ -163,7 +164,8 @@ def main():
                     else:
                         result = _public_session(store.resolve(**values))
             elif args.command == "launch":
-                Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(args.mode, args.args[1:] if args.args[:1] == ["--"] else args.args)
+                Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
+                    args.mode, args.args[1:] if args.args[:1] == ["--"] else args.args, args.task)
                 return 0
             elif args.command == "buzz":
                 from .buzz_cli import run

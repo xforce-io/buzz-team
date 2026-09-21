@@ -217,10 +217,23 @@ class SessionStore:
             record = _validate_record(record)
             if any(record[name] != expected[name] for name in ("community", "identity", "scope", "task_id", "workspace")):
                 raise ValueError("session mapping ownership mismatch")
-            if (record["state"] == "restoring" and record["restore_owner"] != owner
-                    and record["restore_started_at"] is not None
-                    and time.time() - record["restore_started_at"] <= 300):
-                raise ValueError("session mapping already restoring")
+            if record["state"] == "restoring" and record["restore_owner"] != owner:
+                current_owner = record["restore_owner"]
+                alive = False
+                if isinstance(current_owner, str) and current_owner.split("-", 1)[0].isdigit():
+                    try:
+                        os.kill(int(current_owner.split("-", 1)[0]), 0)
+                    except ProcessLookupError:
+                        alive = False
+                    except PermissionError:
+                        alive = True
+                    except OSError:
+                        alive = False
+                else:
+                    # Unknown owner formats are not safely reclaimable.
+                    alive = True
+                if alive:
+                    raise ValueError("session mapping already restoring")
             record["state"], record["restore_owner"], record["restore_started_at"] = "restoring", owner, time.time()
             data["bindings"][key] = record
             self._write(data)
@@ -244,4 +257,18 @@ class SessionStore:
             record["state"], record["restore_owner"], record["restore_started_at"] = "restored", None, None
             data["bindings"][key] = record
             self._write(data)
+            return record
+
+    def resolve_task(self, *, task_id: object, identity: object, community: object) -> dict[str, str]:
+        task_id = _task(task_id)
+        identity = _identity(identity)
+        community = _community(community)
+        with self._lock():
+            matches = [_validate_record(item) for item in self._read()["bindings"].values()
+                       if _validate_record(item)["task_id"] == task_id]
+            if not matches:
+                raise ValueError("session mapping not found")
+            record = matches[0]
+            if record["identity"] != identity or record["community"] != community:
+                raise ValueError("session mapping ownership mismatch")
             return record
