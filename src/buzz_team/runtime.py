@@ -148,7 +148,7 @@ class Runtime:
         if mode == "harness":
             binary = self.config.data["binaries"]["harness"]
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
-        task_args = self.executor.task_session_args(session["session_id"]) if session else []
+        task_args = self.executor.task_session_args(session["session_id"]) if session and mode == "executor" else []
         command = self.command([binary, *task_args, *args])
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
         if task_id and not inherited_owner:
