@@ -190,8 +190,48 @@ class CLITests(Fixture):
                       values={"input_tokens": 1, "output_tokens": 1})
         ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD", approval_state="approved")
         runtime = Runtime(self.config, self.key)
-        with self.assertRaisesRegex(ValueError, "cannot consume context handoff"):
+        with self.assertRaisesRegex(ValueError, "context handoff ready"):
             runtime.launch("executor", [], task_id=task)
+        with patch.object(runtime, "command", side_effect=lambda argv: argv), \
+             patch("os.fork", side_effect=RuntimeError("fork-reached")):
+            with self.assertRaisesRegex(RuntimeError, "fork-reached"):
+                runtime.launch("executor", [], task_id=task, consume_handoff=True)
+        self.assertEqual(ledger.report()["handoff"], "consumed")
+
+    def test_task_launch_hard_stops_on_budget_exceeded(self):
+        task = "budget-task"
+        SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                          scope="channel-budget", task_id=task,
+                                          workspace=str(self.base / "workspace"), session_id="33333333-3333-4333-8333-333333333333")
+        ledger = ContextLedger(self.instance, task)
+        ledger.start(max_input_tokens=1)
+        ledger.record(turn_id="turn-1", provider="provider", model="model",
+                      values={"input_tokens": 2, "output_tokens": 1})
+        runtime = Runtime(self.config, self.key)
+        with self.assertRaisesRegex(ValueError, "task budget exceeded"):
+            runtime.launch("executor", [], task_id=task)
+        self.assertTrue(any(item.get("type") == "budget_gate" for item in ledger.report()["events"]))
+
+    def test_harness_launch_requires_task_id(self):
+        runtime = Runtime(self.config, self.key)
+        with self.assertRaisesRegex(ValueError, "requires task_id"):
+            runtime.launch("harness", [])
+
+    def test_desktop_binding_allows_task_env(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_CONFIG": str(self.root / "acp.json"),
+            "BUZZ_TASK_ID": "desktop-task",
+            "BUZZ_TASK_SCOPE": "channel-desktop",
+        }
+        (self.root / "acp.json").write_text("{}\n")
+        self.save()
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            prepare(self.config)
+            desktop.bind(self.config)
+        bound = json.loads(self.desktop_file.read_text())
+        env = bound[0]["env_vars"]
+        self.assertEqual(env["BUZZ_TASK_ID"], "desktop-task")
+        self.assertEqual(env["BUZZ_TASK_SCOPE"], "channel-desktop")
 
     def test_desktop_identity_and_version_fail_closed(self):
         original = self.desktop_file.read_bytes()

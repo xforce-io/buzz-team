@@ -125,9 +125,12 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
         env = row.setdefault("env_vars", {})
         env["BUZZ_RUNTIME_ID"] = key
         env["BUZZ_TEAM_INSTANCE"] = str(config.instance)
+        allowed_binding = {"BUZZ_ACP_CONFIG", "BUZZ_TASK_ID", "BUZZ_TASK_SCOPE"}
         for name, value in runtime.agent.get("binding_environment", {}).items():
-            if name != "BUZZ_ACP_CONFIG":
+            if name not in allowed_binding:
                 raise ValueError("unsupported binding environment override")
+            if not isinstance(value, str) or not value or "\0" in value:
+                raise ValueError("invalid binding environment value")
             env[name] = value
         # The executor home, existing session settings and credentials remain untouched.
         for name, value in runtime.executor.binding_environment(runtime.base, runtime.cwd).items():

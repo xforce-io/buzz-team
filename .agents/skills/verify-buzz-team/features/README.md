@@ -12,3 +12,4 @@
 | #11 S1–S5 | [健康检查语义](health.md) | doctor / diagnose |
 | #15 S1 | [频道点名门控](channel-mention-gate.md) | wake decide / Desktop 频道唤醒 |
 | #15 S2 | [超限 session 换窗](session-rotate.md) | wake cursor / fuse 回帖 |
+| #16 S1–S3 | [Desktop ACP 任务账本](desktop-acp-task.md) | Desktop env / launch --task + context consume |

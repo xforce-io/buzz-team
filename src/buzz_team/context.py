@@ -81,7 +81,7 @@ def _validate_ledger(data: object, task_id: str) -> dict:
         raise ValueError("invalid context ledger")
     if data.get("status") not in {"collecting", "budget_warning", "budget_exceeded"}:
         raise ValueError("invalid context ledger")
-    if data.get("handoff_status") not in {"unavailable", "ready"}:
+    if data.get("handoff_status") not in {"unavailable", "ready", "consumed"}:
         raise ValueError("invalid context ledger")
     if not isinstance(data.get("turns"), list) or not isinstance(data.get("events"), list):
         raise ValueError("invalid context ledger")
@@ -122,7 +122,13 @@ def _validate_ledger(data: object, task_id: str) -> dict:
             if type(turn.get(name)) is not int or turn[name] < 0:
                 raise ValueError("invalid context ledger")
     handoff = data.get("handoff")
-    if (data["handoff_status"] == "ready") != (handoff is not None):
+    if data["handoff_status"] == "unavailable":
+        if handoff is not None:
+            raise ValueError("invalid context ledger")
+    elif data["handoff_status"] in {"ready", "consumed"}:
+        if handoff is None:
+            raise ValueError("invalid context ledger")
+    else:
         raise ValueError("invalid context ledger")
     if handoff is not None:
         required = ("version", "task_id", "created_at", "goal", "constraints", "verified_facts",
@@ -313,7 +319,12 @@ class ContextLedger:
             result = {key: data[key] for key in ("version", "task_id", "status", "created_at", "updated_at",
                                                    "budget", "totals", "peak_context", "turns", "events")}
             result["budget_status"] = data["status"]
-            result["handoff"] = "available" if data["handoff_status"] == "ready" else "unavailable"
+            if data["handoff_status"] == "ready":
+                result["handoff"] = "available"
+            elif data["handoff_status"] == "consumed":
+                result["handoff"] = "consumed"
+            else:
+                result["handoff"] = "unavailable"
             return result
 
     def read_handoff(self) -> dict:
@@ -322,3 +333,24 @@ class ContextLedger:
             if data["handoff_status"] != "ready" or data.get("handoff") is None:
                 raise ValueError("context handoff unavailable")
             return data["handoff"]
+
+    def consume_handoff(self) -> dict:
+        with self._lock():
+            data = self._read()
+            if data["handoff_status"] != "ready" or data.get("handoff") is None:
+                raise ValueError("context handoff unavailable")
+            payload = data["handoff"]
+            data["handoff_status"] = "consumed"
+            data["events"].append({"type": "handoff_consumed", "at": _now()})
+            data["updated_at"] = _now()
+            self._write(data)
+            return payload
+
+    def record_budget_gate(self, *, reason: str = "budget_exceeded") -> dict:
+        with self._lock():
+            data = self._read()
+            event = {"type": "budget_gate", "reason": _text("gate reason", reason, limit=256), "at": _now()}
+            data["events"].append(event)
+            data["updated_at"] = _now()
+            self._write(data)
+            return event

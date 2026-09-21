@@ -85,7 +85,7 @@ class Runtime:
         return ["/usr/bin/sandbox-exec", "-p", self.profile(), *argv]
 
     def launch(self, mode: str, args: list[str], task_id: str | None = None,
-               task_scope: str | None = None):
+               task_scope: str | None = None, *, consume_handoff: bool = False):
         from .instance import digest
         from .wake import enforceChannelWake
         wakeEnv = enforceChannelWake(self, mode, task_id)
@@ -100,6 +100,8 @@ class Runtime:
         session = None
         store = None
         owner = None
+        if mode == "harness" and not task_id:
+            raise ValueError("desktop ACP harness launch requires task_id; bind session and set BUZZ_TASK_ID or pass --task")
         if task_id:
             from .context import ContextLedger
             from .sessions import SessionStore
@@ -129,13 +131,34 @@ class Runtime:
                 raise ValueError("task workspace missing or outside identity")
             session["session_id"] = self.executor.validate_task_session_id(session["session_id"], launch_cwd)
             self.executor.validate_task_session_binding(session["session_id"], self.base, launch_cwd)
+            ledger = ContextLedger(self.config.instance, task_id)
             try:
-                ContextLedger(self.config.instance, task_id).read_handoff()
+                report = ledger.report()
             except ValueError as exc:
-                if str(exc) not in {"context handoff unavailable", "context ledger not found"}:
+                if str(exc) != "context ledger not found":
                     raise
-            else:
-                raise ValueError("executor adapter cannot consume context handoff")
+                report = None
+            if report is not None and report["status"] == "budget_exceeded":
+                try:
+                    ledger.record_budget_gate(reason="budget_exceeded")
+                except ValueError:
+                    pass
+                raise ValueError("task budget exceeded; hard stop")
+            consume = consume_handoff or os.environ.get("BUZZ_CONSUME_HANDOFF") == "1"
+            if report is not None:
+                handoff_state = None
+                # report encodes ready as available / consumed / unavailable
+                if report.get("handoff") == "available":
+                    handoff_state = "ready"
+                elif report.get("handoff") == "consumed":
+                    handoff_state = "consumed"
+                else:
+                    handoff_state = "unavailable"
+                if handoff_state == "ready":
+                    if not consume:
+                        raise ValueError(
+                            "context handoff ready; pass --consume-handoff or BUZZ_CONSUME_HANDOFF=1")
+                    ledger.consume_handoff()
         errors = self.executor.check(self.base)
         if errors:
             raise ValueError("; ".join(errors))
