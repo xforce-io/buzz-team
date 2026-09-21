@@ -513,14 +513,14 @@ class CLITests(Fixture):
     def test_task_session_cli_is_stable_and_conflict_safe(self):
         common = ("--community", "ws://localhost:3000", "--identity", self.key,
                   "--scope", "channel-1", "--workspace", str(self.base / "workspace"))
-        for task, session in (("task-a", "ses-a"), ("task-b", "ses-b")):
+        for task, session in (("task-a", "11111111-1111-4111-8111-111111111111"), ("task-b", "22222222-2222-4222-8222-222222222222")):
             result = self.cli("session", "bind", "--task", task, *common, "--session", session)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertIn("session_ref", json.loads(result.stdout))
         resolved = self.cli("session", "resolve", "--task", "task-a", *common)
         self.assertEqual(resolved.returncode, 0, resolved.stderr)
         self.assertIn("session_ref", json.loads(resolved.stdout))
-        conflict = self.cli("session", "bind", "--task", "task-a", *common, "--session", "ses-other")
+        conflict = self.cli("session", "bind", "--task", "task-a", *common, "--session", "33333333-3333-4333-8333-333333333333")
         self.assertEqual(conflict.returncode, 2)
         self.assertIn("conflict", conflict.stderr)
         listed = self.cli("session", "list")

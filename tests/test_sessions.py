@@ -23,7 +23,7 @@ class SessionStoreTests(unittest.TestCase):
             "workspace": str(self.workspace),
         }
 
-    def bind(self, task="a", session="session-a", **overrides):
+    def bind(self, task="a", session="11111111-1111-4111-8111-111111111111", **overrides):
         values = {**self.common, "task_id": task, "session_id": session, **overrides}
         return self.store.bind(**values)
 
@@ -36,11 +36,11 @@ class SessionStoreTests(unittest.TestCase):
 
     def test_tasks_are_isolated_and_conflicts_do_not_overwrite(self):
         self.bind()
-        other = self.bind(task="b", session="session-b")
+        other = self.bind(task="b", session="22222222-2222-4222-8222-222222222222")
         self.assertEqual([item["task_id"] for item in self.store.list()], ["a", "b"])
         with self.assertRaisesRegex(ValueError, "conflict"):
-            self.bind(task="a", session="session-other")
-        self.assertEqual(self.store.resolve(task_id="a", **self.common)["session_id"], "session-a")
+            self.bind(task="a", session="33333333-3333-4333-8333-333333333333")
+        self.assertEqual(self.store.resolve(task_id="a", **self.common)["session_id"], "11111111-1111-4111-8111-111111111111")
         self.assertEqual(self.store.resolve(task_id="b", **self.common), other)
 
     def test_task_is_globally_unique_and_restore_claim_is_atomic(self):
@@ -57,7 +57,7 @@ class SessionStoreTests(unittest.TestCase):
         released = self.store.release(owner=owner_a, task_id="a", **self.common)
         self.assertEqual(released["state"], "restored")
         with self.assertRaisesRegex(ValueError, "conflict"):
-            self.bind(task="b", session="session-a")
+            self.bind(task="b", session="11111111-1111-4111-8111-111111111111")
 
     def test_corrupt_file_fails_closed(self):
         self.instance.mkdir()

@@ -122,6 +122,7 @@ class Runtime:
                 store = SessionStore(self.config.instance)
                 session = store.resolve_task(task_id=task_id, identity=self.key,
                                              community=self.agent["relay_url"], scope=task_scope)
+            self.executor.validate_task_session_id(session["session_id"])
             launch_cwd = Path(session["workspace"]).resolve()
             if not launch_cwd.is_relative_to(self.base.resolve()) or not launch_cwd.is_dir():
                 raise ValueError("task workspace missing or outside identity")
@@ -194,7 +195,7 @@ class Runtime:
                 try:
                     _, status = os.waitpid(child, 0)
                     exit_code = os.waitstatus_to_exitcode(status)
-                    return exit_code
+                    return 128 + (-exit_code) if exit_code < 0 else exit_code
                 finally:
                     try:
                         os.killpg(child, signal.SIGTERM)
