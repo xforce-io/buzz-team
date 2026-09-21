@@ -10,3 +10,5 @@
 | #6 S1 | [任务会话](task-sessions.md) | session bind / resolve / list |
 | #7 S1 | [上下文成本](context-cost.md) | context start / record / handoff / report |
 | #11 S1–S5 | [健康检查语义](health.md) | doctor / diagnose |
+| #15 S1 | [频道点名门控](channel-mention-gate.md) | wake decide / Desktop 频道唤醒 |
+| #15 S2 | [超限 session 换窗](session-rotate.md) | wake cursor / fuse 回帖 |

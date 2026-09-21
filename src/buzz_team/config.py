@@ -96,6 +96,9 @@ class Config:
                 raise ValueError("data environment requires string values for configured data modes")
         absolute(c["desktop"]["managed_agents"])
         absolute(c["desktop"]["app"])
+        from .wake import validateChannelWake, validateMentionAliases
+        validateMentionAliases(c)
+        validateChannelWake(c)
 
     def agent(self, key: str) -> dict:
         if key not in self.data["agents"]:
