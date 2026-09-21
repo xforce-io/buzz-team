@@ -15,6 +15,30 @@ from .adapters import adapter
 from .config import Config, overlap
 
 
+def _fuseReasonForLaunch(config, report: dict) -> str | None:
+    from .context import fuseReason
+    from .wake import channelPolicy
+    rotate = {}
+    channel = os.environ.get("BUZZ_WAKE_CHANNEL")
+    if os.environ.get("BUZZ_WAKE_SURFACE") == "stream" and channel:
+        rotate = channelPolicy(config, channel).get("rotate") or {}
+    return fuseReason(report, rotate=rotate)
+
+
+def _signalWakeFuse(runtime, ledger, reason: str, session: dict | None) -> None:
+    from .context import setWakeFuse
+    from .wake import enforceChannelWake
+    setWakeFuse(reason)
+    try:
+        ledger.record_budget_gate(reason=reason)
+    except ValueError:
+        pass
+    if session and not os.environ.get("BUZZ_ACP_SESSION_ID"):
+        os.environ["BUZZ_ACP_SESSION_ID"] = session["session_id"]
+    if os.environ.get("BUZZ_WAKE_CHANNEL") and os.environ.get("BUZZ_WAKE_POST_REF"):
+        enforceChannelWake(runtime, "executor", None)
+
+
 class Runtime:
     def __init__(self, config: Config, key: str):
         self.config = config
@@ -86,8 +110,10 @@ class Runtime:
 
     def launch(self, mode: str, args: list[str], task_id: str | None = None,
                task_scope: str | None = None, *, consume_handoff: bool = False):
+        from .desktop import applyWakePayload
         from .instance import digest
         from .wake import enforceChannelWake
+        applyWakePayload(os.environ)
         wakeEnv = enforceChannelWake(self, mode, task_id)
         spec = self.config.data["compatibility"]
         pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
@@ -138,12 +164,11 @@ class Runtime:
                 if str(exc) != "context ledger not found":
                     raise
                 report = None
-            if report is not None and report["status"] == "budget_exceeded":
-                try:
-                    ledger.record_budget_gate(reason="budget_exceeded")
-                except ValueError:
-                    pass
-                raise ValueError("task budget exceeded; hard stop")
+            if report is not None:
+                reason = _fuseReasonForLaunch(self.config, report)
+                if reason:
+                    _signalWakeFuse(self, ledger, reason, session)
+                    raise ValueError("task budget exceeded; hard stop")
             consume = consume_handoff or os.environ.get("BUZZ_CONSUME_HANDOFF") == "1"
             if report is not None:
                 handoff_state = None

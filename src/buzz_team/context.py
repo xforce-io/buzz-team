@@ -17,6 +17,7 @@ _TURN = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
 _QUALITY = {"actual", "estimated", "unavailable"}
 _METRICS = ("input_tokens", "output_tokens", "cached_input_tokens", "uncached_input_tokens",
             "context_tokens", "duration_ms")
+FUSE_REASONS = frozenset({"turns", "usd", "input_tokens", "budget_exceeded"})
 
 
 def _task(value: object) -> str:
@@ -354,3 +355,41 @@ class ContextLedger:
             data["updated_at"] = _now()
             self._write(data)
             return event
+
+
+def fuseReason(report: dict, *, rotate: dict | None = None) -> str | None:
+    """Map ledger + #15 rotate caps to a fuse reason. unavailable amounts fail-closed."""
+    if not isinstance(report, dict):
+        raise ValueError("invalid context ledger")
+    rotate = rotate or {}
+    if not isinstance(rotate, dict):
+        raise ValueError("invalid channel_wake rotate")
+    totals = report.get("totals") if isinstance(report.get("totals"), dict) else {}
+    turns = report.get("turns") if isinstance(report.get("turns"), list) else []
+    budget = report.get("budget") if isinstance(report.get("budget"), dict) else {}
+    maxTurns = rotate.get("max_turns")
+    if type(maxTurns) is int and len(turns) >= maxTurns:
+        return "turns"
+    if rotate.get("max_usd") is not None and turns:
+        usd = totals.get("usd") if isinstance(totals.get("usd"), dict) else {}
+        if not usd.get("actual") and not usd.get("estimated"):
+            return "usd"
+    item = totals.get("input_tokens") if isinstance(totals.get("input_tokens"), dict) else {}
+    inputTotal = int(item.get("actual") or 0) + int(item.get("estimated") or 0)
+    inputUnavailable = int(item.get("unavailable") or 0)
+    rotateMaxInput = rotate.get("max_input_tokens")
+    if rotateMaxInput is not None and (inputUnavailable or inputTotal > rotateMaxInput):
+        return "input_tokens"
+    budgetMaxInput = budget.get("max_input_tokens")
+    if budgetMaxInput is not None and inputTotal > budgetMaxInput:
+        return "input_tokens"
+    if report.get("status") == "budget_exceeded":
+        return "budget_exceeded"
+    return None
+
+
+def setWakeFuse(reason: str) -> str:
+    if reason not in FUSE_REASONS:
+        raise ValueError("invalid fuse reason")
+    os.environ["BUZZ_WAKE_FUSE"] = reason
+    return reason

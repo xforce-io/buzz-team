@@ -208,8 +208,11 @@ class CLITests(Fixture):
         ledger.record(turn_id="turn-1", provider="provider", model="model",
                       values={"input_tokens": 2, "output_tokens": 1})
         runtime = Runtime(self.config, self.key)
-        with self.assertRaisesRegex(ValueError, "task budget exceeded"):
-            runtime.launch("executor", [], task_id=task)
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("BUZZ_WAKE_FUSE", None)
+            with self.assertRaisesRegex(ValueError, "task budget exceeded"):
+                runtime.launch("executor", [], task_id=task)
+            self.assertEqual(os.environ.get("BUZZ_WAKE_FUSE"), "input_tokens")
         self.assertTrue(any(item.get("type") == "budget_gate" for item in ledger.report()["events"]))
 
     def test_harness_launch_requires_task_id(self):
@@ -232,6 +235,50 @@ class CLITests(Fixture):
         env = bound[0]["env_vars"]
         self.assertEqual(env["BUZZ_TASK_ID"], "desktop-task")
         self.assertEqual(env["BUZZ_TASK_SCOPE"], "channel-desktop")
+
+    def test_desktop_binding_allows_wake_env(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_WAKE_SURFACE": "stream",
+            "BUZZ_WAKE_CHANNEL": "channel-desktop",
+            "BUZZ_WAKE_POST_REF": "post-desktop",
+            "BUZZ_WAKE_BODY": "@agent-one please",
+        }
+        self.save()
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            prepare(self.config)
+            desktop.bind(self.config)
+        env = json.loads(self.desktop_file.read_text())[0]["env_vars"]
+        self.assertEqual(env["BUZZ_WAKE_SURFACE"], "stream")
+        self.assertEqual(env["BUZZ_WAKE_CHANNEL"], "channel-desktop")
+        self.assertEqual(env["BUZZ_WAKE_POST_REF"], "post-desktop")
+        self.assertEqual(env["BUZZ_WAKE_BODY"], "@agent-one please")
+
+    def test_desktop_binding_rejects_unknown_wake_key(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_WAKE_FUSE": "budget_exceeded",
+        }
+        self.save()
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            prepare(self.config)
+            with self.assertRaisesRegex(ValueError, "unsupported binding environment"):
+                desktop.bind(self.config)
+
+    def test_apply_wake_payload_expands_allowlisted_fields(self):
+        env = {
+            "BUZZ_WAKE_PAYLOAD": json.dumps({
+                "surface": "stream",
+                "channel": "channel-payload",
+                "post_ref": "post-payload",
+                "body": "please look",
+            }),
+        }
+        desktop.applyWakePayload(env)
+        self.assertEqual(env["BUZZ_WAKE_SURFACE"], "stream")
+        self.assertEqual(env["BUZZ_WAKE_CHANNEL"], "channel-payload")
+        self.assertEqual(env["BUZZ_WAKE_POST_REF"], "post-payload")
+        self.assertEqual(env["BUZZ_WAKE_BODY"], "please look")
+        with self.assertRaisesRegex(ValueError, "invalid wake payload"):
+            desktop.applyWakePayload({"BUZZ_WAKE_PAYLOAD": json.dumps({"channel_id": "invented"})})
 
     def test_desktop_identity_and_version_fail_closed(self):
         original = self.desktop_file.read_bytes()

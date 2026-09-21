@@ -1,9 +1,11 @@
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
-from buzz_team.context import ContextLedger
+from buzz_team.context import ContextLedger, fuseReason, setWakeFuse
 
 
 class ContextLedgerTests(unittest.TestCase):
@@ -113,6 +115,30 @@ class ContextLedgerTests(unittest.TestCase):
         report = self.ledger.report()
         self.assertEqual(report["status"], "budget_exceeded")
         self.assertTrue(any(item.get("type") == "budget_gate" for item in report["events"]))
+
+    def test_fuse_reason_maps_caps_and_unavailable_amount(self):
+        self.ledger.start(max_input_tokens=10)
+        self.ledger.record(turn_id="turn-1", provider="provider", model="model",
+                           values={"input_tokens": 2, "output_tokens": 1})
+        report = self.ledger.report()
+        self.assertIsNone(fuseReason(report))
+        self.assertEqual(fuseReason(report, rotate={"max_turns": 1}), "turns")
+        self.assertEqual(fuseReason(report, rotate={"max_usd": 3}), "usd")
+        self.ledger.record(turn_id="turn-2", provider="provider", model="model",
+                           values={"input_tokens": "unavailable", "output_tokens": 1})
+        report = self.ledger.report()
+        self.assertEqual(fuseReason(report, rotate={"max_input_tokens": 100}), "input_tokens")
+        exceeded = ContextLedger(self.instance, "task-b")
+        exceeded.start(max_input_tokens=1)
+        exceeded.record(turn_id="turn-1", provider="provider", model="model",
+                        values={"input_tokens": 2, "output_tokens": 1})
+        self.assertEqual(fuseReason(exceeded.report()), "input_tokens")
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("BUZZ_WAKE_FUSE", None)
+            self.assertEqual(setWakeFuse("budget_exceeded"), "budget_exceeded")
+            self.assertEqual(os.environ["BUZZ_WAKE_FUSE"], "budget_exceeded")
+            with self.assertRaisesRegex(ValueError, "invalid fuse reason"):
+                setWakeFuse("mystery")
 
 
 
