@@ -138,6 +138,8 @@ class Runtime:
             env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
                        BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_TASK_SCOPE=session["scope"],
                        BUZZ_TASK_WORKSPACE=str(launch_cwd))
+            if self.executor.kind == "grok":
+                env["GROK_SESSION_ID"] = session["session_id"]
             if owner:
                 env["BUZZ_ACP_SESSION_OWNER"] = owner
         binary = self.executor.spec["command"]

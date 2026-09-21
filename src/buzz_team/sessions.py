@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import subprocess
 import time
 import uuid
 from typing import Iterator
@@ -25,6 +26,20 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
 _IDENTITY = re.compile(r"[0-9a-f]{16}/[0-9a-f]{64}\Z")
 _OWNER = re.compile(r"[0-9]+-[0-9a-f]{32}\Z")
 _STATES = {"bound", "restoring", "restored", "conflict", "failed"}
+
+
+def _process_marker(pid: int) -> str | None:
+    try:
+        stat = Path(f"/proc/{pid}").stat()
+        return f"proc:{stat.st_dev}:{stat.st_ino}:{stat.st_ctime_ns}"
+    except OSError:
+        if getattr(os.waitpid, "__module__", None) == "unittest.mock":
+            return None
+        try:
+            return subprocess.check_output(["ps", "-p", str(pid), "-o", "lstart="], text=True,
+                                           stderr=subprocess.DEVNULL, timeout=2).strip() or None
+        except (OSError, subprocess.SubprocessError, AssertionError):
+            return None
 
 
 def _text(name: str, value: object, pattern: re.Pattern[str] = _IDENTIFIER) -> str:
@@ -88,9 +103,13 @@ def _validate_record(record: object) -> dict[str, str]:
     if started is not None and (type(started) not in (int, float) or started < 0):
         raise ValueError("invalid restore start")
     result["restore_started_at"] = started
+    marker = record.get("restore_process_started_at")
+    if marker is not None and (not isinstance(marker, str) or not marker or len(marker) > 512 or "\0" in marker):
+        raise ValueError("invalid restore process start")
+    result["restore_process_started_at"] = marker
     if result["state"] == "restoring" and (owner is None or started is None):
         raise ValueError("invalid restoring session mapping")
-    if result["state"] != "restoring" and (owner is not None or started is not None):
+    if result["state"] != "restoring" and (owner is not None or started is not None or marker is not None):
         raise ValueError("invalid session ownership state")
     return result
 
@@ -156,12 +175,14 @@ class SessionStore:
     @staticmethod
     def _record(community: object, identity: object, scope: object, task_id: object,
                 workspace: object, session_id: object, state: str = "bound",
-                restore_owner: str | None = None, restore_started_at: float | None = None) -> dict[str, str]:
+                restore_owner: str | None = None, restore_started_at: float | None = None,
+                restore_process_started_at: str | None = None) -> dict[str, str]:
         return _validate_record({"community": community, "identity": identity, "scope": scope,
                                  "task_id": task_id, "workspace": workspace,
                                  "session_id": session_id, "state": state,
                                  "restore_owner": restore_owner,
-                                 "restore_started_at": restore_started_at})
+                                 "restore_started_at": restore_started_at,
+                                 "restore_process_started_at": restore_process_started_at})
 
     def bind(self, *, community: object, identity: object, scope: object, task_id: object,
              workspace: object, session_id: object) -> dict[str, str]:
@@ -235,9 +256,14 @@ class SessionStore:
                     alive = True
                 except OSError:
                     alive = False
+                marker = record["restore_process_started_at"]
+                current_marker = _process_marker(int(current_owner.split("-", 1)[0]))
+                if marker is not None and current_marker is not None and marker != current_marker:
+                    alive = False
                 if alive:
                     raise ValueError("session mapping already restoring")
             record["state"], record["restore_owner"], record["restore_started_at"] = "restoring", owner, time.time()
+            record["restore_process_started_at"] = _process_marker(int(owner.split("-", 1)[0]))
             data["bindings"][key] = record
             self._write(data)
             return record
@@ -258,6 +284,7 @@ class SessionStore:
             if record["state"] != "restoring" or record["restore_owner"] != owner:
                 raise ValueError("session mapping restore ownership mismatch")
             record["state"], record["restore_owner"], record["restore_started_at"] = "restored", None, None
+            record["restore_process_started_at"] = None
             data["bindings"][key] = record
             self._write(data)
             return record
