@@ -87,6 +87,8 @@ class Runtime:
     def launch(self, mode: str, args: list[str], task_id: str | None = None,
                task_scope: str | None = None):
         from .instance import digest
+        from .wake import enforceChannelWake
+        wakeEnv = enforceChannelWake(self, mode, task_id)
         spec = self.config.data["compatibility"]
         pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
         if mode == "harness":
@@ -146,6 +148,7 @@ class Runtime:
             if inherited_owner and session["restore_owner"] != inherited_owner:
                 raise ValueError("session mapping restore ownership mismatch")
         env = self.env(dict(os.environ), launch_cwd)
+        env.update(wakeEnv)
         if session:
             env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
                        BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_TASK_SCOPE=session["scope"],

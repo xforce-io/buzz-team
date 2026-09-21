@@ -114,6 +114,19 @@ def parser():
     handoff.add_argument("--open-tool-calls", type=int, default=0)
     report = context_sub.add_parser("report"); report.add_argument("--task", required=True)
     restore = context_sub.add_parser("restore"); restore.add_argument("--task", required=True)
+    wake = sub.add_parser("wake", help="频道点名门控判定与会话游标（只读）")
+    wake_sub = wake.add_subparsers(dest="wake_command", required=True)
+    decide = wake_sub.add_parser("decide", help="判定本帖是否允许该身份进入执行向长跑")
+    decide.add_argument("--identity", required=True)
+    decide.add_argument("--channel", required=True)
+    decide.add_argument("--post-ref", required=True)
+    decide.add_argument("--body", required=True)
+    decide.add_argument("--surface", default="stream")
+    decide.add_argument("--mentions", help="非空则 fail-closed：尚无结构化 mention")
+    cursor = wake_sub.add_parser("cursor", help="读取频道会话游标")
+    cursor.add_argument("--identity", required=True)
+    cursor.add_argument("--scope", required=True)
+    cursor.add_argument("--community")
     return p
 
 
@@ -187,11 +200,37 @@ def main():
                         result = ledger.record(turn_id=args.turn, provider=args.provider, model=args.model, values=values, qualities=qualities, tool_rounds=args.tool_rounds, retries=args.retries, result_status=args.result_status)
                     else:
                         result = ledger.handoff(goal=args.goal, next_step=args.next_step, workspace_ref=args.workspace_ref, approval_state=args.approval_state, constraints=args.constraint, facts=args.fact, pending=args.pending, tool_results=args.tool_result, open_tool_calls=args.open_tool_calls)
+            elif args.command == "wake":
+                from .wake import ChannelCursorStore, decideWake, publicCursor
+                if args.wake_command == "decide":
+                    mentions = None
+                    if args.mentions is not None:
+                        mentions = json.loads(args.mentions)
+                    result = decideWake(config, identity=args.identity, channel=args.channel,
+                                        postRef=args.post_ref, body=args.body,
+                                        surface=args.surface, mentions=mentions)
+                else:
+                    agent = config.agent(args.identity)
+                    community = args.community or agent["relay_url"]
+                    store = ChannelCursorStore(config.instance)
+                    try:
+                        record = store.resolve(community=community, identity=args.identity, scope=args.scope)
+                    except ValueError as exc:
+                        if str(exc) != "channel cursor not found":
+                            raise
+                        result = publicCursor(None)
+                    else:
+                        result = publicCursor(record)
             elif args.command == "launch":
+                from .wake import ChannelWakeSilent
                 task_id = args.task or os.environ.get("BUZZ_TASK_ID")
                 launch_args = args.args[1:] if args.args[:1] == ["--"] else args.args
-                result = Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
-                    args.mode, launch_args, task_id, args.scope or os.environ.get("BUZZ_TASK_SCOPE"))
+                try:
+                    result = Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
+                        args.mode, launch_args, task_id, args.scope or os.environ.get("BUZZ_TASK_SCOPE"))
+                except ChannelWakeSilent as exc:
+                    print(json.dumps(exc.payload, ensure_ascii=False, indent=2), file=sys.stderr)
+                    return 0
                 return result if isinstance(result, int) else 0
             elif args.command == "buzz":
                 from .buzz_cli import run
