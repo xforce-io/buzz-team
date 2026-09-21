@@ -8,6 +8,7 @@ import re
 import subprocess
 import sys
 import signal
+import time
 import uuid
 
 from .adapters import adapter
@@ -174,6 +175,7 @@ class Runtime:
             except ProcessLookupError:
                 pass
             owner = f"{child}-{token}"
+            exit_code = None
             try:
                 session = store.claim(community=session["community"], identity=session["identity"],
                                       scope=session["scope"], task_id=session["task_id"],
@@ -191,12 +193,25 @@ class Runtime:
                     previous[signum] = signal.signal(signum, forward)
                 try:
                     _, status = os.waitpid(child, 0)
-                    return os.waitstatus_to_exitcode(status)
+                    exit_code = os.waitstatus_to_exitcode(status)
+                    return exit_code
                 finally:
                     try:
                         os.killpg(child, signal.SIGTERM)
                     except ProcessLookupError:
                         pass
+                    deadline = time.monotonic() + 2
+                    while time.monotonic() < deadline:
+                        try:
+                            os.killpg(child, 0)
+                        except ProcessLookupError:
+                            break
+                        time.sleep(0.01)
+                    else:
+                        try:
+                            os.killpg(child, signal.SIGKILL)
+                        except ProcessLookupError:
+                            pass
                     for signum, handler in previous.items():
                         signal.signal(signum, handler)
             except Exception:
@@ -212,9 +227,10 @@ class Runtime:
                 except OSError:
                     pass
                 if claimed and store and owner:
-                    store.release(community=session["community"], identity=session["identity"],
-                                  scope=session["scope"], task_id=session["task_id"],
-                                  workspace=session["workspace"], owner=owner)
+                    finish = store.release if exit_code == 0 else store.fail
+                    finish(community=session["community"], identity=session["identity"],
+                           scope=session["scope"], task_id=session["task_id"],
+                           workspace=session["workspace"], owner=owner)
         os.chdir(launch_cwd)
         os.execve(command[0], command, env)
 

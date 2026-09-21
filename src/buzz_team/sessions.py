@@ -289,6 +289,24 @@ class SessionStore:
             self._write(data)
             return record
 
+    def fail(self, *, community: object, identity: object, scope: object, task_id: object,
+             workspace: object, owner: str) -> dict[str, str]:
+        expected = self._record(community, identity, scope, task_id, workspace, "session-placeholder")
+        owner = _text("restore owner", owner, _OWNER)
+        key = _record_key(expected)
+        with self._lock():
+            data = self._read()
+            record = _validate_record(data["bindings"].get(key))
+            if any(record[name] != expected[name] for name in ("community", "identity", "scope", "task_id", "workspace")):
+                raise ValueError("session mapping ownership mismatch")
+            if record["state"] != "restoring" or record["restore_owner"] != owner:
+                raise ValueError("session mapping restore ownership mismatch")
+            record["state"], record["restore_owner"], record["restore_started_at"] = "failed", None, None
+            record["restore_process_started_at"] = None
+            data["bindings"][key] = record
+            self._write(data)
+            return record
+
     def resolve_task(self, *, task_id: object, identity: object, community: object,
                      scope: object | None = None, read_only: bool = False) -> dict[str, str]:
         task_id = _task(task_id)
