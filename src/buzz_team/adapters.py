@@ -11,6 +11,7 @@ from .config import absolute
 class ACPCommand:
     kind = "acp-command"
     capabilities = ("acp-stdio",)
+    supports_task_sessions = False
 
     def __init__(self, spec: dict):
         self.spec = spec
@@ -61,6 +62,10 @@ class ACPCommand:
 class Grok(ACPCommand):
     kind = "grok"
     capabilities = ("acp-stdio", "existing-home", "existing-session-store")
+    supports_task_sessions = True
+
+    def task_session_args(self, session_id: str) -> list[str]:
+        return ["--resume", session_id]
 
     def home(self, base: Path) -> Path:
         return base / "grok"

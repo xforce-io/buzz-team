@@ -102,6 +102,8 @@ class Runtime:
             task_scope = task_scope or os.environ.get("BUZZ_TASK_SCOPE")
             if not task_scope:
                 raise ValueError("task scope required")
+            if not self.executor.supports_task_sessions:
+                raise ValueError("executor adapter cannot restore task sessions")
             inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER")
             if inherited_owner:
                 workspace = os.environ.get("BUZZ_TASK_WORKSPACE")
@@ -146,7 +148,8 @@ class Runtime:
         if mode == "harness":
             binary = self.config.data["binaries"]["harness"]
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
-        command = self.command([binary, *args])
+        task_args = self.executor.task_session_args(session["session_id"]) if session else []
+        command = self.command([binary, *task_args, *args])
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
         if task_id and not inherited_owner:
             ready_r, ready_w = os.pipe()
@@ -154,6 +157,7 @@ class Runtime:
             child = os.fork()
             if child == 0:
                 os.close(ready_w)
+                os.setpgid(0, 0)
                 child_owner = f"{os.getpid()}-{token}"
                 env["BUZZ_ACP_SESSION_OWNER"] = child_owner
                 try:
@@ -165,6 +169,10 @@ class Runtime:
                 finally:
                     os._exit(127)
             os.close(ready_r)
+            try:
+                os.setpgid(child, child)
+            except ProcessLookupError:
+                pass
             owner = f"{child}-{token}"
             try:
                 session = store.claim(community=session["community"], identity=session["identity"],
@@ -176,7 +184,7 @@ class Runtime:
                 previous = {}
                 def forward(signum, _frame):
                     try:
-                        os.kill(child, signum)
+                        os.killpg(child, signum)
                     except ProcessLookupError:
                         pass
                 for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
@@ -185,6 +193,10 @@ class Runtime:
                     _, status = os.waitpid(child, 0)
                     return os.waitstatus_to_exitcode(status)
                 finally:
+                    try:
+                        os.killpg(child, signal.SIGTERM)
+                    except ProcessLookupError:
+                        pass
                     for signum, handler in previous.items():
                         signal.signal(signum, handler)
             except Exception:
