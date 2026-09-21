@@ -161,6 +161,48 @@ def _read_process_environ(pid: object) -> dict[str, str]:
     return _parse_ps_environ(completed.stdout)
 
 
+
+def _agent_pids_dir(managed_agents: Path) -> Path:
+    """Desktop writes live ACP pids next to managed-agents.json (not runtime_pid)."""
+    return managed_agents.resolve().parent / "agent-pids"
+
+
+def _load_agent_pid_index(managed_agents: Path) -> dict[str, int]:
+    """Map agent pubkey -> live pid from agent-pids/<pubkey>__*.json."""
+    index: dict[str, int] = {}
+    root = _agent_pids_dir(managed_agents)
+    if not root.is_dir():
+        return index
+    for path in root.glob("*.json"):
+        pubkey = path.name.split("__", 1)[0]
+        try:
+            data = json.loads(path.read_text())
+        except (OSError, json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        pid = data.get("pid")
+        try:
+            pid_i = int(pid)
+        except (TypeError, ValueError):
+            continue
+        if pid_i > 0 and re.fullmatch(r"[0-9a-f]{64}", pubkey):
+            index[pubkey] = pid_i
+    return index
+
+
+def _resolve_acp_pid(row: dict, pid_index: dict[str, int]) -> int | None:
+    raw = row.get("runtime_pid")
+    try:
+        if raw is not None and int(raw) > 0:
+            return int(raw)
+    except (TypeError, ValueError):
+        pass
+    pubkey = row.get("pubkey")
+    if isinstance(pubkey, str) and pubkey in pid_index:
+        return pid_index[pubkey]
+    return None
+
 def _read_desktop_proxy_maps(
     config: Config,
     *,
@@ -186,6 +228,16 @@ def _read_desktop_proxy_maps(
     checks.append(check(
         "desktop_inventory", "pass", "buzz_runtime",
         "Desktop managed-agents inventory readable for bound identities"))
+    pid_index = _load_agent_pid_index(path)
+    if selected and not pid_index and not any(
+            (row.get("runtime_pid") not in (None, "", 0, "0")) for row in selected.values()):
+        checks.append(check(
+            "desktop_agent_pids", "unverified", "proxy",
+            f"No agent-pids index at {_agent_pids_dir(path)} and managed-agents runtime_pid empty"))
+    elif pid_index:
+        checks.append(check(
+            "desktop_agent_pids", "pass", "proxy",
+            f"Loaded {len(pid_index)} live ACP pid(s) from agent-pids next to managed-agents"))
     process_reads = 0
     for key, row in selected.items():
         env = row.get("env_vars") or {}
@@ -196,7 +248,8 @@ def _read_desktop_proxy_maps(
             continue
         binding_proxy = _proxy_map({str(k): str(v) for k, v in env.items() if isinstance(v, str)})
         binding_keys = sorted(k for k in PROXY_ENV_KEYS if k in env)
-        proc_env = process_reader(row.get("runtime_pid"))
+        pid = _resolve_acp_pid(row, pid_index)
+        proc_env = process_reader(pid) if pid is not None else {}
         if proc_env:
             process_reads += 1
         process_proxy = _proxy_map(proc_env)
@@ -207,17 +260,19 @@ def _read_desktop_proxy_maps(
             "proxy_keys": binding_keys,
             "process_proxy": process_proxy,
             "process_proxy_keys": process_keys,
-            "runtime_pid": row.get("runtime_pid"),
+            "runtime_pid": pid,
         })
     if selected and process_reads == 0:
         checks.append(check(
             "desktop_acp_process_env", "unverified", "proxy",
-            "No live ACP process proxy env readable from runtime_pid "
-            "(binding JSON alone cannot cover Desktop-baked proxy accidents)"))
+            "No live ACP process proxy env readable "
+            "(tried managed-agents runtime_pid and agent-pids/*.json); "
+            "binding JSON alone cannot cover Desktop-baked proxy accidents"))
     elif process_reads:
         checks.append(check(
             "desktop_acp_process_env", "pass", "proxy",
-            f"Read proxy-related env from {process_reads} live ACP process(es) via runtime_pid"))
+            f"Read proxy-related env from {process_reads} live ACP process(es) "
+            "(runtime_pid or agent-pids)"))
     return maps, checks
 
 

@@ -157,21 +157,32 @@ class HealthTaxonomyTests(Fixture):
         payload = run(self.config, depth="doctor", process_env=env)
         self.assertIn("checks", payload)
 
+
+    def _seed_agent_pids(self, pid: int = 424242):
+        from buzz_team import desktop
+        ma = Path(self.config.data["desktop"]["managed_agents"])
+        rows = json.loads(ma.read_text())
+        selected = desktop.selected_rows(self.config, rows)
+        pids_dir = ma.parent / "agent-pids"
+        pids_dir.mkdir(parents=True, exist_ok=True)
+        for row in selected.values():
+            pubkey = row["pubkey"]
+            (pids_dir / f"{pubkey}__test.json").write_text(json.dumps({
+                "pid": pid, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
+            row["runtime_pid"] = None
+        ma.write_text(json.dumps(rows))
+        return selected
+
     def test_acp_process_proxy_mismatch_fails_contrast(self):
         """Live ACP process proxy differing from CLI is fail — not auth."""
         from buzz_team import health as health_mod
 
         def fake_reader(pid):
+            self.assertEqual(pid, 424242)
             return {"HTTP_PROXY": "http://127.0.0.1:6478", "HTTPS_PROXY": "http://127.0.0.1:6478"}
 
-        # Patch inventory read by writing managed agents with runtime_pid
-        agents = Path(self.config.data["desktop"]["managed_agents"])
-        rows = json.loads(agents.read_text()) if agents.is_file() else []
-        # Ensure at least one selected row has runtime_pid — reuse fixture inventory
-        # Fall back: inject via monkeypatch of _read_desktop_proxy_maps pieces
+        self._seed_agent_pids(424242)
         cli_env = {"HTTP_PROXY": "http://127.0.0.1:9567", "HTTPS_PROXY": "http://127.0.0.1:9567"}
-        # Build minimal maps path: call contrast with process_reader
-        # Need selected rows — doctor fixture should have managed agents
         contrast, checks = health_mod.contrast_proxies(
             self.config, process_env=cli_env, probe=False, process_reader=fake_reader)
         proxy_checks = [c for c in checks if c["id"] == "proxy_contrast"]
@@ -185,11 +196,44 @@ class HealthTaxonomyTests(Fixture):
         from buzz_team import health as health_mod
 
         def fake_reader(pid):
+            self.assertEqual(pid, 424242)
             return {"HTTP_PROXY": "http://127.0.0.1:9567"}
 
+        self._seed_agent_pids(424242)
         cli_env = {"HTTP_PROXY": "http://127.0.0.1:9567"}
         contrast, checks = health_mod.contrast_proxies(
             self.config, process_env=cli_env, probe=False, process_reader=fake_reader)
         proxy_checks = [c for c in checks if c["id"] == "proxy_contrast"]
         self.assertEqual(proxy_checks[0]["status"], "pass")
         self.assertTrue(any(c["id"] == "desktop_acp_process_env" and c["status"] == "pass" for c in checks))
+
+    def test_agent_pids_file_supplies_runtime_pid(self):
+        from buzz_team import health as health_mod
+        import tempfile
+        ma = Path(self.config.data["desktop"]["managed_agents"])
+        pids_dir = ma.parent / "agent-pids"
+        pids_dir.mkdir(parents=True, exist_ok=True)
+        # pick first agent pubkey from selected inventory
+        rows = json.loads(ma.read_text())
+        from buzz_team import desktop
+        selected = desktop.selected_rows(self.config, rows)
+        self.assertTrue(selected)
+        key, row = next(iter(selected.items()))
+        pubkey = row["pubkey"]
+        # fake reader records which pid it was asked for
+        seen = {}
+        def fake_reader(pid):
+            seen["pid"] = pid
+            return {"HTTP_PROXY": "http://127.0.0.1:9567"}
+        (pids_dir / f"{pubkey}__testdesktop.json").write_text(json.dumps({
+            "pid": 424242, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
+        # clear runtime_pid on disk copy? selected_rows reads live file — patch row via rewriting managed agents temp is hard;
+        # instead call _read_desktop_proxy_maps with process_reader after ensuring runtime_pid null in file
+        for r in rows:
+            if r.get("pubkey") == pubkey:
+                r["runtime_pid"] = None
+        ma.write_text(json.dumps(rows))
+        maps, checks = health_mod._read_desktop_proxy_maps(self.config, process_reader=fake_reader)
+        self.assertEqual(seen.get("pid"), 424242)
+        self.assertTrue(any(c["id"] == "desktop_agent_pids" and c["status"] == "pass" for c in checks))
+        self.assertTrue(any(m.get("process_proxy_keys") for m in maps))
