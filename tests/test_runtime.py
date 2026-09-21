@@ -258,10 +258,8 @@ class CLITests(Fixture):
             "BUZZ_WAKE_FUSE": "budget_exceeded",
         }
         self.save()
-        with patch("buzz_team.desktop.live_processes", return_value=[]):
-            prepare(self.config)
-            with self.assertRaisesRegex(ValueError, "unsupported binding environment"):
-                desktop.bind(self.config)
+        with self.assertRaisesRegex(ValueError, "unsupported binding environment"):
+            desktop.binding_diff(self.config, copy.deepcopy(self.rows))
 
     def test_apply_wake_payload_expands_allowlisted_fields(self):
         env = {
@@ -600,10 +598,10 @@ class CLITests(Fixture):
     def test_workspace_real_git_and_reuse_rejection(self):
         source = self.root / "git-source"
         subprocess.run(["git", "init", "-b", "main", str(source)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(source), "remote", "add", "origin", "https://github.com/example/fixture.git"], check=True)
+        subprocess.run(["git", "-C", str(source), "remote", "add", "origin", "https://git.example.invalid/fixture.git"], check=True)
         subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
                         "commit", "--allow-empty", "-m", "fixture"], check=True, capture_output=True)
-        self.config.data["repositories"]["fixture"] = {"source": str(source), "origin": "https://github.com/example/fixture.git"}
+        self.config.data["repositories"]["fixture"] = {"source": str(source), "origin": "https://git.example.invalid/fixture.git"}
         self.save()
         result = self.cli("workspace", "1-cli-test", "--repo", "fixture", "--branch", "feat/1-cli-test", "--id", self.key)
         self.assertEqual(result.returncode, 0, result.stderr)

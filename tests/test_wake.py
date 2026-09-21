@@ -294,6 +294,8 @@ class WakeCLITests(Fixture):
         from buzz_team.sessions import SessionStore
         from buzz_team.wake import ChannelWakeSilent
         self.enableWake()
+        self.config.data["channel_wake"]["default"]["rotate"] = {"max_usd": 3}
+        self.save()
         old = "cccccccc-1111-4111-8111-111111111111"
         SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
                                           scope="channel-fixture", task_id="wake-usd",
