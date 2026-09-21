@@ -23,6 +23,11 @@ def _ref(value: str) -> str:
     return hashlib.sha256(value.encode()).hexdigest()[:12]
 
 
+def _public_session(record: dict[str, str]) -> dict[str, str]:
+    return {"task_ref": _ref(record["task_id"]), "session_ref": _ref(record["session_id"]),
+            "state": record["state"]}
+
+
 def doctor(config: Config):
     errors = desktop.check_app(config)
     if not shutil.which("lsof"):
@@ -137,9 +142,7 @@ def main():
             elif args.command == "session":
                 store = SessionStore(config.instance)
                 if args.session_command == "list":
-                    result = {"bindings": [{"task_ref": _ref(row["task_id"]),
-                                             "session_ref": _ref(row["session_id"]),
-                                             "state": row["state"]} for row in store.list()]}
+                    result = {"bindings": [_public_session(row) for row in store.list()]}
                 else:
                     agent = config.agent(args.identity)
                     if args.community.rstrip("/") != agent["relay_url"].rstrip("/"):
@@ -152,13 +155,13 @@ def main():
                               "scope": args.scope, "task_id": args.task,
                               "workspace": str(workspace)}
                     if args.session_command == "bind":
-                        result = store.bind(**values, session_id=args.session_id)
+                        result = _public_session(store.bind(**values, session_id=args.session_id))
                     elif args.session_command == "claim":
-                        result = store.claim(**values, owner=args.owner)
+                        result = _public_session(store.claim(**values, owner=args.owner))
                     elif args.session_command == "release":
-                        result = store.release(**values, owner=args.owner)
+                        result = _public_session(store.release(**values, owner=args.owner))
                     else:
-                        result = store.resolve(**values)
+                        result = _public_session(store.resolve(**values))
             elif args.command == "launch":
                 Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(args.mode, args.args[1:] if args.args[:1] == ["--"] else args.args)
                 return 0

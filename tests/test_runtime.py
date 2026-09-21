@@ -516,10 +516,10 @@ class CLITests(Fixture):
         for task, session in (("task-a", "ses-a"), ("task-b", "ses-b")):
             result = self.cli("session", "bind", "--task", task, *common, "--session", session)
             self.assertEqual(result.returncode, 0, result.stderr)
-            self.assertEqual(json.loads(result.stdout)["session_id"], session)
+            self.assertIn("session_ref", json.loads(result.stdout))
         resolved = self.cli("session", "resolve", "--task", "task-a", *common)
         self.assertEqual(resolved.returncode, 0, resolved.stderr)
-        self.assertEqual(json.loads(resolved.stdout)["session_id"], "ses-a")
+        self.assertIn("session_ref", json.loads(resolved.stdout))
         conflict = self.cli("session", "bind", "--task", "task-a", *common, "--session", "ses-other")
         self.assertEqual(conflict.returncode, 2)
         self.assertIn("conflict", conflict.stderr)

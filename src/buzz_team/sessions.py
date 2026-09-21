@@ -160,7 +160,8 @@ class SessionStore:
             existing = data["bindings"].get(key)
             if existing is not None:
                 existing = _validate_record(existing)
-                if existing != record:
+                immutable = ("community", "identity", "scope", "task_id", "workspace", "session_id")
+                if any(existing[name] != record[name] for name in immutable):
                     raise ValueError("session mapping conflict")
                 return existing
             for candidate in data["bindings"].values():
