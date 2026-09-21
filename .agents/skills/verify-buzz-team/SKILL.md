@@ -9,9 +9,11 @@ description: 验证 buzz-team CLI、实例迁移与真实 Buzz Desktop 行为。
 
 以 Issue 当前候选 SHA 安装到仓库外独立虚拟环境，不使用 editable 安装。按 `docs/runbook.md` 创建实例，运行 prepare 和 doctor。原环境继续运行期间禁止 bind 或启动第二套同身份 harness。
 
-## Doctor
+## Doctor / Diagnose
 
-运行 CLI doctor、status，确认版本指纹、身份数、执行器 home 和 Desktop 配置目标。认证原地复用，不复制、不重新登录。确认目标 SHA 工作树干净，记录安装产物与源 SHA。使用临时配置先验证回退和冲突拒绝。
+运行 CLI `doctor`（静态预检）与必要时 `diagnose`（同内核 + 代理 TCP / `unverified_surfaces`）。输出含 `checks[]` 四类结果（pass/fail/unverified/na）与 `coverage`；`ok` 仅表示无 fail，存在 unverified **不**等于整体健康。对照 Desktop ACP 绑定代理与 CLI 进程代理；死代理不得只报成 auth.json 缺失。认证文件仅检查存在性，原地复用，不复制、不重新登录。确认目标 SHA 工作树干净，记录安装产物与源 SHA。使用临时配置先验证回退和冲突拒绝。
+
+CLI 频道/消息只读成功不能冒充 Desktop Activity/UI 通过；静态 doctor ≠ 角色对话验证。详见 `features/health.md`。
 
 ## Drive
 

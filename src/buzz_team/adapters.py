@@ -109,10 +109,14 @@ class Grok(ACPCommand):
                 if key not in {"GROK_MEMORY", "GROK_AGENT_DASHBOARD"}}
 
     def check(self, base: Path) -> list[str]:
+        # File-presence only. Missing credential files are not proxy/upstream failures.
         errors = super().check(base)
-        for name in ("config.toml", "auth.json"):
-            if not (self.home(base) / name).is_file():
-                errors.append(f"existing Grok {name} missing; no automatic login or credential copy")
+        missing = [name for name in ("config.toml", "auth.json") if not (self.home(base) / name).is_file()]
+        if missing:
+            errors.append(
+                "Grok credential files missing (" + ", ".join(missing)
+                + "); file presence check only — distinct from proxy/upstream_request"
+            )
         return errors
 
 

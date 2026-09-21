@@ -3,10 +3,8 @@ from __future__ import annotations
 
 import argparse
 import hashlib
-import importlib.resources
 import json
 import os
-import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -14,10 +12,11 @@ import sys
 from . import __version__
 from .config import Config
 from . import desktop
-from .instance import digest, init_legacy, prepare
+from .instance import init_legacy, prepare
 from .runtime import Runtime
 from .sessions import SessionStore
 from .context import ContextLedger
+from . import health
 
 
 def _ref(value: str) -> str:
@@ -40,42 +39,9 @@ def _metric_value(value: str) -> int | str:
     return parsed
 
 
-def doctor(config: Config):
-    errors = desktop.check_app(config)
-    if not shutil.which("lsof"):
-        errors.append("lsof unavailable; cannot verify idle identity workspaces")
-    for name, path in config.data["binaries"].items():
-        file = Path(path)
-        if not file.is_file() or not os.access(file, os.X_OK):
-            errors.append(f"{name}: missing executable")
-        elif digest(file) != config.data["compatibility"]["sha256"].get(name):
-            errors.append(f"{name}: executable differs from pinned baseline")
-    manifest = json.loads(importlib.resources.files("buzz_team").joinpath("compatibility.json").read_text())
-    if not errors:
-        result = subprocess.run([config.data["binaries"]["harness"], "--help"], capture_output=True, text=True, timeout=15)
-        if result.returncode or any(flag not in result.stdout for flag in manifest["required_harness_options"]):
-            errors.append("harness: required CLI capability missing")
-    counts = {}
-    for name, spec in config.data["adapters"].items():
-        pin = config.data["compatibility"].get("executor_sha256", {}).get(name)
-        if (not pin or not Path(spec["command"]).is_file() or not os.access(spec["command"], os.X_OK)
-                or digest(Path(spec["command"])) != pin):
-            errors.append("executor differs from pinned baseline or is not pinned")
-    for key in config.data["agents"]:
-        runtime = Runtime(config, key)
-        counts[runtime.executor.kind] = counts.get(runtime.executor.kind, 0) + 1
-        errors.extend(runtime.executor.check(runtime.base))
-        if not runtime.cwd.is_dir():
-            errors.append("identity workspace missing")
-        if not runtime.policy["production_write"] and not Path("/usr/bin/sandbox-exec").is_file():
-            errors.append("Seatbelt unavailable")
-        runtime.profile()
-    return {"ok": not errors, "version": __version__, "identities": len(config.data["agents"]),
-            "adapters": counts, "errors": sorted(set(errors)),
-            "authentication": "existing home checked; contents never copied or output",
-            "warnings": ["identity isolation only; task-level enforcement pending",
-                         "skills/memory readiness and upstream cache behavior are not certified by this check",
-                         "pinned binaries are a migration baseline, not proof of client verification"]}
+def doctor(config: Config, *, depth: str = "doctor"):
+    """Static/install health. diagnose uses the same kernel with deeper proxy probes."""
+    return health.run(config, depth=depth)
 
 
 def parser():
@@ -87,7 +53,15 @@ def parser():
     init.add_argument("--legacy", type=Path, required=True)
     init.add_argument("--desktop-config", type=Path, required=True)
     init.add_argument("--app", type=Path, required=True)
-    for name in ("doctor", "status", "prepare", "bind", "start", "diagnose"):
+    sub.add_parser(
+        "doctor",
+        help="静态预检：安装/指纹/身份目录与代理键对照；ok 仅表示无 fail，含 unverified 不代表整体健康",
+    )
+    sub.add_parser(
+        "diagnose",
+        help="诊断深度：与 doctor 同内核，另含代理 TCP 探测与 unverified_surfaces 列表；非角色对话验证",
+    )
+    for name in ("status", "prepare", "bind", "start"):
         sub.add_parser(name)
     stop = sub.add_parser("stop", help="请求 Desktop 退出；先确认任务空闲")
     stop.add_argument("--idle-confirmed", action="store_true")
@@ -153,7 +127,7 @@ def main():
         else:
             config = Config(args.instance)
             if args.command in {"doctor", "diagnose"}:
-                result = doctor(config)
+                result = doctor(config, depth=args.command)
             elif args.command == "prepare":
                 result = prepare(config)
             elif args.command in {"status", "start"}:
