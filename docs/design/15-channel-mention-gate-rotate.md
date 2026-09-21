@@ -1,6 +1,6 @@
 # #15 Desktop 频道 mention-gate 与超限 session rotate
 
-状态：Draft（待人工批准）。未 Approved，禁止按本文实现产品代码。
+状态：Approved（peng 2026-09-22 批准；开放问题按下列默认收口）。
 
 ## 1 背景
 
@@ -48,7 +48,7 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
 
 把「谁被允许醒」和「醒了之后如何计量/硬停」分成两层。本票只做前者，以及硬停**之后**的换窗与回帖。计量、硬停、handoff 归 #16，避免双头熔断。
 
-点名判定 fail-closed：优先用 Buzz/ACP 结构化 mention；没有可靠结构时，只用实例私有别名表做精确 `@token` 匹配。禁止模糊匹配显示名、禁止用最近发言者或频道标题猜测。结构化结果与文本解析冲突、别名一对多、载荷缺失或频道类型不明时，一律不准进入执行向长跑。
+点名判定 fail-closed：当前上游**没有**结构化 mention，只认实例私有别名表上的精确 `@token`。禁止模糊匹配显示名、禁止用最近发言者或频道标题猜测。调用方若仍传入结构化 mention 载荷、别名一对多、正文缺失或频道类型不明时，一律不准进入执行向长跑。线程回复不继承父帖点名。
 
 放弃「频道在线即全员可跑」，因为这就是 2026-09-21 雪崩路径。放弃「用秘书处 markdown 约定代替门控」，因为它不是运行时。放弃「每条消息新建 session」，以免被点名后的连续推理丢失；只在熔断后换窗。
 
@@ -94,10 +94,10 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
 命中规则，按顺序，任一失败则本身份 `deny`：
 
 1. 频道类型必须可判定为 stream。`buzz_cli.py` 已对未知 `channel_type` fail-closed；门控同样不得猜测。
-2. 提取 mention 集合：
-   - 若事件含结构化 mention（稳定用户/agent id 或公钥）：只使用该集合。
-   - 否则扫描正文，只认 `@` + 已登记别名的完整 token（前后为空白、行首或标点）。大小写按策略声明，默认区分。
-   - 结构与文本同时存在且集合不一致：`deny`（ambiguous）。
+2. 提取 mention 集合（peng 收口：暂无结构化 mention）：
+   - 只扫描本帖正文，认 `@` + 已登记别名的完整 token（前后为空白、行首或标点）。大小写默认区分。
+   - 若调用方传入非空结构化 mention 载荷：`deny`（`structured_mentions_unsupported`），不猜测字段。
+   - 不继承父帖或线程根的 @。
 3. 将 mention 解析到已注册运行身份。一个别名对应多个身份、或同一 token 无法唯一解析：相关身份全部 `deny`。
 4. `@freeman` / `@human` 等人类点名**不是** agent 命中；它们不能让全体身份开跑。
 5. 本身份公钥或已登记别名出现在可解析 agent mention 中 → `allow`。
@@ -126,7 +126,6 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
   "channel_wake": {
     "default": {
       "require_mention": true,
-      "single_owner_identity": null,
       "allow_short_ack": false,
       "rotate": {
         "max_turns": 20,
@@ -148,15 +147,15 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
 
 上限 `max_turns` / `max_usd` / `max_input_tokens` 是产品闸。#16 必须把同一组闸纳入 Desktop 硬停（映射到 ledger budget 或新增 fuse 事件）。本票**不**实现第二套计量器，只认 #16 写出的熔断信号。若当前 ledger 尚无金额或轮次字段，由 #16 L2 补事件，不在本票另建账本。
 
-`require_mention` 缺省为 true。`single_owner_identity` 缺省为 null。禁止用代码写死「炼丹房 owner」或秘书处人名。
+`require_mention` 缺省为 true。`single_owner_identity` **只允许**出现在 `channels.<id>`，禁止写在 `default` 或任何全实例默认里；缺省为未配置。禁止用代码或秘书处惯例写死 owner。`max_usd` 的计量与 `unavailable` 熔断由 #16 出信号，本票不建第二套金额账本。
 
 ### 8.4 换窗与熔断回帖
 
 当且仅当收到 #16 熔断信号：
 
 1. 停止把旧 `session_id` 交给下一次执行（#16 已保证同 session 新增执行向 tool_call = 0）。
-2. 在触发帖线程回帖，字段仅限：固定标题「【熔断】」、原因枚举 `turns` | `usd` | `input_tokens` | `budget_exceeded`、旧 `session_ref`（12 位哈希，与现有 CLI 脱敏一致）、可选新 `session_ref`。禁止 prompt、工具正文、认证、完整环境、原始 token 转储。
-3. 原子把频道游标标为 `fused`/`retired`，登记新 `session_id`（熔断时分配或下次允许唤醒时分配均可，但**第一次后续执行**必须使用新 id）。
+2. 在触发帖线程回帖，字段仅限：固定标题「【熔断】」、原因枚举 `turns` | `usd` | `input_tokens` | `budget_exceeded`、旧 `session_ref` 与**新** `session_ref`（均为 12 位哈希，与现有 CLI 脱敏一致）。禁止 prompt、工具正文、认证、完整环境、原始 token 转储。
+3. 熔断当时立即分配新 `session_id`，原子把旧游标标为 `retired`（可保留 `fused` 痕迹），新 id 写入回帖并成为后续唯一 `active` 游标。
 4. 若该范围已有 #6 映射：不得 `bind` 覆盖旧 `session_id`；必须走显式 rotate/rebind（#16 与 session 存储共同提供）。旧记录保留。
 5. 定量：熔断后下一执行 turn 的 `session_id` ≠ 熔断前 `session_id`。
 
@@ -184,7 +183,9 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
 | 退役旧 sticky / 绑定新 session_id | 是（产品契约） | 提供映射 rotate 与 fuse 信号 |
 | CLI `--task` 路径 | 不改 | 契约对齐，不改叙事 |
 
-合成顺序：门控通过 → #16 映射与账本 → 超限由 #16 硬停并写 fuse → #15 回帖并换窗 → 下次允许的唤醒带新 `session_id` → #16 消费 handoff 或安全拒绝。任一步缺字段 fail-closed，不猜测。
+合成顺序：门控通过 → #16 映射与账本 → 超限由 #16 硬停并写 fuse（金额 `unavailable` 亦须熔断） → #15 立即换窗并回帖（含新旧 `session_ref`） → 下次允许的唤醒带新 `session_id` → #16 消费 handoff 或安全拒绝。任一步缺字段 fail-closed，不猜测。
+
+Desktop/ACP 真唤醒钩子若仍在仓库外：本票在 `Runtime.launch`（无 `--task` 的 harness/executor）与 `buzz` 发帖路径提供最薄拦截。实例已配置 `channel_wake` 或任一 `mention_aliases` 时，频道路径缺少 `BUZZ_WAKE_SURFACE` / `BUZZ_WAKE_CHANNEL` / `BUZZ_WAKE_POST_REF` / `BUZZ_WAKE_BODY` 则拒绝启动。#16 硬停后应设 `BUZZ_WAKE_FUSE=<reason>`；本票消费该信号，不读 ledger 重算。剩余接线：Desktop 在 ACP 唤醒时注入上述环境变量。
 
 ## 9 边界
 
@@ -203,10 +204,10 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
 
 ## 11 测试计划
 
-功能文件与验收故事 1:1，实现阶段写入，本 Draft 只命名：
+功能文件与验收故事 1:1：
 
 - E2E S1：`.agents/skills/verify-buzz-team/features/channel-mention-gate.md`
-  多身份 Online 的真实 Desktop 频道：普通讨论帖（无本身份 @）不得出现该身份执行向 tool_call；明确 @ 某一身份时仅该身份（或已配置单 owner）进入执行；非目标静默或短读。定量：同帖未 @ 身份执行向 tool 调用次数 = 0。负向：别名冲突、结构/文本不一致、未知频道类型均不启动。
+  多身份 Online 的真实 Desktop 频道：普通讨论帖（无本身份 @）不得出现该身份执行向 tool_call；明确 @ 某一身份时仅该身份（或已配置单 owner）进入执行；非目标静默或短读。定量：同帖未 @ 身份执行向 tool 调用次数 = 0。负向：别名冲突、传入结构化 mention、未知频道类型均不启动。
 - E2E S2：`.agents/skills/verify-buzz-team/features/session-rotate.md`
   频道绑定 session 跑到配置上限（由 #16 硬停出 fuse）：频道回帖含【熔断】与原因枚举、无秘密；下一执行 turn 的 session id ≠ 熔断前 session id；旧 sticky 不再被无 task 路径续跑。
 - Integration：`wake decide` 对结构化 mention、别名、单 owner、ambiguous 的矩阵；游标原子写入与损坏 fail-closed；fuse 后禁止旧 session_id。
@@ -216,15 +217,15 @@ CLI 只提供只读判定与游标/熔断状态检查，便于验收。不提供
 
 S2 端到端依赖 #16 能在 Desktop 路径发出熔断信号；门控 S1 可独立验收。
 
-## 12 开放问题
+## 12 已决默认（peng 2026-09-22）
 
-留给 peng / 实现前确认：
+原开放问题已收口，不再待定：
 
-1. Desktop/ACP 事件是否已提供结构化 mention（稳定 id/公钥）？若无，是否接受「仅私有别名表 + 精确 @token」直到上游字段核实？
-2. 哪些频道配置 `single_owner_identity`？不得把秘书处点名惯例写成全实例默认。
-3. 熔断后新 `session_id` 是立即分配并写入回帖，还是等到下一次被 @ 再分配？（定量只约束下一次执行。）
-4. `max_usd` 在 #7 账本尚无金额字段：#16 是扩展 ledger，还是金额仅作 `estimated` 事件？`unavailable` 时是否 fail-closed 熔断？
-5. 线程回复是否应提供「继承父帖点名」的显式策略？本文默认每帖独立、不继承；若产品要继承，必须另批，禁止默默继承。
+1. **无结构化 mention**：只使用实例私有别名表 + 精确 `@token`；歧义或传入结构化载荷则 fail-closed。
+2. **`single_owner_identity` 仅按频道显式配置**：不得从秘书处惯例或 `channel_wake.default` 推导全实例 owner。
+3. **熔断立即换窗**：当时分配新 `session_id`，【熔断】回帖必须同时带旧/新 `session_ref`。
+4. **`max_usd`**：#16 负责 estimated/fuse 事件；金额为 `unavailable` 时 fail-closed 熔断。#15 不另建计量器。
+5. **线程回复不继承父帖点名**：每条帖独立判定，禁止静默继承。
 
 ## 13 关联
 
