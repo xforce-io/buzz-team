@@ -20,7 +20,7 @@ class ACPCommand:
     def validate_task_session_id(self, session_id: str, workspace: Path | None = None) -> str:
         return session_id
 
-    def validate_task_session_binding(self, session_id: str, workspace: Path) -> str:
+    def validate_task_session_binding(self, session_id: str, base: Path, workspace: Path) -> str:
         return self.validate_task_session_id(session_id, workspace)
 
     def validate(self):
@@ -76,17 +76,16 @@ class Grok(ACPCommand):
             raise ValueError("Grok task session must be a UUID")
         return session_id.lower()
 
-    def validate_task_session_binding(self, session_id: str, workspace: Path) -> str:
+    def validate_task_session_binding(self, session_id: str, base: Path, workspace: Path) -> str:
         session_id = self.validate_task_session_id(session_id, workspace)
-        if Path(self.spec["command"]).name == "grok":
-            env = {"GROK_HOME": str(workspace.parent / "grok"), "PATH": os.environ.get("PATH", "")}
-            try:
-                output = subprocess.check_output([self.spec["command"], "sessions", "list", "--limit", "100"],
-                                                 cwd=workspace, env=env, text=True, stderr=subprocess.DEVNULL, timeout=10)
-            except (OSError, subprocess.SubprocessError) as exc:
-                raise ValueError("cannot verify Grok task session") from exc
-            if session_id not in output.lower():
-                raise ValueError("Grok task session not found in workspace")
+        env = {"GROK_HOME": str(self.home(base)), "PATH": os.environ.get("PATH", "")}
+        try:
+            output = subprocess.check_output([self.spec["command"], "sessions", "search", session_id],
+                                             cwd=workspace, env=env, text=True, stderr=subprocess.DEVNULL, timeout=10)
+        except (OSError, subprocess.SubprocessError) as exc:
+            raise ValueError("cannot verify Grok task session") from exc
+        if session_id not in output.lower():
+            raise ValueError("Grok task session not found in workspace")
         return session_id
 
     def task_session_args(self, session_id: str) -> list[str]:

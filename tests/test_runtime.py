@@ -33,7 +33,7 @@ class Fixture(unittest.TestCase):
         self.prod = self.root / "production"
         self.prod.mkdir()
         self.fake = self.root / "fake-executor"
-        self.fake.write_text(f"#!{sys.executable}\nimport json,os,sys\nif '--help' in sys.argv:\n print('--agent-command --agent-args --session-policy --agent-owner')\nelse:\n print(json.dumps({{'args':sys.argv[1:],'cwd':os.getcwd(),'home':os.getenv('GROK_HOME'),'other':os.getenv('EXAMPLE_HOME')}}))\n")
+        self.fake.write_text(f"#!{sys.executable}\nimport json,os,sys\nif 'sessions' in sys.argv:\n print(sys.argv[-1])\nelif '--help' in sys.argv:\n print('--agent-command --agent-args --session-policy --agent-owner')\nelse:\n print(json.dumps({{'args':sys.argv[1:],'cwd':os.getcwd(),'home':os.getenv('GROK_HOME'),'other':os.getenv('EXAMPLE_HOME')}}))\n")
         self.fake.chmod(0o700)
         self.instructions = self.root / "instructions.md"
         self.instructions.write_text("Private instructions\n")

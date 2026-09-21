@@ -126,6 +126,7 @@ class Runtime:
             if not launch_cwd.is_relative_to(self.base.resolve()) or not launch_cwd.is_dir():
                 raise ValueError("task workspace missing or outside identity")
             session["session_id"] = self.executor.validate_task_session_id(session["session_id"], launch_cwd)
+            self.executor.validate_task_session_binding(session["session_id"], self.base, launch_cwd)
         errors = self.executor.check(self.base)
         if errors:
             raise ValueError("; ".join(errors))
