@@ -17,6 +17,7 @@ from . import desktop
 from .instance import digest, init_legacy, prepare
 from .runtime import Runtime
 from .sessions import SessionStore
+from .context import ContextLedger
 
 
 def _ref(value: str) -> str:
@@ -26,6 +27,17 @@ def _ref(value: str) -> str:
 def _public_session(record: dict[str, str]) -> dict[str, str]:
     return {"task_ref": _ref(record["task_id"]), "session_ref": _ref(record["session_id"]),
             "state": record["state"]}
+
+def _metric_value(value: str) -> int | str:
+    if value == "unavailable":
+        return value
+    try:
+        parsed = int(value)
+    except ValueError as exc:
+        raise ValueError("metric must be a non-negative integer or unavailable") from exc
+    if parsed < 0:
+        raise ValueError("metric must be a non-negative integer or unavailable")
+    return parsed
 
 
 def doctor(config: Config):
@@ -112,6 +124,21 @@ def parser():
             action.add_argument(f"--{name}", required=True)
         action.add_argument("--owner", required=True)
     session_sub.add_parser("list", help="列出任务会话映射")
+    context = sub.add_parser("context", help="记录任务上下文成本与安全交接")
+    context_sub = context.add_subparsers(dest="context_command", required=True)
+    start = context_sub.add_parser("start")
+    start.add_argument("--task", required=True); start.add_argument("--max-input-tokens", type=int); start.add_argument("--max-context-tokens", type=int)
+    record = context_sub.add_parser("record")
+    record.add_argument("--task", required=True); record.add_argument("--turn", required=True); record.add_argument("--provider", required=True); record.add_argument("--model", required=True)
+    for name in ("input", "output", "cached-input", "uncached-input", "context", "duration"):
+        record.add_argument(f"--{name}-tokens" if name != "duration" else "--duration-ms", required=name in {"input", "output"}, default=None if name in {"input", "output"} else "unavailable")
+        record.add_argument(f"--{name}-quality", choices=("actual", "estimated", "unavailable"), default="actual")
+    record.add_argument("--tool-rounds", type=int, default=0); record.add_argument("--retries", type=int, default=0); record.add_argument("--result-status", default="success")
+    handoff = context_sub.add_parser("handoff")
+    for name in ("task", "goal", "next-step", "workspace-ref", "approval-state"): handoff.add_argument(f"--{name}", required=True)
+    for name in ("constraint", "fact", "pending", "tool-result"): handoff.add_argument(f"--{name}", action="append", default=[])
+    handoff.add_argument("--open-tool-calls", type=int, default=0)
+    report = context_sub.add_parser("report"); report.add_argument("--task", required=True)
     return p
 
 
@@ -167,6 +194,22 @@ def main():
                         result = _public_session(store.release(**values, owner=args.owner))
                     else:
                         result = _public_session(store.resolve(**values))
+            elif args.command == "context":
+                ledger = ContextLedger(config.instance, args.task)
+                if args.context_command == "report":
+                    result = ledger.report()
+                else:
+                    if not any(item["task_id"] == args.task for item in SessionStore(config.instance).list()):
+                        raise ValueError("task session mapping not found")
+                    if args.context_command == "start":
+                        result = ledger.start(max_input_tokens=args.max_input_tokens, max_context_tokens=args.max_context_tokens)
+                    elif args.context_command == "record":
+                        names = {"input": "input_tokens", "output": "output_tokens", "cached-input": "cached_input_tokens", "uncached-input": "uncached_input_tokens", "context": "context_tokens", "duration": "duration_ms"}
+                        values = {target: _metric_value(getattr(args, source.replace("-", "_") + ("_tokens" if source != "duration" else "_ms"))) for source, target in names.items()}
+                        qualities = {target: getattr(args, source.replace("-", "_") + "_quality") for source, target in names.items()}
+                        result = ledger.record(turn_id=args.turn, provider=args.provider, model=args.model, values=values, qualities=qualities, tool_rounds=args.tool_rounds, retries=args.retries, result_status=args.result_status)
+                    else:
+                        result = ledger.handoff(goal=args.goal, next_step=args.next_step, workspace_ref=args.workspace_ref, approval_state=args.approval_state, constraints=args.constraint, facts=args.fact, pending=args.pending, tool_results=args.tool_result, open_tool_calls=args.open_tool_calls)
             elif args.command == "launch":
                 task_id = args.task or os.environ.get("BUZZ_TASK_ID")
                 launch_args = args.args[1:] if args.args[:1] == ["--"] else args.args

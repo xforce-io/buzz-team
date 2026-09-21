@@ -8,3 +8,4 @@
 | S4 | [客户端行为](desktop.md) | Buzz Desktop |
 | S5 | [改进项追踪](improvements.md) | 项目文档与 GitHub Issues |
 | #6 S1 | [任务会话](task-sessions.md) | session bind / resolve / list |
+| #7 S1 | [上下文成本](context-cost.md) | context start / record / handoff / report |

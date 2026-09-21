@@ -529,6 +529,33 @@ class CLITests(Fixture):
         self.assertTrue(all(set(row) == {"task_ref", "session_ref", "state"}
                             for row in json.loads(listed.stdout)["bindings"]))
 
+    def test_context_cli_requires_session_and_preserves_handoff_safety(self):
+        common = ("--community", "ws://localhost:3000", "--identity", self.key,
+                  "--scope", "channel-context", "--workspace", str(self.base / "workspace"))
+        missing = self.cli("context", "start", "--task", "task-context")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("session mapping not found", missing.stderr)
+        bound = self.cli("session", "bind", "--task", "task-context", *common, "--session", "ses-context")
+        self.assertEqual(bound.returncode, 0, bound.stderr)
+        started = self.cli("context", "start", "--task", "task-context", "--max-context-tokens", "100")
+        self.assertEqual(started.returncode, 0, started.stderr)
+        recorded = self.cli("context", "record", "--task", "task-context", "--turn", "turn-1",
+                            "--provider", "test", "--model", "test-model", "--input-tokens", "20",
+                            "--output-tokens", "5", "--context-tokens", "50")
+        self.assertEqual(recorded.returncode, 0, recorded.stderr)
+        rejected = self.cli("context", "handoff", "--task", "task-context", "--goal", "goal",
+                            "--next-step", "next", "--workspace-ref", "HEAD", "--approval-state", "approved",
+                            "--open-tool-calls", "1")
+        self.assertEqual(rejected.returncode, 2)
+        self.assertIn("open tool calls", rejected.stderr)
+        handoff = self.cli("context", "handoff", "--task", "task-context", "--goal", "goal",
+                           "--next-step", "next", "--workspace-ref", "HEAD", "--approval-state", "approved",
+                           "--fact", "verified", "--constraint", "preserve behavior")
+        self.assertEqual(handoff.returncode, 0, handoff.stderr)
+        report = self.cli("context", "report", "--task", "task-context")
+        self.assertEqual(report.returncode, 0, report.stderr)
+        self.assertEqual(json.loads(report.stdout)["handoff"], "available")
+
 
 class BindingTests(Fixture):
     def test_crlf_desktop_configuration_can_rollback(self):
