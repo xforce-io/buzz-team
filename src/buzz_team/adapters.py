@@ -72,7 +72,7 @@ class Grok(ACPCommand):
     supports_task_sessions = True
 
     def validate_task_session_id(self, session_id: str, workspace: Path | None = None) -> str:
-        if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", session_id):
+        if not re.fullmatch(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-8][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}", session_id):
             raise ValueError("Grok task session must be a UUID")
         return session_id.lower()
 
