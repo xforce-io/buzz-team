@@ -139,6 +139,7 @@ def parser():
     for name in ("constraint", "fact", "pending", "tool-result"): handoff.add_argument(f"--{name}", action="append", default=[])
     handoff.add_argument("--open-tool-calls", type=int, default=0)
     report = context_sub.add_parser("report"); report.add_argument("--task", required=True)
+    restore = context_sub.add_parser("restore"); restore.add_argument("--task", required=True)
     return p
 
 
@@ -198,6 +199,8 @@ def main():
                 ledger = ContextLedger(config.instance, args.task)
                 if args.context_command == "report":
                     result = ledger.report()
+                elif args.context_command == "restore":
+                    result = ledger.read_handoff()
                 else:
                     if not any(item["task_id"] == args.task for item in SessionStore(config.instance).list()):
                         raise ValueError("task session mapping not found")
