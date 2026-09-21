@@ -41,6 +41,17 @@ class SessionStoreTests(unittest.TestCase):
         self.assertEqual(self.store.resolve(task_id="a", **self.common)["session_id"], "session-a")
         self.assertEqual(self.store.resolve(task_id="b", **self.common), other)
 
+    def test_task_is_globally_unique_and_restore_claim_is_atomic(self):
+        self.bind()
+        with self.assertRaisesRegex(ValueError, "conflict"):
+            self.bind(identity="b" * 16 + "/" + "b" * 64, session="other-session")
+        claimed = self.store.claim(owner="owner-a", task_id="a", **self.common)
+        self.assertEqual(claimed["state"], "restoring")
+        with self.assertRaisesRegex(ValueError, "already restoring"):
+            self.store.claim(owner="owner-b", task_id="a", **self.common)
+        released = self.store.release(owner="owner-a", task_id="a", **self.common)
+        self.assertEqual(released["state"], "restored")
+
     def test_corrupt_file_fails_closed(self):
         self.instance.mkdir()
         (self.instance / "private").mkdir()

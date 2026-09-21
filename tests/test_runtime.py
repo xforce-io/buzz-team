@@ -525,7 +525,9 @@ class CLITests(Fixture):
         self.assertIn("conflict", conflict.stderr)
         listed = self.cli("session", "list")
         self.assertEqual(listed.returncode, 0, listed.stderr)
-        self.assertEqual({row["task_id"] for row in json.loads(listed.stdout)["bindings"]}, {"task-a", "task-b"})
+        self.assertEqual(len(json.loads(listed.stdout)["bindings"]), 2)
+        self.assertTrue(all(set(row) == {"task_ref", "session_ref", "state"}
+                            for row in json.loads(listed.stdout)["bindings"]))
 
 
 class BindingTests(Fixture):

@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import importlib.resources
 import json
 import os
@@ -16,6 +17,10 @@ from . import desktop
 from .instance import digest, init_legacy, prepare
 from .runtime import Runtime
 from .sessions import SessionStore
+
+
+def _ref(value: str) -> str:
+    return hashlib.sha256(value.encode()).hexdigest()[:12]
 
 
 def doctor(config: Config):
@@ -94,6 +99,11 @@ def parser():
     resolve = session_sub.add_parser("resolve", help="解析任务会话映射")
     for name in ("task", "community", "identity", "scope", "workspace"):
         resolve.add_argument(f"--{name}", required=True)
+    for command in ("claim", "release"):
+        action = session_sub.add_parser(command, help="原子占用或释放任务会话")
+        for name in ("task", "community", "identity", "scope", "workspace"):
+            action.add_argument(f"--{name}", required=True)
+        action.add_argument("--owner", required=True)
     session_sub.add_parser("list", help="列出任务会话映射")
     return p
 
@@ -127,14 +137,26 @@ def main():
             elif args.command == "session":
                 store = SessionStore(config.instance)
                 if args.session_command == "list":
-                    result = {"bindings": store.list()}
+                    result = {"bindings": [{"task_ref": _ref(row["task_id"]),
+                                             "session_ref": _ref(row["session_id"]),
+                                             "state": row["state"]} for row in store.list()]}
                 else:
-                    config.agent(args.identity)
+                    agent = config.agent(args.identity)
+                    if args.community.rstrip("/") != agent["relay_url"].rstrip("/"):
+                        raise ValueError("community does not match identity")
+                    workspace = Path(args.workspace).resolve()
+                    runtime = Runtime(config, args.identity)
+                    if not workspace.is_dir() or not workspace.is_relative_to(runtime.base):
+                        raise ValueError("workspace does not belong to identity")
                     values = {"community": args.community, "identity": args.identity,
                               "scope": args.scope, "task_id": args.task,
-                              "workspace": args.workspace}
+                              "workspace": str(workspace)}
                     if args.session_command == "bind":
                         result = store.bind(**values, session_id=args.session_id)
+                    elif args.session_command == "claim":
+                        result = store.claim(**values, owner=args.owner)
+                    elif args.session_command == "release":
+                        result = store.release(**values, owner=args.owner)
                     else:
                         result = store.resolve(**values)
             elif args.command == "launch":

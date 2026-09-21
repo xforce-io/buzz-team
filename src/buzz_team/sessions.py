@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import uuid
 from typing import Iterator
 
 import fcntl
@@ -76,6 +77,10 @@ def _validate_record(record: object) -> dict[str, str]:
     }
     if result["state"] not in _STATES:
         raise ValueError("invalid session state")
+    owner = record.get("restore_owner")
+    if owner is not None:
+        owner = _text("restore owner", owner)
+    result["restore_owner"] = owner
     return result
 
 
@@ -139,10 +144,12 @@ class SessionStore:
 
     @staticmethod
     def _record(community: object, identity: object, scope: object, task_id: object,
-                workspace: object, session_id: object, state: str = "bound") -> dict[str, str]:
+                workspace: object, session_id: object, state: str = "bound",
+                restore_owner: str | None = None) -> dict[str, str]:
         return _validate_record({"community": community, "identity": identity, "scope": scope,
                                  "task_id": task_id, "workspace": workspace,
-                                 "session_id": session_id, "state": state})
+                                 "session_id": session_id, "state": state,
+                                 "restore_owner": restore_owner})
 
     def bind(self, *, community: object, identity: object, scope: object, task_id: object,
              workspace: object, session_id: object) -> dict[str, str]:
@@ -158,7 +165,7 @@ class SessionStore:
                 return existing
             for candidate in data["bindings"].values():
                 candidate = _validate_record(candidate)
-                if candidate["task_id"] == record["task_id"] and candidate["identity"] == record["identity"]:
+                if candidate["task_id"] == record["task_id"]:
                     raise ValueError("session mapping conflict")
             data["bindings"][key] = record
             self._write(data)
@@ -186,3 +193,44 @@ class SessionStore:
         with self._lock():
             return sorted((_validate_record(item) for item in self._read()["bindings"].values()),
                           key=lambda item: (item["identity"], item["scope"], item["task_id"]))
+
+    def claim(self, *, community: object, identity: object, scope: object, task_id: object,
+              workspace: object, owner: str | None = None) -> dict[str, str]:
+        expected = self._record(community, identity, scope, task_id, workspace, "session-placeholder")
+        owner = owner or uuid.uuid4().hex
+        _text("restore owner", owner)
+        key = _record_key(expected)
+        with self._lock():
+            data = self._read()
+            record = data["bindings"].get(key)
+            if record is None:
+                raise ValueError("session mapping not found")
+            record = _validate_record(record)
+            if any(record[name] != expected[name] for name in ("community", "identity", "scope", "task_id", "workspace")):
+                raise ValueError("session mapping ownership mismatch")
+            if record["state"] == "restoring" and record["restore_owner"] != owner:
+                raise ValueError("session mapping already restoring")
+            record["state"], record["restore_owner"] = "restoring", owner
+            data["bindings"][key] = record
+            self._write(data)
+            return record
+
+    def release(self, *, community: object, identity: object, scope: object, task_id: object,
+                workspace: object, owner: str) -> dict[str, str]:
+        expected = self._record(community, identity, scope, task_id, workspace, "session-placeholder")
+        owner = _text("restore owner", owner)
+        key = _record_key(expected)
+        with self._lock():
+            data = self._read()
+            record = data["bindings"].get(key)
+            if record is None:
+                raise ValueError("session mapping not found")
+            record = _validate_record(record)
+            if any(record[name] != expected[name] for name in ("community", "identity", "scope", "task_id", "workspace")):
+                raise ValueError("session mapping ownership mismatch")
+            if record["state"] != "restoring" or record["restore_owner"] != owner:
+                raise ValueError("session mapping restore ownership mismatch")
+            record["state"], record["restore_owner"] = "restored", None
+            data["bindings"][key] = record
+            self._write(data)
+            return record
