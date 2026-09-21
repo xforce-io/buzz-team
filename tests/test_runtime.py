@@ -12,6 +12,8 @@ from unittest.mock import patch
 from buzz_team.config import Config, identity
 from buzz_team.adapters import adapter
 from buzz_team.runtime import Runtime
+from buzz_team.sessions import SessionStore
+from buzz_team.context import ContextLedger
 from buzz_team.instance import init_legacy, prepare, digest, write_json
 from buzz_team import desktop, buzz_cli
 
@@ -177,6 +179,26 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_task_launch_consumes_mapping_and_handoff_contract(self):
+        task = "launch-task"
+        SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                          scope="channel-1", task_id=task,
+                                          workspace=str(self.base / "workspace"), session_id="session-1")
+        ledger = ContextLedger(self.instance, task)
+        ledger.start()
+        ledger.record(turn_id="turn-1", provider="provider", model="model",
+                      values={"input_tokens": 1, "output_tokens": 1})
+        ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD", approval_state="approved")
+        runtime = Runtime(self.config, self.key)
+        with patch.object(runtime, "command", return_value=[str(self.fake), "--arg"]), \
+             patch("buzz_team.runtime.os.execve") as execve, \
+             patch("buzz_team.runtime.os.chdir"):
+            runtime.launch("executor", [], task_id=task)
+        env = execve.call_args.args[2]
+        self.assertEqual(env["BUZZ_TASK_ID"], task)
+        self.assertEqual(env["BUZZ_ACP_SESSION_ID"], "session-1")
+        self.assertEqual(env["BUZZ_CONTEXT_HANDOFF_FILE"], env["BUZZ_CONTEXT_LEDGER"])
+
     def test_desktop_identity_and_version_fail_closed(self):
         original = self.desktop_file.read_bytes()
         info_path = self.app / "Contents/Info.plist"
@@ -555,6 +577,9 @@ class CLITests(Fixture):
         report = self.cli("context", "report", "--task", "task-context")
         self.assertEqual(report.returncode, 0, report.stderr)
         self.assertEqual(json.loads(report.stdout)["handoff"], "available")
+        restored = self.cli("context", "restore", "--task", "task-context")
+        self.assertEqual(restored.returncode, 0, restored.stderr)
+        self.assertEqual(json.loads(restored.stdout)["goal"], "goal")
 
 
 class BindingTests(Fixture):

@@ -50,6 +50,20 @@ class ContextLedgerTests(unittest.TestCase):
                                       tool_results=["result digest"])
         self.assertEqual(handoff["task_id"], "task-a")
         self.assertEqual(self.ledger.report()["handoff"], "available")
+        self.assertEqual(self.ledger.read_handoff()["goal"], "goal")
+
+    def test_budget_status_survives_handoff_and_totals_are_verified(self):
+        self.ledger.start(max_input_tokens=1)
+        self.ledger.record(turn_id="turn-1", provider="provider", model="model",
+                           values={"input_tokens": 2, "output_tokens": 1})
+        self.ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD",
+                            approval_state="approved")
+        self.assertEqual(self.ledger.report()["status"], "budget_exceeded")
+        data = json.loads(self.ledger.path.read_text())
+        data["totals"]["input_tokens"]["actual"] = 0
+        self.ledger.path.write_text(json.dumps(data))
+        with self.assertRaisesRegex(ValueError, "invalid context ledger"):
+            self.ledger.report()
 
     def test_corrupt_ledger_fails_closed(self):
         self.ledger.root.mkdir(parents=True)
