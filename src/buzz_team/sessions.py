@@ -12,6 +12,7 @@ import os
 from pathlib import Path
 import re
 import tempfile
+import time
 import uuid
 from typing import Iterator
 
@@ -81,6 +82,10 @@ def _validate_record(record: object) -> dict[str, str]:
     if owner is not None:
         owner = _text("restore owner", owner)
     result["restore_owner"] = owner
+    started = record.get("restore_started_at")
+    if started is not None and (type(started) not in (int, float) or started < 0):
+        raise ValueError("invalid restore start")
+    result["restore_started_at"] = started
     return result
 
 
@@ -145,11 +150,12 @@ class SessionStore:
     @staticmethod
     def _record(community: object, identity: object, scope: object, task_id: object,
                 workspace: object, session_id: object, state: str = "bound",
-                restore_owner: str | None = None) -> dict[str, str]:
+                restore_owner: str | None = None, restore_started_at: float | None = None) -> dict[str, str]:
         return _validate_record({"community": community, "identity": identity, "scope": scope,
                                  "task_id": task_id, "workspace": workspace,
                                  "session_id": session_id, "state": state,
-                                 "restore_owner": restore_owner})
+                                 "restore_owner": restore_owner,
+                                 "restore_started_at": restore_started_at})
 
     def bind(self, *, community: object, identity: object, scope: object, task_id: object,
              workspace: object, session_id: object) -> dict[str, str]:
@@ -167,6 +173,8 @@ class SessionStore:
             for candidate in data["bindings"].values():
                 candidate = _validate_record(candidate)
                 if candidate["task_id"] == record["task_id"]:
+                    raise ValueError("session mapping conflict")
+                if candidate["identity"] == record["identity"] and candidate["session_id"] == record["session_id"]:
                     raise ValueError("session mapping conflict")
             data["bindings"][key] = record
             self._write(data)
@@ -209,9 +217,11 @@ class SessionStore:
             record = _validate_record(record)
             if any(record[name] != expected[name] for name in ("community", "identity", "scope", "task_id", "workspace")):
                 raise ValueError("session mapping ownership mismatch")
-            if record["state"] == "restoring" and record["restore_owner"] != owner:
+            if (record["state"] == "restoring" and record["restore_owner"] != owner
+                    and record["restore_started_at"] is not None
+                    and time.time() - record["restore_started_at"] <= 300):
                 raise ValueError("session mapping already restoring")
-            record["state"], record["restore_owner"] = "restoring", owner
+            record["state"], record["restore_owner"], record["restore_started_at"] = "restoring", owner, time.time()
             data["bindings"][key] = record
             self._write(data)
             return record
@@ -231,7 +241,7 @@ class SessionStore:
                 raise ValueError("session mapping ownership mismatch")
             if record["state"] != "restoring" or record["restore_owner"] != owner:
                 raise ValueError("session mapping restore ownership mismatch")
-            record["state"], record["restore_owner"] = "restored", None
+            record["state"], record["restore_owner"], record["restore_started_at"] = "restored", None, None
             data["bindings"][key] = record
             self._write(data)
             return record

@@ -51,6 +51,8 @@ class SessionStoreTests(unittest.TestCase):
             self.store.claim(owner="owner-b", task_id="a", **self.common)
         released = self.store.release(owner="owner-a", task_id="a", **self.common)
         self.assertEqual(released["state"], "restored")
+        with self.assertRaisesRegex(ValueError, "conflict"):
+            self.bind(task="b", session="session-a")
 
     def test_corrupt_file_fails_closed(self):
         self.instance.mkdir()
