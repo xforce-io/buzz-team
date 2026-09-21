@@ -15,6 +15,7 @@ import tempfile
 import time
 import uuid
 from typing import Iterator
+from contextlib import nullcontext
 
 import fcntl
 
@@ -262,13 +263,14 @@ class SessionStore:
             return record
 
     def resolve_task(self, *, task_id: object, identity: object, community: object,
-                     scope: object | None = None) -> dict[str, str]:
+                     scope: object | None = None, read_only: bool = False) -> dict[str, str]:
         task_id = _task(task_id)
         identity = _identity(identity)
         community = _community(community)
         if scope is not None:
             scope = _text("scope", scope)
-        with self._lock():
+        context = nullcontext() if read_only else self._lock()
+        with context:
             matches = [_validate_record(item) for item in self._read()["bindings"].values()
                        if _validate_record(item)["task_id"] == task_id]
             if not matches:

@@ -108,10 +108,13 @@ class Runtime:
                 session_id = os.environ.get("BUZZ_ACP_SESSION_ID")
                 if not workspace or not session_id:
                     raise ValueError("incomplete inherited task session")
-                session = {"community": self.agent["relay_url"], "identity": self.key,
-                           "scope": task_scope, "task_id": task_id, "workspace": workspace,
-                           "session_id": session_id, "state": "restoring",
-                           "restore_owner": inherited_owner, "restore_started_at": 0}
+                store = SessionStore(self.config.instance)
+                session = store.resolve_task(task_id=task_id, identity=self.key,
+                                             community=self.agent["relay_url"], scope=task_scope,
+                                             read_only=True)
+                if (session["state"] != "restoring" or session["restore_owner"] != inherited_owner
+                        or session["session_id"] != session_id or session["workspace"] != str(Path(workspace).resolve())):
+                    raise ValueError("session mapping restore ownership mismatch")
             else:
                 store = SessionStore(self.config.instance)
                 session = store.resolve_task(task_id=task_id, identity=self.key,
@@ -133,7 +136,8 @@ class Runtime:
         env = self.env(dict(os.environ), launch_cwd)
         if session:
             env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
-                       BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_TASK_WORKSPACE=str(launch_cwd))
+                       BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_TASK_SCOPE=session["scope"],
+                       BUZZ_TASK_WORKSPACE=str(launch_cwd))
             if owner:
                 env["BUZZ_ACP_SESSION_OWNER"] = owner
         binary = self.executor.spec["command"]
@@ -151,7 +155,8 @@ class Runtime:
                 child_owner = f"{os.getpid()}-{token}"
                 env["BUZZ_ACP_SESSION_OWNER"] = child_owner
                 try:
-                    os.read(ready_r, 1)
+                    if os.read(ready_r, 1) != b"1":
+                        os._exit(126)
                     os.close(ready_r)
                     os.chdir(launch_cwd)
                     os.execve(command[0], command, env)
