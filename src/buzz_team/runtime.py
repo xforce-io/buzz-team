@@ -99,10 +99,9 @@ class Runtime:
         store = None
         owner = None
         if task_id:
+            from .context import ContextLedger
             from .sessions import SessionStore
             task_scope = task_scope or os.environ.get("BUZZ_TASK_SCOPE")
-            if not task_scope:
-                raise ValueError("task scope required")
             if not self.executor.supports_task_sessions:
                 raise ValueError("executor adapter cannot restore task sessions")
             inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER")
@@ -122,11 +121,19 @@ class Runtime:
                 store = SessionStore(self.config.instance)
                 session = store.resolve_task(task_id=task_id, identity=self.key,
                                              community=self.agent["relay_url"], scope=task_scope)
+            task_scope = session["scope"]
             launch_cwd = Path(session["workspace"]).resolve()
             if not launch_cwd.is_relative_to(self.base.resolve()) or not launch_cwd.is_dir():
                 raise ValueError("task workspace missing or outside identity")
             session["session_id"] = self.executor.validate_task_session_id(session["session_id"], launch_cwd)
             self.executor.validate_task_session_binding(session["session_id"], self.base, launch_cwd)
+            try:
+                ContextLedger(self.config.instance, task_id).read_handoff()
+            except ValueError as exc:
+                if str(exc) not in {"context handoff unavailable", "context ledger not found"}:
+                    raise
+            else:
+                raise ValueError("executor adapter cannot consume context handoff")
         errors = self.executor.check(self.base)
         if errors:
             raise ValueError("; ".join(errors))

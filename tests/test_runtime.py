@@ -183,21 +183,15 @@ class CLITests(Fixture):
         task = "launch-task"
         SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
                                           scope="channel-1", task_id=task,
-                                          workspace=str(self.base / "workspace"), session_id="session-1")
+                                          workspace=str(self.base / "workspace"), session_id="11111111-1111-4111-8111-111111111111")
         ledger = ContextLedger(self.instance, task)
         ledger.start()
         ledger.record(turn_id="turn-1", provider="provider", model="model",
                       values={"input_tokens": 1, "output_tokens": 1})
         ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD", approval_state="approved")
         runtime = Runtime(self.config, self.key)
-        with patch.object(runtime, "command", return_value=[str(self.fake), "--arg"]), \
-             patch("buzz_team.runtime.os.execve") as execve, \
-             patch("buzz_team.runtime.os.chdir"):
+        with self.assertRaisesRegex(ValueError, "cannot consume context handoff"):
             runtime.launch("executor", [], task_id=task)
-        env = execve.call_args.args[2]
-        self.assertEqual(env["BUZZ_TASK_ID"], task)
-        self.assertEqual(env["BUZZ_ACP_SESSION_ID"], "session-1")
-        self.assertEqual(env["BUZZ_CONTEXT_HANDOFF_FILE"], env["BUZZ_CONTEXT_LEDGER"])
 
     def test_desktop_identity_and_version_fail_closed(self):
         original = self.desktop_file.read_bytes()
@@ -557,7 +551,7 @@ class CLITests(Fixture):
         missing = self.cli("context", "start", "--task", "task-context")
         self.assertEqual(missing.returncode, 2)
         self.assertIn("session mapping not found", missing.stderr)
-        bound = self.cli("session", "bind", "--task", "task-context", *common, "--session", "ses-context")
+        bound = self.cli("session", "bind", "--task", "task-context", *common, "--session", "22222222-2222-4222-8222-222222222222")
         self.assertEqual(bound.returncode, 0, bound.stderr)
         started = self.cli("context", "start", "--task", "task-context", "--max-context-tokens", "100")
         self.assertEqual(started.returncode, 0, started.stderr)
