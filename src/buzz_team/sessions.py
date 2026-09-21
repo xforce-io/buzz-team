@@ -87,6 +87,10 @@ def _validate_record(record: object) -> dict[str, str]:
     if started is not None and (type(started) not in (int, float) or started < 0):
         raise ValueError("invalid restore start")
     result["restore_started_at"] = started
+    if result["state"] == "restoring" and (owner is None or started is None):
+        raise ValueError("invalid restoring session mapping")
+    if result["state"] != "restoring" and (owner is not None or started is not None):
+        raise ValueError("invalid session ownership state")
     return result
 
 

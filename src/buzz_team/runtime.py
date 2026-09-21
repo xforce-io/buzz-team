@@ -99,14 +99,25 @@ class Runtime:
         owner = None
         if task_id:
             from .sessions import SessionStore
-            store = SessionStore(self.config.instance)
             task_scope = task_scope or os.environ.get("BUZZ_TASK_SCOPE")
             if not task_scope:
                 raise ValueError("task scope required")
-            session = store.resolve_task(task_id=task_id, identity=self.key,
-                                         community=self.agent["relay_url"], scope=task_scope)
-            launch_cwd = Path(session["workspace"])
-            if not launch_cwd.is_relative_to(self.base) or not launch_cwd.is_dir():
+            inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER")
+            if inherited_owner:
+                workspace = os.environ.get("BUZZ_TASK_WORKSPACE")
+                session_id = os.environ.get("BUZZ_ACP_SESSION_ID")
+                if not workspace or not session_id:
+                    raise ValueError("incomplete inherited task session")
+                session = {"community": self.agent["relay_url"], "identity": self.key,
+                           "scope": task_scope, "task_id": task_id, "workspace": workspace,
+                           "session_id": session_id, "state": "restoring",
+                           "restore_owner": inherited_owner, "restore_started_at": 0}
+            else:
+                store = SessionStore(self.config.instance)
+                session = store.resolve_task(task_id=task_id, identity=self.key,
+                                             community=self.agent["relay_url"], scope=task_scope)
+            launch_cwd = Path(session["workspace"]).resolve()
+            if not launch_cwd.is_relative_to(self.base.resolve()) or not launch_cwd.is_dir():
                 raise ValueError("task workspace missing or outside identity")
         errors = self.executor.check(self.base)
         if errors:
@@ -116,42 +127,71 @@ class Runtime:
         inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER") if session else None
         claimed = False
         if session:
-            owner = inherited_owner or f"{os.getpid()}-{uuid.uuid4().hex}"
+            owner = inherited_owner
             if inherited_owner and session["restore_owner"] != inherited_owner:
                 raise ValueError("session mapping restore ownership mismatch")
-            if not inherited_owner:
-                session = store.claim(community=session["community"], identity=session["identity"],
-                                      scope=session["scope"], task_id=session["task_id"],
-                                      workspace=session["workspace"], owner=owner)
-                claimed = True
         env = self.env(dict(os.environ), launch_cwd)
         if session:
             env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
-                       BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_ACP_SESSION_OWNER=owner)
+                       BUZZ_ACP_SESSION_SCOPE=session["scope"], BUZZ_TASK_WORKSPACE=str(launch_cwd))
+            if owner:
+                env["BUZZ_ACP_SESSION_OWNER"] = owner
         binary = self.executor.spec["command"]
         if mode == "harness":
             binary = self.config.data["binaries"]["harness"]
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
         command = self.command([binary, *args])
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
-        if task_id:
+        if task_id and not inherited_owner:
+            ready_r, ready_w = os.pipe()
+            token = uuid.uuid4().hex
+            child = os.fork()
+            if child == 0:
+                os.close(ready_w)
+                child_owner = f"{os.getpid()}-{token}"
+                env["BUZZ_ACP_SESSION_OWNER"] = child_owner
+                try:
+                    os.read(ready_r, 1)
+                    os.close(ready_r)
+                    os.chdir(launch_cwd)
+                    os.execve(command[0], command, env)
+                finally:
+                    os._exit(127)
+            os.close(ready_r)
+            owner = f"{child}-{token}"
             try:
-                process = subprocess.Popen(command, cwd=launch_cwd, env=env, start_new_session=True)
+                session = store.claim(community=session["community"], identity=session["identity"],
+                                      scope=session["scope"], task_id=session["task_id"],
+                                      workspace=session["workspace"], owner=owner)
+                claimed = True
+                os.write(ready_w, b"1")
+                os.close(ready_w)
                 previous = {}
                 def forward(signum, _frame):
-                    if process.poll() is None:
-                        process.send_signal(signum)
+                    try:
+                        os.kill(child, signum)
+                    except ProcessLookupError:
+                        pass
                 for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
                     previous[signum] = signal.signal(signum, forward)
                 try:
-                    return process.wait()
+                    _, status = os.waitpid(child, 0)
+                    return os.waitstatus_to_exitcode(status)
                 finally:
                     for signum, handler in previous.items():
                         signal.signal(signum, handler)
-                    if process.poll() is None:
-                        process.terminate()
-                        process.wait(timeout=10)
+            except Exception:
+                try:
+                    os.kill(child, signal.SIGTERM)
+                    os.waitpid(child, 0)
+                except (ProcessLookupError, ChildProcessError):
+                    pass
+                raise
             finally:
+                try:
+                    os.close(ready_w)
+                except OSError:
+                    pass
                 if claimed and store and owner:
                     store.release(community=session["community"], identity=session["identity"],
                                   scope=session["scope"], task_id=session["task_id"],
