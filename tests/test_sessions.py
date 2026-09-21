@@ -1,7 +1,9 @@
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from buzz_team.sessions import SessionStore
 
@@ -45,11 +47,14 @@ class SessionStoreTests(unittest.TestCase):
         self.bind()
         with self.assertRaisesRegex(ValueError, "conflict"):
             self.bind(identity="b" * 16 + "/" + "b" * 64, session="other-session")
-        claimed = self.store.claim(owner="owner-a", task_id="a", **self.common)
+        owner_a = f"{os.getpid()}-" + "a" * 32
+        owner_b = f"{os.getpid()}-" + "b" * 32
+        claimed = self.store.claim(owner=owner_a, task_id="a", **self.common)
         self.assertEqual(claimed["state"], "restoring")
-        with self.assertRaisesRegex(ValueError, "already restoring"):
-            self.store.claim(owner="owner-b", task_id="a", **self.common)
-        released = self.store.release(owner="owner-a", task_id="a", **self.common)
+        with patch("buzz_team.sessions.os.kill") as kill, self.assertRaisesRegex(ValueError, "already restoring"):
+            kill.return_value = None
+            self.store.claim(owner=owner_b, task_id="a", **self.common)
+        released = self.store.release(owner=owner_a, task_id="a", **self.common)
         self.assertEqual(released["state"], "restored")
         with self.assertRaisesRegex(ValueError, "conflict"):
             self.bind(task="b", session="session-a")

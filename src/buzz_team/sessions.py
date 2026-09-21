@@ -22,6 +22,7 @@ import fcntl
 _TASK = re.compile(r"[a-z0-9][a-z0-9-]{0,79}\Z")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
 _IDENTITY = re.compile(r"[0-9a-f]{16}/[0-9a-f]{64}\Z")
+_OWNER = re.compile(r"[0-9]+-[0-9a-f]{32}\Z")
 _STATES = {"bound", "restoring", "restored", "conflict", "failed"}
 
 
@@ -80,7 +81,7 @@ def _validate_record(record: object) -> dict[str, str]:
         raise ValueError("invalid session state")
     owner = record.get("restore_owner")
     if owner is not None:
-        owner = _text("restore owner", owner)
+        owner = _text("restore owner", owner, _OWNER)
     result["restore_owner"] = owner
     started = record.get("restore_started_at")
     if started is not None and (type(started) not in (int, float) or started < 0):
@@ -206,8 +207,8 @@ class SessionStore:
     def claim(self, *, community: object, identity: object, scope: object, task_id: object,
               workspace: object, owner: str | None = None) -> dict[str, str]:
         expected = self._record(community, identity, scope, task_id, workspace, "session-placeholder")
-        owner = owner or uuid.uuid4().hex
-        _text("restore owner", owner)
+        owner = owner or f"{os.getpid()}-{uuid.uuid4().hex}"
+        _text("restore owner", owner, _OWNER)
         key = _record_key(expected)
         with self._lock():
             data = self._read()
@@ -220,18 +221,15 @@ class SessionStore:
             if record["state"] == "restoring" and record["restore_owner"] != owner:
                 current_owner = record["restore_owner"]
                 alive = False
-                if isinstance(current_owner, str) and current_owner.split("-", 1)[0].isdigit():
-                    try:
-                        os.kill(int(current_owner.split("-", 1)[0]), 0)
-                    except ProcessLookupError:
-                        alive = False
-                    except PermissionError:
-                        alive = True
-                    except OSError:
-                        alive = False
-                else:
-                    # Unknown owner formats are not safely reclaimable.
+                try:
+                    os.kill(int(current_owner.split("-", 1)[0]), 0)
                     alive = True
+                except ProcessLookupError:
+                    alive = False
+                except PermissionError:
+                    alive = True
+                except OSError:
+                    alive = False
                 if alive:
                     raise ValueError("session mapping already restoring")
             record["state"], record["restore_owner"], record["restore_started_at"] = "restoring", owner, time.time()
@@ -242,7 +240,7 @@ class SessionStore:
     def release(self, *, community: object, identity: object, scope: object, task_id: object,
                 workspace: object, owner: str) -> dict[str, str]:
         expected = self._record(community, identity, scope, task_id, workspace, "session-placeholder")
-        owner = _text("restore owner", owner)
+        owner = _text("restore owner", owner, _OWNER)
         key = _record_key(expected)
         with self._lock():
             data = self._read()
@@ -259,16 +257,20 @@ class SessionStore:
             self._write(data)
             return record
 
-    def resolve_task(self, *, task_id: object, identity: object, community: object) -> dict[str, str]:
+    def resolve_task(self, *, task_id: object, identity: object, community: object,
+                     scope: object | None = None) -> dict[str, str]:
         task_id = _task(task_id)
         identity = _identity(identity)
         community = _community(community)
+        if scope is not None:
+            scope = _text("scope", scope)
         with self._lock():
             matches = [_validate_record(item) for item in self._read()["bindings"].values()
                        if _validate_record(item)["task_id"] == task_id]
             if not matches:
                 raise ValueError("session mapping not found")
             record = matches[0]
-            if record["identity"] != identity or record["community"] != community:
+            if (record["identity"] != identity or record["community"] != community
+                    or (scope is not None and record["scope"] != scope)):
                 raise ValueError("session mapping ownership mismatch")
             return record

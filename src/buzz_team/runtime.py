@@ -7,6 +7,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import signal
 import uuid
 
 from .adapters import adapter
@@ -82,7 +83,8 @@ class Runtime:
             raise ValueError("Seatbelt unavailable; refusing unconfined launch")
         return ["/usr/bin/sandbox-exec", "-p", self.profile(), *argv]
 
-    def launch(self, mode: str, args: list[str], task_id: str | None = None):
+    def launch(self, mode: str, args: list[str], task_id: str | None = None,
+               task_scope: str | None = None):
         from .instance import digest
         spec = self.config.data["compatibility"]
         pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
@@ -98,7 +100,11 @@ class Runtime:
         if task_id:
             from .sessions import SessionStore
             store = SessionStore(self.config.instance)
-            session = store.resolve_task(task_id=task_id, identity=self.key, community=self.agent["relay_url"])
+            task_scope = task_scope or os.environ.get("BUZZ_TASK_SCOPE")
+            if not task_scope:
+                raise ValueError("task scope required")
+            session = store.resolve_task(task_id=task_id, identity=self.key,
+                                         community=self.agent["relay_url"], scope=task_scope)
             launch_cwd = Path(session["workspace"])
             if not launch_cwd.is_relative_to(self.base) or not launch_cwd.is_dir():
                 raise ValueError("task workspace missing or outside identity")
@@ -130,7 +136,21 @@ class Runtime:
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
         if task_id:
             try:
-                return subprocess.run(command, cwd=launch_cwd, env=env, check=False).returncode
+                process = subprocess.Popen(command, cwd=launch_cwd, env=env, start_new_session=True)
+                previous = {}
+                def forward(signum, _frame):
+                    if process.poll() is None:
+                        process.send_signal(signum)
+                for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    previous[signum] = signal.signal(signum, forward)
+                try:
+                    return process.wait()
+                finally:
+                    for signum, handler in previous.items():
+                        signal.signal(signum, handler)
+                    if process.poll() is None:
+                        process.terminate()
+                        process.wait(timeout=10)
             finally:
                 if claimed and store and owner:
                     store.release(community=session["community"], identity=session["identity"],

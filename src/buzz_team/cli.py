@@ -83,6 +83,7 @@ def parser():
     rollback.add_argument("--receipt", type=Path, required=True)
     launch = sub.add_parser("launch", help="内部入口：由 Desktop 调用，不手动并行启动")
     launch.add_argument("--task")
+    launch.add_argument("--scope")
     launch.add_argument("mode", choices=["harness", "executor"])
     launch.add_argument("args", nargs=argparse.REMAINDER)
     buzz = sub.add_parser("buzz", help="内部入口：保留 DM/频道回复行为")
@@ -164,16 +165,10 @@ def main():
                     else:
                         result = _public_session(store.resolve(**values))
             elif args.command == "launch":
-                launch_args = args.args[1:] if args.args[:1] == ["--"] else list(args.args)
                 task_id = args.task or os.environ.get("BUZZ_TASK_ID")
-                if not task_id and "--task" in launch_args:
-                    index = launch_args.index("--task")
-                    if index + 1 >= len(launch_args):
-                        raise ValueError("--task requires a value")
-                    task_id = launch_args.pop(index + 1)
-                    launch_args.pop(index)
+                launch_args = args.args[1:] if args.args[:1] == ["--"] else args.args
                 result = Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
-                    args.mode, launch_args, task_id)
+                    args.mode, launch_args, task_id, args.scope or os.environ.get("BUZZ_TASK_SCOPE"))
                 return result if isinstance(result, int) else 0
             elif args.command == "buzz":
                 from .buzz_cli import run
