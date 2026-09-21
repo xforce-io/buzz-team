@@ -107,11 +107,17 @@ class Runtime:
             raise ValueError("; ".join(errors))
         if not launch_cwd.is_dir():
             raise ValueError("existing identity workspace missing")
+        inherited_owner = os.environ.get("BUZZ_ACP_SESSION_OWNER") if session else None
+        claimed = False
         if session:
-            owner = f"{os.getpid()}-{uuid.uuid4().hex}"
-            session = store.claim(community=session["community"], identity=session["identity"],
-                                  scope=session["scope"], task_id=session["task_id"],
-                                  workspace=session["workspace"], owner=owner)
+            owner = inherited_owner or f"{os.getpid()}-{uuid.uuid4().hex}"
+            if inherited_owner and session["restore_owner"] != inherited_owner:
+                raise ValueError("session mapping restore ownership mismatch")
+            if not inherited_owner:
+                session = store.claim(community=session["community"], identity=session["identity"],
+                                      scope=session["scope"], task_id=session["task_id"],
+                                      workspace=session["workspace"], owner=owner)
+                claimed = True
         env = self.env(dict(os.environ), launch_cwd)
         if session:
             env.update(BUZZ_TASK_ID=task_id, BUZZ_ACP_SESSION_ID=session["session_id"],
@@ -120,17 +126,18 @@ class Runtime:
         if mode == "harness":
             binary = self.config.data["binaries"]["harness"]
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
-        os.chdir(launch_cwd)
         command = self.command([binary, *args])
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
-        try:
-            os.execve(command[0], command, env)
-        except Exception:
-            if session and owner:
-                store.release(community=session["community"], identity=session["identity"],
-                              scope=session["scope"], task_id=session["task_id"],
-                              workspace=session["workspace"], owner=owner)
-            raise
+        if task_id:
+            try:
+                return subprocess.run(command, cwd=launch_cwd, env=env, check=False).returncode
+            finally:
+                if claimed and store and owner:
+                    store.release(community=session["community"], identity=session["identity"],
+                                  scope=session["scope"], task_id=session["task_id"],
+                                  workspace=session["workspace"], owner=owner)
+        os.chdir(launch_cwd)
+        os.execve(command[0], command, env)
 
     def git(self, args: list[str], cwd: Path) -> str:
         return subprocess.check_output(["git", *args], cwd=cwd, env=self.env(dict(os.environ)), text=True, timeout=120).strip()

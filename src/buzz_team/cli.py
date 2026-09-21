@@ -164,9 +164,17 @@ def main():
                     else:
                         result = _public_session(store.resolve(**values))
             elif args.command == "launch":
-                Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
-                    args.mode, args.args[1:] if args.args[:1] == ["--"] else args.args, args.task)
-                return 0
+                launch_args = args.args[1:] if args.args[:1] == ["--"] else list(args.args)
+                task_id = args.task or os.environ.get("BUZZ_TASK_ID")
+                if not task_id and "--task" in launch_args:
+                    index = launch_args.index("--task")
+                    if index + 1 >= len(launch_args):
+                        raise ValueError("--task requires a value")
+                    task_id = launch_args.pop(index + 1)
+                    launch_args.pop(index)
+                result = Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
+                    args.mode, launch_args, task_id)
+                return result if isinstance(result, int) else 0
             elif args.command == "buzz":
                 from .buzz_cli import run
                 run(config, args.args[1:] if args.args[:1] == ["--"] else args.args)

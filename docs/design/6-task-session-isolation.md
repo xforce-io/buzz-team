@@ -46,10 +46,11 @@ Buzz 的频道和 DM 是消息投递语义，不等于任务边界。现有 buzz
 CLI 新增：
 
 - `session bind --task --community --identity --scope --workspace --session`
+- `launch --task TASK MODE [-- EXECUTOR_ARGS...]`
 - `session resolve --task --community --identity --scope --workspace`
 - `session list`
 
-所有命令通过 `--instance` 选择实例；`identity` 必须已注册；绑定同值重复执行幂等，冲突返回 exit 2。输出不含认证、prompt 或会话正文。
+所有命令通过 `--instance` 选择实例；`identity` 必须已注册；绑定同值重复执行幂等，冲突返回 exit 2。任务启动等待执行器退出后释放恢复占用，嵌套 executor 继承同一 owner。输出不含认证、prompt 或会话正文。
 
 ## 9 边界
 
