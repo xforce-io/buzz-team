@@ -1,8 +1,10 @@
 # #24 评估：不依赖 Desktop 注入的频道 wake / mention 控烧
 
-状态：评估完成（2026-09-22）。**结论：no-go**。不改 `block/buzz` / Desktop；禁静态假 `BUZZ_WAKE_*`。#23 保持 park。
+状态：评估收口（2026-09-22）。Staff/peng 先核无 @；parent 活机三问已贴 [Issue #24](https://github.com/xforce-io/buzz-team/issues/24#issuecomment-5775220603)。
 
-本文件是 Scout · Product 书面结论，供 parent 粘贴到 [Issue #24](https://github.com/xforce-io/buzz-team/issues/24)。上游 `block/buzz` 仅作只读对照，未改、未申请 write access。
+**票级结论：downgrade。** 强制把 Online 每帖改经 `agent-executor`：**no-go**（技术做不到，且产品上不应要求）。不改 `block/buzz`；禁假 `BUZZ_WAKE_*`；#23 保持 park。
+
+本文件供 parent 粘贴到 Issue #24。上游只读对照，未改。
 
 ---
 
@@ -14,7 +16,11 @@
 
 提案：「每帖改经 `agent-executor`，并从 ACP 回合载荷（非 env）读频道/帖/正文，再跑现有 `decideWake` / `enforceChannelWake`」。
 
-在「只改 xforce-io/buzz-team、零改上游、禁假 env」约束下，**(a) 与 (b) 均不可行**。现有 bind/wrapper 是一次性 `execve`，不是每帖拦截器；Desktop↔buzz-acp 也不是 ACP stdio（stdin 为 null）；`session/prompt` 只有 `sessionId` + 文本块，没有 channel / post_ref。
+Staff/peng：**不要默认要求把 Online 回合改线到 executor。** 先核无 @ 帖是否已经：(a) 不回帖 (b) Activity 执行向 tool_call = 0 (c) 无明显 token 尖峰。
+
+活机（2026-09-22 18:52:38 Asia/Shanghai，炼丹房，`mention_pubkeys=[]`）三问**成立**：无新 `grok agent` spawn、ACP PID 不变、Hogan Activity ~75s 无执行向 tool、freeman 日志无增长。对照：更早的 @沈予 **会**在同一 ACP PID 下 spawn grok 子进程。原生 buzz-acp mention 过滤已经挡住「未 @ 全员唤醒」这条原痛点。
+
+因此 #15 env 门对 Online ACP「谁醒」**冗余**。在「只改 buzz-team、零改上游、禁假 env」下，改线提案 (a)(b) **技术上也不可行**——但这不再是主因。谁醒由 Desktop/buzz-acp 的 @ / `#p` 承担；buzz-team 不要再铺一条 Online 路径。
 
 ---
 
@@ -115,6 +121,8 @@ Online @ 每帖（真烧钱路径）
 
 `Runtime.launch(harness)` 会把 `BUZZ_ACP_AGENT_COMMAND` 写成 `agent-executor`。活机子进程仍是 `grok agent`，说明这条 overwrite **没有**作用在被测 ACP 上。最简解释：该 PID 的 `acp_command` 仍是 bundled buzz-acp，或 Desktop 在 bind 之后又按 persona 重写了启动缝。**即使 overwrite 生效**，也只影响 **pool 首次 spawn**；之后每帖仍是对已存在 grok 的 `session/prompt`，不会再进 `launch executor`。
 
+注意：有 @沈予 的测量只证明「被 @ 时绕过 buzz-team launch，且会在同一 ACP 下 spawn grok」。它**不能**单独证明「无 @ 也会醒」。无 @ 对照见 §2.5：不 spawn、不进执行向 tool。
+
 ---
 
 ## 2. 代码在哪（本仓库）
@@ -134,6 +142,42 @@ Online @ 每帖（真烧钱路径）
 | 契约 | `docs/design/16-desktop-acp-task-ledger.md` | §6.1：`BUZZ_WAKE_*` 由 Desktop 写 |
 
 本仓库 **没有**：ACP JSON-RPC 解析器、stdio 代理、`session/prompt` 夹具、从 prompt 文本反推 channel/post 的逻辑。
+
+---
+
+## 2.5 无 @ 时谁在挡？（Staff/peng 要求先核的活机直觉）
+
+buzz-acp **默认**就是 mention 订阅，不是全频道广播。只读上游（未改）：
+
+| 默认 | 符号 | 效果 |
+|---|---|---|
+| `--subscribe mentions` | `CliArgs.subscribe` default `"mentions"` | 只订 kind 9 / 工作流 / reminder |
+| `require_mention = !no_mention_filter` | `SubscribeMode::Mentions` 组 rule | 事件必须带指向**本 agent 公钥**的 `p` 标签 |
+| 无 `p` 标签 | `filter.rs` `match_event` / `ChannelFilter.require_mention` | 匹配失败，不进 queue，不 `session/prompt` |
+| README 产品语义 | `crates/buzz-acp/README.md` | 「listens for @mentions」「When someone @mentions the agent」；论坛帖要 `--no-mention-filter` 才会看见 |
+
+Desktop 冷启 `spawn_agent_child` **没有**写入 `BUZZ_ACP_SUBSCRIBE=all` 或 `BUZZ_ACP_NO_MENTION_FILTER`（保留名单里也没有这两键当默认覆盖）。活机 Online ACP 与默认 mentions + `#p` 一致。
+
+**活机无 @ 三问（parent，2026-09-22，已成立）：**
+
+| 项 | 证据 |
+|---|---|
+| 帖 | 18:52:38 Asia/Shanghai · 炼丹房 · `[verify-no-mention-20260922-1845]` · event `3ec531f2…` · `mention_pubkeys=[]` |
+| (a) 不回帖 / 不醒 | Scout ps：无新 `grok agent` spawn；已有子进程 start 均早于该帖；ACP PID 41318–41407 未变 |
+| (b) 执行向 tool_call = 0 | Hogan Activity ~75s：无新 spawn；未见 PARAMETERS / function_call / mcp / Shell |
+| (c) 无明显 token 尖峰 | freeman 身份日志无增长（对照：更早 @沈予 **会**在同一 ACP PID 下 spawn grok 子进程） |
+| 源 | Issue #24 评论；`~/lab/buzz/evidence/5daaa3d…/mention-e2e/no-mention-observe.json`（本环境无该文件，不复跑） |
+
+peng 直觉成立。原生过滤已经覆盖「未 @ 全员唤醒」原痛点。**不要**因此改 buzz-team 路径。
+
+| 频道动作 | 现网（默认 buzz-acp + 本轮对照） | #15 `decideWake` 还要不要坐在 Online 上 |
+|---|---|---|
+| 普通讨论、无 @、无 `p` 标签 | **已验**：不 spawn、无执行向 tool、日志不涨 | **冗余** |
+| UI @某身份（`p` 标签） | **已验对照**：同 ACP 下会 spawn grok | 原生已按公钥点名；别名表是另一套 |
+| 只打字 `@沈予`、没有 `p` 标签 | 未另测；原生可能不醒（#15 会按正文 alias 判） | 语义差；不要为对齐去改线 executor |
+| 已被 @ 后的 sticky 续烧 / 超限 | 原生会继续跑同一 session | **这才是 buzz-team 可选残余**（fuse/rotate/ledger），不是 Online「谁醒」必修 |
+
+#15 L2（2026-09-21）写「未 @ 也进入执行向长循环、单日 ~$306」。**已被 2026-09-22 无 @ 活机否定为现网事实。** 可能当时 `subscribe=all` / `no_mention_filter`，或把「@ 之后 sticky 续烧」记成「每帖未 @ 也醒」。不得再用那句证明必须改 executor。
 
 ---
 
@@ -161,7 +205,7 @@ Desktop 已认、且 buzz-team 已经在用的只有：
 
 要把每帖赶进 executor，必须让 buzz-acp **每帖重新 spawn** 子进程，或换掉 buzz-acp 的 pool。两者都在 `block/buzz`，本票禁止。
 
-在 buzz-team 新写一个长跑 ACP stdio 代理，**不是**「Desktop 已认的 wrapper」。那是新产品（完整 JSON-RPC、permission、steer、liveness），等于再做一套 buzz-acp，且违背「不启第二套后台团队」。
+在 buzz-team 新写一个长跑 ACP stdio 代理，**不是**「Desktop 已认的 wrapper」。那是新产品，且 Staff/peng 已明确：**不要默认要求这条改线**。谁醒应先认原生 `@` / `#p`。
 
 ### (b) 在 buzz-team 内从 ACP 回合载荷读 channel / post / body？
 
@@ -183,53 +227,72 @@ Desktop 已认、且 buzz-team 已经在用的只有：
 
 ---
 
-## 4. 结论：**no-go**
+## 4. 结论：**downgrade**（执行器改线：**no-go**）
 
-提案的两个合取条件在 buzz-team 内都做不到。#15 真路径 E2E 继续暂缺，有据。#23 保持 park。不要开「实现 ACP 代理 + decideWake」实现票冒充本评估的 go。
+| 对象 | 判定 | 一句话 |
+|---|---|---|
+| 票 #24 / #15 Online「谁醒」E2E | **downgrade** | 无 @ 三问成立；原生 `@`/`#p` 已挡全员唤醒。#15 env 门对 Online「谁醒」冗余。 |
+| 「每帖改经 agent-executor + 读 ACP 载荷」 | **no-go** | 产品上不应要求；buzz-team 单独也做不到。 |
+| 开 ACP 代理 / 改 `block/buzz` 实现票 | **no-go** | 约束未变；#23 park。 |
+
+不要把「被 @ 时绕过 launch」误读成「必须把每帖赶进 executor」。无 @ 已被原生过滤，改线没有产品收益。
 
 ### 风险（若无视结论硬做）
 
 | 风险 | 后果 |
 |---|---|
-| 把 `execve` wrapper 改成长跑 ACP 代理 | 新产品；Desktop Activity / permission / steer 回归面大；等于 fork buzz-acp |
+| 默认要求 executor 改线 | 重复实现谁醒；Staff/peng 已否 |
+| 把 `execve` wrapper 改成长跑 ACP 代理 | 新产品；Activity / permission / steer 回归面大 |
 | 从 prompt 文本猜 @ | 误拦或误放；违反 #15 fail-closed |
-| 发明 channel/post id | 熔断回帖打到错误线程；明确禁止 |
-| 静态 `BUZZ_WAKE_*` | 全员假唤醒或冷启全拒；peng 已禁 |
-| 再改 `block/buzz` | 组织边界，#23 已 park |
+| 发明 channel/post id | 熔断回帖打错线程 |
+| 静态 `BUZZ_WAKE_*` | 全员假唤醒或冷启全拒 |
+| 把 2026-09-21「未 @ 也烧」当成 2026-09-22 事实 | 推错下一刀 |
 
 ---
 
-## 5. S3：buzz-team 里还能用的控烧 vs 缺口
+## 5. buzz-team 里什么仍然值钱
 
-### 仍可用（不经过 Online @ 真路径）
+谁醒（未 @ 不跑）是 **Desktop/buzz-acp 的现网职责**，已被活机验收。buzz-team **不要**为 Online E2E 再铺路径。留下的是：真正走进 `Runtime.launch` 时的可选门控，以及被 @ 之后的计量 / 硬停 / 换窗 / 离线夹具。这些是 **残余价值，不是 Online 真帖必修**。
 
-| 工具 | 能做什么 | 上不了真路径的原因 |
+### 仍然值钱（可选残余，非 Online「谁醒」必修）
+
+| 能力 | 护的是哪条缝 | 不是什么 |
 |---|---|---|
-| `wake decide` / `decideWake` | 已知四件套时离线判定 | Online @ 不调用 |
-| `enforceChannelWake` | `surface=stream` 或 fuse 时拒 launch | 每帖不进 `launch` |
-| `applyWakePayload` | 展开 Desktop JSON env | 无人写 env |
-| `ChannelCursorStore` / `applyFuse` / 【熔断】回帖 | 换窗 + 回帖 | 需要 fuse **且** 已有 channel/post/session |
-| `ContextLedger` / `fuseReason` / `setWakeFuse` | task-scoped 硬闸 | 普通 ACP 无 `BUZZ_TASK_ID`（禁假 task env） |
-| `binding_environment` 白名单 | 可带静态 `BUZZ_TASK_*` / `BUZZ_WAKE_*` | 静态 wake 禁止；且改不了 reserved `BUZZ_ACP_AGENT_COMMAND` |
-| `agent-harness` / `agent-executor` | 冷启/显式 spawn 时进 launch | Online @ 不 spawn |
-| buzz-acp 自带 `require_mention` / `subscribe=mentions` | Nostr `#p` / `buzz:workflow-mention` | **另一套** mention；不是 #15 别名 `@token`。炼丹房未 @ 仍长跑，说明它挡不住本票场景 |
-| Seatbelt / `doctor` / 停机 bind | 身份隔离与库存 | 不管每帖唤醒 |
-| 运维（#15 评论） | 缩 Online / 只 @ 一人 / 杀超大 session | 人工，不是运行时门控 |
+| 原生 buzz-acp `subscribe=mentions` + `#p` | Online 未 @ 不醒（本轮已验） | 不是 buzz-team 代码 |
+| `Runtime.launch` → `enforceChannelWake` / `applyWakePayload` | **仅当**进程真的进 wrapper：`agent-harness` / `agent-executor` 冷启或显式 spawn，且已有 `BUZZ_WAKE_SURFACE=stream` 或 `BUZZ_WAKE_FUSE` | 不是每帖 Online ACP；无这些 env 时 #21 放行 |
+| `wake decide` / `decideWake` | 离线/CLI 别名策略与验收夹具 | 不是 Online 运行时 |
+| #21 冷启放行 | 无假 `BUZZ_WAKE_*` 也能起 ACP | 不是控烧 |
+| `ChannelCursorStore` / `applyFuse` / 【熔断】回帖 | **@ 之后**、且已有 channel/post/session 时的换窗 | Online sticky 未接线 |
+| `ContextLedger` / `fuseReason` / `setWakeFuse` | 已 `session bind` + `BUZZ_TASK_ID` 的硬闸 | 普通无 task ACP 不触发（禁假 task env） |
+| Seatbelt / `doctor` / 停机 bind | 身份隔离与库存 | 不管谁醒 |
+| 运维：缩 Online / 少 @ / `!rotate` | 人工减烧；`!rotate` 是上游已有换窗 | 不是运行时门控 |
 
-### 缺口（#15 真路径 E2E 仍缺）
+### 降级 / 不要再投资
 
-1. 没有任何 buzz-team 进程坐在「每帖 → 执行向 tool_call」之前。
-2. 没有结构化的当帖 `channel` / `post_ref` / `body` 进入 buzz-team。
-3. 不能在不改上游的前提下，给每帖注入真实 `BUZZ_WAKE_*`。
-4. 未 @ 身份执行向 tool_call = 0：**未验、现网不成立**。
-5. 熔断后下一 turn 换 `session_id`：Online @ 上 **未接线**（sticky 仍在 buzz-acp/grok）。
+| 项 | 处理 |
+|---|---|
+| #15 Online 真路径「谁醒」E2E | **downgrade / 冗余**：无 @ 三问成立；不改 buzz-team 路径 |
+| `enforceChannelWake` + `applyWakePayload` 收 env | **可选残余**：保留接收端，给将来真走 launch 且注入了 wake 的路径；#23 park，不为此改上游 |
+| 每帖改经 `agent-executor` | **no-go** |
+| ACP stdio 代理 | **no-go** |
+| 静态假 `BUZZ_WAKE_*` / `BUZZ_TASK_*` | 禁止 |
+
+### 仍可能缺（与「谁醒」分开，且不是本票必修）
+
+#15 S1（未 @ tool_call=0）由原生过滤覆盖，不必 buzz-team 再验 Desktop Activity。
+
+仍缺、且 **不是** executor 改线能单独补上的（可选后续，不阻塞关 #24）：
+
+1. 被 @ 后 sticky 续烧的换窗（#15 S2）在 Online 上未接线。
+2. 无 task 的普通 ACP 没有 ledger 硬闸（禁假 `BUZZ_TASK_*`）。
+3. 正文 alias 与 Nostr `p` 标签若不一致（只打字 `@沈予`），两边语义不同——先观察，不要为对齐去改上游。
 
 ---
 
 ## 6. 明确不建议的后继
 
-- 不要开「buzz-team ACP 代理实现票」当作本评估的 go。那是新项目，不是复用 `decideWake`。
-- 不要为了过门控写假 `BUZZ_WAKE_*` / `BUZZ_TASK_*`。
-- 不要申请改 `block/buzz`；#23 已记录组织边界。
-
-若产品目标仍是真频道控烧，选项只剩：**接受缺口（运维减烧）**，或 **将来组织批准改上游时重启 #23**（P0：buzz-acp 每帖注入 wake 并 spawn executor）。那是另一张票，不是本评估的实现草稿。
+- 不要开「每帖改经 executor」或「ACP 代理」实现票。
+- 不要为过门控写假 env。
+- 不要申请改 `block/buzz`。
+- 关 #24 为 **downgrade**；#15 真路径「谁醒」标 **冗余（原生 mentions + `#p`）**。
+- launch/env 门控当作可选残余留下，不另开 Online E2E 实现票。
