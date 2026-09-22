@@ -25,6 +25,13 @@ def _fuseReasonForLaunch(config, report: dict) -> str | None:
     return fuseReason(report, rotate=rotate)
 
 
+def _harnessRequiresTaskId(*, consumeHandoff: bool) -> bool:
+    """Stream-wake and explicit consume need a task; a plain Desktop ACP session does not."""
+    if os.environ.get("BUZZ_WAKE_SURFACE") == "stream":
+        return True
+    return consumeHandoff or os.environ.get("BUZZ_CONSUME_HANDOFF") == "1"
+
+
 def _signalWakeFuse(runtime, ledger, reason: str, session: dict | None) -> None:
     from .context import setWakeFuse
     from .wake import enforceChannelWake
@@ -114,6 +121,9 @@ class Runtime:
         from .instance import digest
         from .wake import enforceChannelWake
         applyWakePayload(os.environ)
+        if mode == "harness" and not task_id and _harnessRequiresTaskId(consumeHandoff=consume_handoff):
+            raise ValueError(
+                "desktop ACP harness launch requires task_id; bind session and set BUZZ_TASK_ID or pass --task")
         wakeEnv = enforceChannelWake(self, mode, task_id)
         spec = self.config.data["compatibility"]
         pins = [(Path(self.executor.spec["command"]), spec.get("executor_sha256", {}).get(self.agent["adapter"]))]
@@ -126,8 +136,6 @@ class Runtime:
         session = None
         store = None
         owner = None
-        if mode == "harness" and not task_id:
-            raise ValueError("desktop ACP harness launch requires task_id; bind session and set BUZZ_TASK_ID or pass --task")
         if task_id:
             from .context import ContextLedger
             from .sessions import SessionStore
