@@ -5,8 +5,8 @@ from unittest.mock import patch
 
 from buzz_team.config import Config, identity
 from buzz_team.wake import (
-    ChannelCursorStore, applyFuse, decideWake, extractAliasTokens,
-    formatFuseReply, isExecutionOriented, sessionRef,
+    ChannelCursorStore, applyFuse, channelWakeConfigured, decideWake,
+    extractAliasTokens, formatFuseReply, isExecutionOriented, sessionRef,
 )
 from test_runtime import Fixture
 
@@ -173,9 +173,10 @@ class WakeCLITests(Fixture):
 
     def test_launch_gate_before_executor(self):
         self.enableWake()
-        missing = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key)
-        self.assertEqual(missing.returncode, 2)
-        self.assertIn("channel wake context missing", missing.stderr)
+        cold = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key)
+        self.assertEqual(cold.returncode, 0, cold.stderr)
+        self.assertNotIn("channel wake context missing", cold.stderr)
+        self.assertIn("args", json.loads(cold.stdout))
         denied = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key,
                           BUZZ_WAKE_SURFACE="stream", BUZZ_WAKE_CHANNEL="channel-fixture",
                           BUZZ_WAKE_POST_REF="post-launch", BUZZ_WAKE_BODY="no mention here")
@@ -189,6 +190,44 @@ class WakeCLITests(Fixture):
                            BUZZ_WAKE_POST_REF="post-launch", BUZZ_WAKE_BODY="run @agent-one")
         self.assertEqual(allowed.returncode, 0, allowed.stderr)
         self.assertIn("args", json.loads(allowed.stdout))
+
+    def test_configured_cold_start_allows_harness(self):
+        self.enableWake()
+        self.assertTrue(channelWakeConfigured(self.config))
+        harness = self.cli("launch", "harness", "--", "acp", BUZZ_RUNTIME_ID=self.key)
+        self.assertEqual(harness.returncode, 0, harness.stderr)
+        self.assertNotIn("channel wake context missing", harness.stderr)
+        self.assertNotIn("requires task_id", harness.stderr)
+        self.assertIn("args", json.loads(harness.stdout))
+        self.assertEqual(self.config.data["channel_wake"]["channels"]["channel-owned"]["single_owner_identity"],
+                         self.key)
+        self.assertEqual(self.config.data["agents"][self.key]["mention_aliases"], ["agent-one"])
+        nonStream = self.cli("launch", "harness", "--", "acp", BUZZ_RUNTIME_ID=self.key,
+                             BUZZ_WAKE_SURFACE="desktop")
+        self.assertEqual(nonStream.returncode, 0, nonStream.stderr)
+        self.assertNotIn("channel wake context missing", nonStream.stderr)
+
+    def test_stream_incomplete_wake_context_refuses(self):
+        self.enableWake()
+        missing = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key,
+                           BUZZ_WAKE_SURFACE="stream")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("wake context", missing.stderr)
+        partial = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key,
+                           BUZZ_WAKE_SURFACE="stream", BUZZ_WAKE_CHANNEL="channel-fixture")
+        self.assertEqual(partial.returncode, 2)
+        self.assertIn("wake context", partial.stderr)
+
+    def test_fuse_incomplete_context_refuses(self):
+        self.enableWake()
+        missing = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key,
+                           BUZZ_WAKE_FUSE="turns")
+        self.assertEqual(missing.returncode, 2)
+        self.assertIn("fuse context missing", missing.stderr)
+        partial = self.cli("launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key,
+                           BUZZ_WAKE_FUSE="turns", BUZZ_WAKE_CHANNEL="channel-fixture")
+        self.assertEqual(partial.returncode, 2)
+        self.assertIn("fuse context missing", partial.stderr)
 
     def test_task_path_is_not_rewritten_by_mention_gate(self):
         self.enableWake()

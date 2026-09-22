@@ -4,7 +4,7 @@
 
 仓库外非 editable 安装的 `buzz-team --instance INSTANCE wake decide`；真客户端走 Desktop ACP 频道路径。实例私有 `channel_wake` 与 `mention_aliases` 不得写入 git。
 
-Desktop 剩余钩子：ACP 唤醒须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`。已配置门控而缺这些变量时 launch fail-closed。本票不实现 #16 映射/ledger。
+Desktop 剩余钩子：ACP 频道唤醒须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`。`BUZZ_WAKE_SURFACE=stream` 或 fuse 路径缺这些变量时 launch fail-closed。仅配置了 `channel_wake` 的冷启动（无 stream / 无 fuse）允许启动，不得注入假 `BUZZ_WAKE_*`。本票不实现 #16 映射/ledger。
 
 ## 通过条件
 
