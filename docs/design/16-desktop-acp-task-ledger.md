@@ -23,7 +23,7 @@
 ## 4 设计选择
 
 1. **Task 入口**：`launch --task` 或环境变量 `BUZZ_TASK_ID`（CLI 已读）。允许 agent `binding_environment` / Desktop `env_vars` 携带 `BUZZ_TASK_ID`、`BUZZ_TASK_SCOPE` 与 `BUZZ_WAKE_SURFACE|CHANNEL|POST_REF|BODY|SCOPE`（与 `BUZZ_ACP_CONFIG` 同类白名单校验）。`BUZZ_WAKE_FUSE` 不得作为 bind 静态值。
-2. **Harness 必须 task-scoped**：`mode == harness` 且无 `task_id` → `ValueError`（执行路径必须先 `session bind`，再设 env 或传 `--task`）。`executor` 无 task 仍保持兼容。
+2. **Harness 仅在 stream-wake / 显式 ledger 路径必须 task-scoped**（#19）：`mode == harness` 且无 `task_id`，仅当 `BUZZ_WAKE_SURFACE=stream` 或显式 consume（`--consume-handoff` / `BUZZ_CONSUME_HANDOFF=1`）时 → `ValueError`（该路径必须先 `session bind`，再设 env 或传 `--task`）。普通 Desktop ACP 冷启动无 wake/task 时允许无 `task_id`，禁止用假 `BUZZ_TASK_*` 填 managed-agents。`executor` 无 task 仍保持兼容。
 3. **硬闸检查点**：`Runtime.launch` 在已解析映射、即将 exec 前：若 ledger 存在且 `status == budget_exceeded` → 拒绝 launch，并追加可审计 `budget_gate` 事件；ledger 缺失则允许，不发明预算。
 4. **Handoff 状态机**：
    - `unavailable`：无 handoff，可 launch。

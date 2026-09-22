@@ -16,4 +16,4 @@
 
 记录命令、返回码、脱敏 task/session 标识和映射文件权限；不记录认证、prompt 或会话正文。
 
-6. （#16）Desktop `binding_environment` 可携带 `BUZZ_TASK_ID`；`launch harness` 缺 task 时失败，且不猜测频道标题。
+6. （#16/#19）Desktop `binding_environment` 可携带 `BUZZ_TASK_ID`；`launch harness` 在 stream-wake/ledger consume 路径缺 task 时失败，普通 ACP 不要求 task，且不猜测频道标题。

@@ -215,10 +215,47 @@ class CLITests(Fixture):
             self.assertEqual(os.environ.get("BUZZ_WAKE_FUSE"), "input_tokens")
         self.assertTrue(any(item.get("type") == "budget_gate" for item in ledger.report()["events"]))
 
-    def test_harness_launch_requires_task_id(self):
+    def test_harness_launch_allows_plain_acp_without_task(self):
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
         runtime = Runtime(self.config, self.key)
-        with self.assertRaisesRegex(ValueError, "requires task_id"):
-            runtime.launch("harness", [])
+        with patch.dict(os.environ, {}, clear=False):
+            for name in ("BUZZ_TASK_ID", "BUZZ_TASK_SCOPE", "BUZZ_TASK_WORKSPACE",
+                         "BUZZ_WAKE_SURFACE", "BUZZ_WAKE_PAYLOAD", "BUZZ_CONSUME_HANDOFF"):
+                os.environ.pop(name, None)
+            with patch("os.chdir"), patch("os.execve", side_effect=SystemExit(0)) as execve:
+                with self.assertRaises(SystemExit):
+                    runtime.launch("harness", ["acp"])
+            env = execve.call_args.args[2]
+            self.assertNotIn("BUZZ_TASK_ID", env)
+            self.assertNotIn("BUZZ_TASK_SCOPE", env)
+            self.assertNotIn("BUZZ_TASK_WORKSPACE", env)
+        result = self.cli("launch", "harness", "--", "acp", BUZZ_RUNTIME_ID=self.key)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertNotIn("requires task_id", result.stderr)
+        self.assertEqual(json.loads(result.stdout)["args"], ["acp"])
+
+    def test_harness_launch_requires_task_id_for_stream_wake(self):
+        runtime = Runtime(self.config, self.key)
+        with patch.dict(os.environ, {"BUZZ_WAKE_SURFACE": "stream"}, clear=False):
+            os.environ.pop("BUZZ_TASK_ID", None)
+            with self.assertRaisesRegex(ValueError, "requires task_id"):
+                runtime.launch("harness", [])
+            result = self.cli("launch", "harness", "--", "acp",
+                              BUZZ_RUNTIME_ID=self.key, BUZZ_WAKE_SURFACE="stream")
+            self.assertEqual(result.returncode, 2)
+            self.assertIn("requires task_id", result.stderr)
+
+    def test_harness_launch_requires_task_id_for_consume(self):
+        runtime = Runtime(self.config, self.key)
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("BUZZ_TASK_ID", None)
+            os.environ.pop("BUZZ_WAKE_SURFACE", None)
+            with self.assertRaisesRegex(ValueError, "requires task_id"):
+                runtime.launch("harness", [], consume_handoff=True)
+            os.environ["BUZZ_CONSUME_HANDOFF"] = "1"
+            with self.assertRaisesRegex(ValueError, "requires task_id"):
+                runtime.launch("harness", [])
 
     def test_desktop_binding_allows_task_env(self):
         self.config.data["agents"][self.key]["binding_environment"] = {
