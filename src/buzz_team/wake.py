@@ -467,10 +467,10 @@ def enforceChannelWake(runtime, mode: str, taskId: str | None) -> dict[str, str]
 
     fuseReason = os.environ.get("BUZZ_WAKE_FUSE")
     surface = os.environ.get("BUZZ_WAKE_SURFACE")
-    configured = channelWakeConfigured(config)
     if surface == "dm":
         return extra
-    needsGate = configured or surface == "stream" or bool(fuseReason)
+    # Cold-start ACP has no BUZZ_WAKE_*. channel_wake config alone must not gate those launches.
+    needsGate = surface == "stream" or bool(fuseReason)
     if not needsGate:
         return extra
     channel = os.environ.get("BUZZ_WAKE_CHANNEL")

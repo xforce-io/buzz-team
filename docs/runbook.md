@@ -67,6 +67,6 @@ buzz-team --instance /absolute/instance diagnose
 
 频道执行向长跑须先 `session bind`，再通过 agent `binding_environment` 或 Desktop `env_vars` 设置 `BUZZ_TASK_ID`（可选 `BUZZ_TASK_SCOPE`），然后 `bind`。`launch harness` 在 `BUZZ_WAKE_SURFACE=stream` 或显式 consume/ledger 路径缺 task 时 fail-closed；普通 ACP 会话不要求 task，也不要写入假 `BUZZ_TASK_*`。
 
-实例已配置 `channel_wake` 或 `mention_aliases` 时，Desktop ACP 唤醒必须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`（或一次写入 `BUZZ_WAKE_PAYLOAD` JSON，由 `applyWakePayload` 展开）。缺字段 fail-closed。硬停时进程带 `BUZZ_WAKE_FUSE=<turns|usd|input_tokens|budget_exceeded>`，#15 消费后回帖并换窗。
+Desktop 频道 stream 唤醒必须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`（或一次写入 `BUZZ_WAKE_PAYLOAD` JSON，由 `applyWakePayload` 展开）。缺字段 fail-closed。无 `BUZZ_WAKE_SURFACE=stream` 且无 `BUZZ_WAKE_FUSE` 的冷启动不过该门，即使实例已配置 `channel_wake` / `mention_aliases`，也不要写入假 `BUZZ_WAKE_*`。硬停时进程带 `BUZZ_WAKE_FUSE=<turns|usd|input_tokens|budget_exceeded>`，#15 消费后回帖并换窗。
 
 超限后 ledger 为 `budget_exceeded`（或 rotate 等价上限 / 金额 `unavailable`）时拒绝同 task 再 launch（硬闸）。handoff 为 ready 时须 `buzz-team context consume --task TASK` 或 `launch --consume-handoff`（或 `BUZZ_CONSUME_HANDOFF=1`）后再开跑；换窗/rotate 见 #15。
