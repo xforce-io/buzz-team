@@ -70,6 +70,7 @@ def parser():
     launch = sub.add_parser("launch", help="内部入口：由 Desktop 调用，不手动并行启动")
     launch.add_argument("--task")
     launch.add_argument("--scope")
+    launch.add_argument("--consume-handoff", action="store_true")
     launch.add_argument("mode", choices=["harness", "executor"])
     launch.add_argument("args", nargs=argparse.REMAINDER)
     buzz = sub.add_parser("buzz", help="内部入口：保留 DM/频道回复行为")
@@ -114,6 +115,7 @@ def parser():
     handoff.add_argument("--open-tool-calls", type=int, default=0)
     report = context_sub.add_parser("report"); report.add_argument("--task", required=True)
     restore = context_sub.add_parser("restore"); restore.add_argument("--task", required=True)
+    consume = context_sub.add_parser("consume"); consume.add_argument("--task", required=True)
     wake = sub.add_parser("wake", help="频道点名门控判定与会话游标（只读）")
     wake_sub = wake.add_subparsers(dest="wake_command", required=True)
     decide = wake_sub.add_parser("decide", help="判定本帖是否允许该身份进入执行向长跑")
@@ -188,6 +190,8 @@ def main():
                     result = ledger.report()
                 elif args.context_command == "restore":
                     result = ledger.read_handoff()
+                elif args.context_command == "consume":
+                    result = ledger.consume_handoff()
                 else:
                     if not any(item["task_id"] == args.task for item in SessionStore(config.instance).list()):
                         raise ValueError("task session mapping not found")
@@ -225,9 +229,11 @@ def main():
                 from .wake import ChannelWakeSilent
                 task_id = args.task or os.environ.get("BUZZ_TASK_ID")
                 launch_args = args.args[1:] if args.args[:1] == ["--"] else args.args
+                consume = args.consume_handoff or os.environ.get("BUZZ_CONSUME_HANDOFF") == "1"
                 try:
                     result = Runtime(config, os.environ.get("BUZZ_RUNTIME_ID")).launch(
-                        args.mode, launch_args, task_id, args.scope or os.environ.get("BUZZ_TASK_SCOPE"))
+                        args.mode, launch_args, task_id, args.scope or os.environ.get("BUZZ_TASK_SCOPE"),
+                        consume_handoff=consume)
                 except ChannelWakeSilent as exc:
                     print(json.dumps(exc.payload, ensure_ascii=False, indent=2), file=sys.stderr)
                     return 0

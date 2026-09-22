@@ -61,3 +61,12 @@ buzz-team --instance /absolute/instance diagnose
 ## 已知限制
 
 受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
+
+
+## Desktop ACP 任务账本（#16）
+
+频道执行向长跑须先 `session bind`，再通过 agent `binding_environment` 或 Desktop `env_vars` 设置 `BUZZ_TASK_ID`（可选 `BUZZ_TASK_SCOPE`），然后 `bind`。`launch harness` 无 task 会 fail-closed。
+
+实例已配置 `channel_wake` 或 `mention_aliases` 时，Desktop ACP 唤醒必须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`（或一次写入 `BUZZ_WAKE_PAYLOAD` JSON，由 `applyWakePayload` 展开）。缺字段 fail-closed。硬停时进程带 `BUZZ_WAKE_FUSE=<turns|usd|input_tokens|budget_exceeded>`，#15 消费后回帖并换窗。
+
+超限后 ledger 为 `budget_exceeded`（或 rotate 等价上限 / 金额 `unavailable`）时拒绝同 task 再 launch（硬闸）。handoff 为 ready 时须 `buzz-team context consume --task TASK` 或 `launch --consume-handoff`（或 `BUZZ_CONSUME_HANDOFF=1`）后再开跑；换窗/rotate 见 #15。

@@ -251,6 +251,90 @@ class WakeCLITests(Fixture):
         self.assertNotEqual(payload["session_ref"], payload["old_session_ref"])
         sender.assert_called_once()
 
+    def test_task_hard_stop_sets_fuse_and_lets_wake_consume(self):
+        import os
+        from buzz_team.context import ContextLedger
+        from buzz_team.runtime import Runtime
+        from buzz_team.sessions import SessionStore
+        from buzz_team.wake import ChannelWakeSilent
+        self.enableWake()
+        self.config.data["channel_wake"]["default"]["rotate"] = {"max_input_tokens": 50}
+        self.save()
+        old = "bbbbbbbb-1111-4111-8111-111111111111"
+        SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                          scope="channel-fixture", task_id="wake-budget",
+                                          workspace=str(self.base / "workspace"), session_id=old)
+        ChannelCursorStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                               scope="channel-fixture", sessionId=old)
+        ledger = ContextLedger(self.instance, "wake-budget")
+        ledger.start(max_input_tokens=1)
+        ledger.record(turn_id="turn-1", provider="provider", model="model",
+                      values={"input_tokens": 2, "output_tokens": 1})
+        with patch("buzz_team.wake.sendFuseReply") as sender:
+            with patch.dict(os.environ, {
+                "BUZZ_WAKE_SURFACE": "stream",
+                "BUZZ_WAKE_CHANNEL": "channel-fixture",
+                "BUZZ_WAKE_POST_REF": "post-hard-stop",
+                "BUZZ_WAKE_BODY": "@agent-one",
+            }, clear=False):
+                os.environ.pop("BUZZ_WAKE_FUSE", None)
+                with self.assertRaises(ChannelWakeSilent) as raised:
+                    Runtime(self.config, self.key).launch("executor", ["acp"], task_id="wake-budget")
+                self.assertEqual(os.environ.get("BUZZ_WAKE_FUSE"), "input_tokens")
+        payload = raised.exception.payload
+        self.assertEqual(payload["reason"], "input_tokens")
+        self.assertEqual(payload["exec_tool_calls"], 0)
+        sender.assert_called_once()
+        self.assertTrue(any(item.get("type") == "budget_gate" for item in ledger.report()["events"]))
+
+    def test_unavailable_usd_hard_stop_sets_fuse(self):
+        import os
+        from buzz_team.context import ContextLedger
+        from buzz_team.runtime import Runtime
+        from buzz_team.sessions import SessionStore
+        from buzz_team.wake import ChannelWakeSilent
+        self.enableWake()
+        self.config.data["channel_wake"]["default"]["rotate"] = {"max_usd": 3}
+        self.save()
+        old = "cccccccc-1111-4111-8111-111111111111"
+        SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                          scope="channel-fixture", task_id="wake-usd",
+                                          workspace=str(self.base / "workspace"), session_id=old)
+        ChannelCursorStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                               scope="channel-fixture", sessionId=old)
+        ledger = ContextLedger(self.instance, "wake-usd")
+        ledger.start()
+        ledger.record(turn_id="turn-1", provider="provider", model="model",
+                      values={"input_tokens": 1, "output_tokens": 1})
+        with patch("buzz_team.wake.sendFuseReply") as sender:
+            with patch.dict(os.environ, {
+                "BUZZ_WAKE_SURFACE": "stream",
+                "BUZZ_WAKE_CHANNEL": "channel-fixture",
+                "BUZZ_WAKE_POST_REF": "post-usd",
+                "BUZZ_WAKE_BODY": "@agent-one",
+            }, clear=False):
+                os.environ.pop("BUZZ_WAKE_FUSE", None)
+                with self.assertRaises(ChannelWakeSilent) as raised:
+                    Runtime(self.config, self.key).launch("executor", ["acp"], task_id="wake-usd")
+                self.assertEqual(os.environ.get("BUZZ_WAKE_FUSE"), "usd")
+        self.assertEqual(raised.exception.payload["reason"], "usd")
+        sender.assert_called_once()
+
+    def test_wake_payload_is_expanded_before_mention_gate(self):
+        self.enableWake()
+        denied = self.cli(
+            "launch", "executor", "--", "acp", BUZZ_RUNTIME_ID=self.key,
+            BUZZ_WAKE_PAYLOAD=json.dumps({
+                "surface": "stream",
+                "channel": "channel-fixture",
+                "post_ref": "post-payload",
+                "body": "no mention here",
+            }))
+        self.assertEqual(denied.returncode, 0, denied.stderr)
+        payload = json.loads(denied.stderr)
+        self.assertFalse(payload["allowed"])
+        self.assertEqual(payload["exec_tool_calls"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

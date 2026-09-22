@@ -14,3 +14,5 @@
 ## 证据
 
 记录命令、返回码、脱敏 task/turn 标识、指标质量和文件权限；不记录私有 prompt、认证或完整工具结果。
+
+5. （#16）`budget_exceeded` 时 task-scoped launch 硬停；`context consume` 将 handoff 标为 consumed 后允许新 launch，禁止永久 cannot-consume 死胡同。

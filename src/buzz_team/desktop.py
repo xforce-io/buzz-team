@@ -17,6 +17,51 @@ from .instance import digest, write_json, write_private
 from .runtime import Runtime
 
 
+WAKE_BINDING_KEYS = (
+    "BUZZ_WAKE_SURFACE",
+    "BUZZ_WAKE_CHANNEL",
+    "BUZZ_WAKE_POST_REF",
+    "BUZZ_WAKE_BODY",
+    "BUZZ_WAKE_SCOPE",
+)
+ALLOWED_BINDING_KEYS = {
+    "BUZZ_ACP_CONFIG", "BUZZ_TASK_ID", "BUZZ_TASK_SCOPE", *WAKE_BINDING_KEYS,
+}
+_WAKE_PAYLOAD_FIELDS = {
+    "surface": "BUZZ_WAKE_SURFACE",
+    "channel": "BUZZ_WAKE_CHANNEL",
+    "post_ref": "BUZZ_WAKE_POST_REF",
+    "postRef": "BUZZ_WAKE_POST_REF",
+    "body": "BUZZ_WAKE_BODY",
+    "scope": "BUZZ_WAKE_SCOPE",
+}
+
+
+def applyWakePayload(env: dict[str, str]) -> dict[str, str]:
+    """Expand Desktop ACP wake JSON into BUZZ_WAKE_* env. Does not invent channel IDs."""
+    raw = env.get("BUZZ_WAKE_PAYLOAD")
+    if raw is None:
+        return env
+    if not isinstance(raw, str) or not raw or "\0" in raw:
+        raise ValueError("invalid wake payload")
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise ValueError("invalid wake payload") from exc
+    if not isinstance(payload, dict) or set(payload) - set(_WAKE_PAYLOAD_FIELDS):
+        raise ValueError("invalid wake payload")
+    for src, dest in _WAKE_PAYLOAD_FIELDS.items():
+        if src not in payload:
+            continue
+        value = payload[src]
+        if not isinstance(value, str) or "\0" in value:
+            raise ValueError("invalid wake payload field")
+        if dest != "BUZZ_WAKE_BODY" and not value:
+            raise ValueError("invalid wake payload field")
+        env[dest] = value
+    return env
+
+
 def live_processes(config: Config) -> list[int]:
     # macOS truncates comm when followed by args, even with -ww. Read them separately.
     raw = "\n".join(subprocess.check_output(["ps", "-ww", "-axo", fields], text=True,
@@ -126,8 +171,10 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
         env["BUZZ_RUNTIME_ID"] = key
         env["BUZZ_TEAM_INSTANCE"] = str(config.instance)
         for name, value in runtime.agent.get("binding_environment", {}).items():
-            if name != "BUZZ_ACP_CONFIG":
+            if name not in ALLOWED_BINDING_KEYS:
                 raise ValueError("unsupported binding environment override")
+            if not isinstance(value, str) or not value or "\0" in value:
+                raise ValueError("invalid binding environment value")
             env[name] = value
         # The executor home, existing session settings and credentials remain untouched.
         for name, value in runtime.executor.binding_environment(runtime.base, runtime.cwd).items():

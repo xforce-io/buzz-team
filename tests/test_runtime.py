@@ -190,8 +190,93 @@ class CLITests(Fixture):
                       values={"input_tokens": 1, "output_tokens": 1})
         ledger.handoff(goal="goal", next_step="next", workspace_ref="HEAD", approval_state="approved")
         runtime = Runtime(self.config, self.key)
-        with self.assertRaisesRegex(ValueError, "cannot consume context handoff"):
+        with self.assertRaisesRegex(ValueError, "context handoff ready"):
             runtime.launch("executor", [], task_id=task)
+        with patch.object(runtime, "command", side_effect=lambda argv: argv), \
+             patch("os.fork", side_effect=RuntimeError("fork-reached")):
+            with self.assertRaisesRegex(RuntimeError, "fork-reached"):
+                runtime.launch("executor", [], task_id=task, consume_handoff=True)
+        self.assertEqual(ledger.report()["handoff"], "consumed")
+
+    def test_task_launch_hard_stops_on_budget_exceeded(self):
+        task = "budget-task"
+        SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
+                                          scope="channel-budget", task_id=task,
+                                          workspace=str(self.base / "workspace"), session_id="33333333-3333-4333-8333-333333333333")
+        ledger = ContextLedger(self.instance, task)
+        ledger.start(max_input_tokens=1)
+        ledger.record(turn_id="turn-1", provider="provider", model="model",
+                      values={"input_tokens": 2, "output_tokens": 1})
+        runtime = Runtime(self.config, self.key)
+        with patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("BUZZ_WAKE_FUSE", None)
+            with self.assertRaisesRegex(ValueError, "task budget exceeded"):
+                runtime.launch("executor", [], task_id=task)
+            self.assertEqual(os.environ.get("BUZZ_WAKE_FUSE"), "input_tokens")
+        self.assertTrue(any(item.get("type") == "budget_gate" for item in ledger.report()["events"]))
+
+    def test_harness_launch_requires_task_id(self):
+        runtime = Runtime(self.config, self.key)
+        with self.assertRaisesRegex(ValueError, "requires task_id"):
+            runtime.launch("harness", [])
+
+    def test_desktop_binding_allows_task_env(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_CONFIG": str(self.root / "acp.json"),
+            "BUZZ_TASK_ID": "desktop-task",
+            "BUZZ_TASK_SCOPE": "channel-desktop",
+        }
+        (self.root / "acp.json").write_text("{}\n")
+        self.save()
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            prepare(self.config)
+            desktop.bind(self.config)
+        bound = json.loads(self.desktop_file.read_text())
+        env = bound[0]["env_vars"]
+        self.assertEqual(env["BUZZ_TASK_ID"], "desktop-task")
+        self.assertEqual(env["BUZZ_TASK_SCOPE"], "channel-desktop")
+
+    def test_desktop_binding_allows_wake_env(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_WAKE_SURFACE": "stream",
+            "BUZZ_WAKE_CHANNEL": "channel-desktop",
+            "BUZZ_WAKE_POST_REF": "post-desktop",
+            "BUZZ_WAKE_BODY": "@agent-one please",
+        }
+        self.save()
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            prepare(self.config)
+            desktop.bind(self.config)
+        env = json.loads(self.desktop_file.read_text())[0]["env_vars"]
+        self.assertEqual(env["BUZZ_WAKE_SURFACE"], "stream")
+        self.assertEqual(env["BUZZ_WAKE_CHANNEL"], "channel-desktop")
+        self.assertEqual(env["BUZZ_WAKE_POST_REF"], "post-desktop")
+        self.assertEqual(env["BUZZ_WAKE_BODY"], "@agent-one please")
+
+    def test_desktop_binding_rejects_unknown_wake_key(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_WAKE_FUSE": "budget_exceeded",
+        }
+        self.save()
+        with self.assertRaisesRegex(ValueError, "unsupported binding environment"):
+            desktop.binding_diff(self.config, copy.deepcopy(self.rows))
+
+    def test_apply_wake_payload_expands_allowlisted_fields(self):
+        env = {
+            "BUZZ_WAKE_PAYLOAD": json.dumps({
+                "surface": "stream",
+                "channel": "channel-payload",
+                "post_ref": "post-payload",
+                "body": "please look",
+            }),
+        }
+        desktop.applyWakePayload(env)
+        self.assertEqual(env["BUZZ_WAKE_SURFACE"], "stream")
+        self.assertEqual(env["BUZZ_WAKE_CHANNEL"], "channel-payload")
+        self.assertEqual(env["BUZZ_WAKE_POST_REF"], "post-payload")
+        self.assertEqual(env["BUZZ_WAKE_BODY"], "please look")
+        with self.assertRaisesRegex(ValueError, "invalid wake payload"):
+            desktop.applyWakePayload({"BUZZ_WAKE_PAYLOAD": json.dumps({"channel_id": "invented"})})
 
     def test_desktop_identity_and_version_fail_closed(self):
         original = self.desktop_file.read_bytes()
@@ -513,10 +598,10 @@ class CLITests(Fixture):
     def test_workspace_real_git_and_reuse_rejection(self):
         source = self.root / "git-source"
         subprocess.run(["git", "init", "-b", "main", str(source)], check=True, capture_output=True)
-        subprocess.run(["git", "-C", str(source), "remote", "add", "origin", "https://github.com/example/fixture.git"], check=True)
+        subprocess.run(["git", "-C", str(source), "remote", "add", "origin", "https://git.example.invalid/fixture.git"], check=True)
         subprocess.run(["git", "-C", str(source), "-c", "user.name=Test", "-c", "user.email=test@example.invalid",
                         "commit", "--allow-empty", "-m", "fixture"], check=True, capture_output=True)
-        self.config.data["repositories"]["fixture"] = {"source": str(source), "origin": "https://github.com/example/fixture.git"}
+        self.config.data["repositories"]["fixture"] = {"source": str(source), "origin": "https://git.example.invalid/fixture.git"}
         self.save()
         result = self.cli("workspace", "1-cli-test", "--repo", "fixture", "--branch", "feat/1-cli-test", "--id", self.key)
         self.assertEqual(result.returncode, 0, result.stderr)
