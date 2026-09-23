@@ -197,14 +197,25 @@ class TurnGateRelayTests(unittest.TestCase):
         proc.stdin.write(cancel.encode())
         proc.stdin.flush()
         started = time.monotonic()
-        lines = self._readUntil(proc, lambda rows: any("end_turn" in row for row in rows), 3)
+        released = self._readUntil(proc, lambda rows: any("end_turn" in row for row in rows), 3)
         elapsed = time.monotonic() - started
+        pids = [pid for row in lines for pid in extractPids(row)]
+        if proc.stdin:
+            proc.stdin.close()
+        proc.kill()
         try:
-            proc.kill()
-            proc.communicate(timeout=5)
+            proc.wait(timeout=5)
         except subprocess.TimeoutExpired:
             pass
-        self.assertTrue(any("end_turn" in row for row in lines), lines)
+        for stream in (proc.stdout, proc.stderr):
+            if stream:
+                stream.close()
+        for pid in pids:
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+        self.assertTrue(any("end_turn" in row for row in released), released)
         self.assertLess(elapsed, 1.5)
 
     def test_s2_timeout_alerts_and_then_allows_close(self):
