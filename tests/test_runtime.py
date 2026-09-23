@@ -7,7 +7,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from buzz_team.config import Config, identity
 from buzz_team.adapters import adapter
@@ -164,8 +164,28 @@ class ConfigurationTests(Fixture):
         env = r.env({"PATH": "/usr/bin", "KAIRO_SERVE_ROOT": "wrong", "XAI_API_KEY": "test-secret"})
         self.assertEqual(env["KAIRO_SERVE_ROOT"], str(self.base / "test-data"))
         self.assertEqual(env["GROK_HOME"], str(self.base / "grok"))
+        self.assertEqual(env["GROK_SANDBOX"], "off")
         self.assertNotIn("XAI_API_KEY", env)
         self.assertEqual(r.cwd, self.base / "workspace")
+
+    def test_development_grok_forces_sandbox_off(self):
+        env = Runtime(self.config, self.key).env({"GROK_SANDBOX": "workspace"})
+        self.assertEqual(env["GROK_SANDBOX"], "off")
+
+    def test_business_grok_leaves_sandbox_unset(self):
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        env = Runtime(self.config, self.key).env({"GROK_SANDBOX": "workspace"})
+        self.assertNotIn("GROK_SANDBOX", env)
+
+    def test_generic_adapter_does_not_set_grok_sandbox(self):
+        self.config.data["adapters"] = {"other": {
+            "kind": "acp-command", "command": str(self.fake), "home_directory": "other",
+            "env": {"EXAMPLE_HOME": "{executor_home}"}}}
+        self.config.data["agents"][self.key]["adapter"] = "other"
+        self.save()
+        env = Runtime(self.config, self.key).env({"GROK_SANDBOX": "workspace"})
+        self.assertNotIn("GROK_SANDBOX", env)
 
     def test_invalid_worktree_names(self):
         runtime = Runtime(self.config, self.key)
@@ -174,8 +194,100 @@ class ConfigurationTests(Fixture):
                 runtime.workspace(task, "anything", "HEAD", branch)
 
     def test_missing_sandbox_does_not_fallback(self):
-        with patch.object(Path, "is_file", return_value=False), self.assertRaises(ValueError):
+        with patch("buzz_team.runtime.underSeatbelt", return_value=False), \
+             patch.object(Path, "is_file", return_value=False), self.assertRaises(ValueError):
             Runtime(self.config, self.key).command(["true"])
+
+    def test_command_inherits_when_already_confined(self):
+        with patch("buzz_team.runtime.underSeatbelt", return_value=True), \
+             patch.object(Path, "is_file", return_value=False):
+            self.assertEqual(Runtime(self.config, self.key).command(["true"]), ["true"])
+
+    def test_command_wraps_unconfined_development(self):
+        realIsFile = Path.is_file
+        def fakeIsFile(self):
+            if str(self) == "/usr/bin/sandbox-exec":
+                return True
+            return realIsFile(self)
+        with patch("buzz_team.runtime.underSeatbelt", return_value=False), \
+             patch.object(Path, "is_file", fakeIsFile):
+            command = Runtime(self.config, self.key).command(["true", "--flag"])
+        self.assertEqual(command[0], "/usr/bin/sandbox-exec")
+        self.assertEqual(command[1], "-p")
+        self.assertIn("(deny file-write*", command[2])
+        self.assertEqual(command[3:], ["true", "--flag"])
+
+    def test_command_business_never_wraps(self):
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        runtime = Runtime(self.config, self.key)
+        for confined in (False, True):
+            with self.subTest(confined=confined), \
+                 patch("buzz_team.runtime.underSeatbelt", return_value=confined), \
+                 patch.object(Path, "is_file", return_value=True):
+                self.assertEqual(runtime.command(["true", "acp"]), ["true", "acp"])
+
+    def test_under_seatbelt_false_off_darwin(self):
+        from buzz_team.runtime import underSeatbelt
+        if sys.platform != "darwin":
+            self.assertFalse(underSeatbelt())
+        with patch("buzz_team.runtime.sys.platform", "linux"), \
+             patch("buzz_team.runtime.sandboxCheck") as check:
+            self.assertFalse(underSeatbelt())
+            check.assert_not_called()
+
+    def test_under_seatbelt_uses_sandbox_check(self):
+        from buzz_team.runtime import underSeatbelt
+        with patch("buzz_team.runtime.sys.platform", "darwin"), \
+             patch("buzz_team.runtime.sandboxCheck", return_value=True) as check:
+            self.assertTrue(underSeatbelt())
+            check.assert_called_once()
+
+    def test_sandbox_check_reads_libsandbox(self):
+        from buzz_team.runtime import sandboxCheck
+        fake = MagicMock()
+        fake.sandbox_check.return_value = 1
+        with patch("buzz_team.runtime.ctypes.CDLL", return_value=fake) as cdll:
+            self.assertTrue(sandboxCheck(99))
+        cdll.assert_called_once_with("/usr/lib/libsandbox.dylib")
+        fake.sandbox_check.assert_called_once()
+        self.assertEqual(fake.sandbox_check.call_args.args[0], 99)
+        self.assertIsNone(fake.sandbox_check.call_args.args[1])
+        fake.sandbox_check.return_value = 0
+        with patch("buzz_team.runtime.ctypes.CDLL", return_value=fake):
+            self.assertFalse(sandboxCheck(1))
+        fake.sandbox_check.return_value = -1
+        with patch("buzz_team.runtime.ctypes.CDLL", return_value=fake), self.assertRaises(OSError):
+            sandboxCheck(1)
+
+    def test_probe_nested_seatbelt_apply_statuses(self):
+        from buzz_team.runtime import probeNestedSeatbeltApply
+
+        class FakeExec:
+            def __init__(self, exists):
+                self.exists = exists
+            def is_file(self):
+                return self.exists
+            def __str__(self):
+                return "/usr/bin/sandbox-exec"
+
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(False)):
+            self.assertEqual(probeNestedSeatbeltApply(), "missing")
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(True)), \
+             patch("buzz_team.runtime.subprocess.run",
+                   return_value=subprocess.CompletedProcess([], 0)) as run:
+            self.assertEqual(probeNestedSeatbeltApply(), "nested_ok")
+            argv = run.call_args.args[0]
+            self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
+            self.assertEqual(argv.count("/usr/bin/sandbox-exec"), 2)
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(True)), \
+             patch("buzz_team.runtime.subprocess.run",
+                   return_value=subprocess.CompletedProcess(
+                       [], 1, stderr="sandbox-exec: sandbox_apply: Operation not permitted")):
+            self.assertEqual(probeNestedSeatbeltApply(), "inherit_only")
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(True)), \
+             patch("buzz_team.runtime.subprocess.run", side_effect=OSError("gone")):
+            self.assertEqual(probeNestedSeatbeltApply(), "missing")
 
 
 class CLITests(Fixture):
@@ -215,6 +327,36 @@ class CLITests(Fixture):
             self.assertEqual(os.environ.get("BUZZ_WAKE_FUSE"), "input_tokens")
         self.assertTrue(any(item.get("type") == "budget_gate" for item in ledger.report()["events"]))
 
+    def test_launch_executor_inherits_when_already_confined(self):
+        runtime = Runtime(self.config, self.key)
+        with patch("buzz_team.runtime.underSeatbelt", return_value=True), \
+             patch("os.chdir"), patch("os.execve", side_effect=SystemExit(0)) as execve:
+            with self.assertRaises(SystemExit):
+                runtime.launch("executor", ["acp"])
+        argv = execve.call_args.args[1]
+        self.assertEqual(argv[0], str(self.fake))
+        self.assertNotEqual(argv[0], "/usr/bin/sandbox-exec")
+        self.assertEqual(argv[1:], ["acp"])
+        self.assertEqual(execve.call_args.args[2]["GROK_SANDBOX"], "off")
+
+    def test_launch_executor_wraps_when_unconfined(self):
+        runtime = Runtime(self.config, self.key)
+        realIsFile = Path.is_file
+        def fakeIsFile(self):
+            if str(self) == "/usr/bin/sandbox-exec":
+                return True
+            return realIsFile(self)
+        with patch("buzz_team.runtime.underSeatbelt", return_value=False), \
+             patch.object(Path, "is_file", fakeIsFile), \
+             patch("os.chdir"), patch("os.execve", side_effect=SystemExit(0)) as execve:
+            with self.assertRaises(SystemExit):
+                runtime.launch("executor", ["acp"])
+        argv = execve.call_args.args[1]
+        self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
+        self.assertEqual(argv[1], "-p")
+        self.assertEqual(argv[-2:], [str(self.fake), "acp"])
+        self.assertEqual(execve.call_args.args[2]["GROK_SANDBOX"], "off")
+
     def test_harness_launch_allows_plain_acp_without_task(self):
         self.config.data["policies"]["development"]["production_write"] = True
         self.save()
@@ -230,6 +372,7 @@ class CLITests(Fixture):
             self.assertNotIn("BUZZ_TASK_ID", env)
             self.assertNotIn("BUZZ_TASK_SCOPE", env)
             self.assertNotIn("BUZZ_TASK_WORKSPACE", env)
+            self.assertNotIn("GROK_SANDBOX", env)
         result = self.cli("launch", "harness", "--", "acp", BUZZ_RUNTIME_ID=self.key)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("requires task_id", result.stderr)
@@ -721,6 +864,7 @@ class BindingTests(Fixture):
                 with patch("buzz_team.desktop.live_processes", return_value=[]):
                     result = desktop.bind(self.config)
                     bound = json.loads(self.desktop_file.read_text())
+                    self.assertNotIn("GROK_SANDBOX", bound[0]["env_vars"])
                     for name in ("GROK_MEMORY", "GROK_AGENT_DASHBOARD"):
                         self.assertEqual(bound[0]["env_vars"].get(name), persisted.get(name))
                         bound[0]["env_vars"].pop(name, None)
@@ -728,9 +872,11 @@ class BindingTests(Fixture):
                     self.assertTrue(desktop.status(self.config)["bound"])
                     self.assertEqual(desktop.bind(self.config)["changed"], 0)
                     desktop.rollback(self.config, Path(result["receipt"]))
-                launched = Runtime(self.config, self.key).env({"GROK_MEMORY": "1", "GROK_AGENT_DASHBOARD": "1"})
+                launched = Runtime(self.config, self.key).env({
+                    "GROK_MEMORY": "1", "GROK_AGENT_DASHBOARD": "1", "GROK_SANDBOX": "workspace"})
                 self.assertEqual(launched["GROK_MEMORY"], "0")
                 self.assertEqual(launched["GROK_AGENT_DASHBOARD"], "0")
+                self.assertEqual(launched["GROK_SANDBOX"], "off")
                 self.assert_auth_unchanged()
 
     def test_bind_and_rollback_no_secret_or_auth_mutation(self):
@@ -878,6 +1024,24 @@ assert r.returncode != 0
         result = subprocess.run(runtime.command([sys.executable, "-c", code]), capture_output=True, text=True, timeout=20)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertEqual(target.read_text(), "original")
+
+    def test_already_confined_launch_does_not_rewrap(self):
+        runtime = Runtime(self.config, self.key)
+        root = str(Path(__file__).resolve().parents[1] / "src")
+        inner = (
+            "from buzz_team.runtime import Runtime, underSeatbelt\n"
+            "from buzz_team.config import Config\n"
+            "assert underSeatbelt()\n"
+            f"cmd = Runtime(Config({str(self.instance)!r}), {self.key!r}).command(['/usr/bin/true'])\n"
+            "assert cmd == ['/usr/bin/true'], cmd\n"
+            "print('inherited')\n"
+        )
+        result = subprocess.run(
+            runtime.command([sys.executable, "-c", inner]),
+            capture_output=True, text=True, timeout=20,
+            env=dict(os.environ, PYTHONPATH=root))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn("inherited", result.stdout)
 
     def test_real_launcher_preserves_arguments_and_home(self):
         prepare(self.config)

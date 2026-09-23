@@ -1,6 +1,7 @@
 """Identity-level boundaries, preserving existing executor homes and credentials."""
 from __future__ import annotations
 
+import ctypes
 import json
 import os
 from pathlib import Path
@@ -13,6 +14,44 @@ import uuid
 
 from .adapters import adapter
 from .config import Config, overlap
+
+SEATBELT_EXEC = Path("/usr/bin/sandbox-exec")
+SEATBELT_LIB = "/usr/lib/libsandbox.dylib"
+_SEATBELT_PROBE_PROFILE = "(version 1)\n(allow default)\n"
+
+
+def sandboxCheck(pid: int) -> bool:
+    """Return True when pid is already confined by macOS Seatbelt."""
+    lib = ctypes.CDLL(SEATBELT_LIB)
+    fn = lib.sandbox_check
+    fn.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+    fn.restype = ctypes.c_int
+    result = fn(int(pid), None, 0)
+    if result < 0:
+        raise OSError("sandbox_check failed")
+    return result > 0
+
+
+def underSeatbelt() -> bool:
+    """True when this process already has a Seatbelt profile applied."""
+    if sys.platform != "darwin":
+        return False
+    return sandboxCheck(os.getpid())
+
+
+def probeNestedSeatbeltApply() -> str:
+    """Probe nested sandbox_apply. missing | nested_ok | inherit_only."""
+    if not SEATBELT_EXEC.is_file():
+        return "missing"
+    inner = [str(SEATBELT_EXEC), "-p", _SEATBELT_PROBE_PROFILE, "/usr/bin/true"]
+    argv = [str(SEATBELT_EXEC), "-p", _SEATBELT_PROBE_PROFILE, *inner]
+    try:
+        result = subprocess.run(argv, capture_output=True, text=True, timeout=5)
+    except OSError:
+        return "missing"
+    if result.returncode == 0:
+        return "nested_ok"
+    return "inherit_only"
 
 
 def _fuseReasonForLaunch(config, report: dict) -> str | None:
@@ -64,6 +103,10 @@ class Runtime:
             raise ValueError("runtime identity belongs to a different community")
         self.executor.clean_inherited(env)
         env.update(self.executor.environment(self.base, cwd))
+        # Grok may apply its own Seatbelt from GROK_SANDBOX or GROK_HOME config.toml.
+        # Under the buzz-team fence, force off so ACP initialize is one layer.
+        if not self.policy["production_write"] and self.executor.kind == "grok":
+            env["GROK_SANDBOX"] = "off"
         env.update(BUZZ_RUNTIME_ID=self.key, BUZZ_TEAM_INSTANCE=str(self.config.instance),
                    TMPDIR=str(self.base / "tmp") + "/", XDG_CACHE_HOME=str(self.base / "cache"),
                    UV_CACHE_DIR=str(self.base / "cache/uv"), npm_config_cache=str(self.base / "cache/npm"),
@@ -111,9 +154,13 @@ class Runtime:
     def command(self, argv: list[str]) -> list[str]:
         if self.policy["production_write"]:
             return argv
-        if not Path("/usr/bin/sandbox-exec").is_file():
+        # Nested sandbox_apply can return EPERM (ACP initialize then fails).
+        # Inherit the already-applied profile instead of wrapping again.
+        if underSeatbelt():
+            return argv
+        if not SEATBELT_EXEC.is_file():
             raise ValueError("Seatbelt unavailable; refusing unconfined launch")
-        return ["/usr/bin/sandbox-exec", "-p", self.profile(), *argv]
+        return [str(SEATBELT_EXEC), "-p", self.profile(), *argv]
 
     def launch(self, mode: str, args: list[str], task_id: str | None = None,
                task_scope: str | None = None, *, consume_handoff: bool = False):
