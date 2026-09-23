@@ -356,6 +356,20 @@ class ContextLedger:
             self._write(data)
             return event
 
+    def record_long_tool_alert(self, *, reason: str, tool_ref: str, elapsed_s: int) -> dict:
+        reason = _text("alert reason", reason, limit=64)
+        tool_ref = _text("tool ref", tool_ref, limit=32)
+        if type(elapsed_s) is not int or elapsed_s < 0:
+            raise ValueError("invalid elapsed")
+        with self._lock():
+            data = self._read()
+            event = {"type": "long_tool_alert", "reason": reason, "tool_ref": tool_ref,
+                     "elapsed_s": elapsed_s, "at": _now()}
+            data["events"].append(event)
+            data["updated_at"] = _now()
+            self._write(data)
+            return event
+
 
 def fuseReason(report: dict, *, rotate: dict | None = None) -> str | None:
     """Map ledger + #15 rotate caps to a fuse reason. unavailable amounts fail-closed."""

@@ -13,3 +13,4 @@
 | #15 S1 | [频道点名门控](channel-mention-gate.md) | wake decide / Desktop 频道唤醒 |
 | #15 S2 | [超限 session 换窗](session-rotate.md) | wake cursor / fuse 回帖 |
 | #16 S1–S3 | [Desktop ACP 任务账本](desktop-acp-task.md) | Desktop env / launch --task + context consume |
+| #29 S1–S2 | [长工具 turn gate](long-tool-turn.md) | executor ACP stdio；`long_tool` 超时/轮询 |

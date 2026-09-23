@@ -140,6 +140,15 @@ class ContextLedgerTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "invalid fuse reason"):
                 setWakeFuse("mystery")
 
+    def test_long_tool_alert_appends_without_inventing_budget(self):
+        self.ledger.start()
+        event = self.ledger.record_long_tool_alert(reason="timeout", tool_ref="call-bg", elapsed_s=12)
+        self.assertEqual(event["type"], "long_tool_alert")
+        report = self.ledger.report()
+        self.assertEqual(report["status"], "collecting")
+        self.assertTrue(any(item.get("type") == "long_tool_alert" and item.get("reason") == "timeout"
+                            for item in report["events"]))
+
 
 
 if __name__ == "__main__":
