@@ -73,4 +73,4 @@ Desktop 频道 stream 唤醒必须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE
 
 ## 长工具 turn gate（#29）
 
-`launch executor` 在 ACP stdio 上扣住 `session/prompt` 的 `end_turn`，直到未完成长工具（含 `[bg]`）退出且可判定。可选 `long_tool.timeout_seconds`（默认 1200）与 `long_tool.poll_seconds`（默认 60，上限 120）。环境变量 `BUZZ_LONG_TOOL_TIMEOUT_SECONDS` / `BUZZ_LONG_TOOL_POLL_SECONDS` 可覆盖。超时或进程消失写 stderr `long_tool_alert`；有 `BUZZ_WAKE_CHANNEL` + `BUZZ_WAKE_POST_REF` 时回帖 `【长工具】`，不走 #15 熔断换窗。非法配置 fail-closed。不做 inflight job 账本。
+`launch executor` 在 ACP stdio 上扣住 `session/prompt` 的 `end_turn` 以及专有 `_x.ai/session/prompt_complete` / `turn_completed`，直到未完成长工具（含 `[bg]`）退出且可判定。无 `pid=N` 的自然 `[bg]` 保持打开，直到超时或后续纯数字 PID 绑定；不把 executor 最新子进程当作权威 PID。可选 `long_tool.timeout_seconds`（默认 1200）与 `long_tool.poll_seconds`（默认 60，上限 120）。环境变量 `BUZZ_LONG_TOOL_TIMEOUT_SECONDS` / `BUZZ_LONG_TOOL_POLL_SECONDS` 可覆盖。超时或**已绑定**进程消失写 stderr `long_tool_alert`；有 `BUZZ_WAKE_CHANNEL` + `BUZZ_WAKE_POST_REF` 时回帖 `【长工具】`，不走 #15 熔断换窗。非法配置 fail-closed。不做 inflight job 账本。

@@ -48,7 +48,7 @@ class LongToolWatch:
     tools: dict[str, LongTool] = field(default_factory=dict)
     _seq: int = 0
 
-    def apply(self, update: dict, *, agentPid: int | None = None, now: float | None = None) -> LongTool | None:
+    def apply(self, update: dict, *, now: float | None = None) -> LongTool | None:
         if not isinstance(update, dict):
             raise ValueError("invalid tool update")
         now = time.monotonic() if now is None else now
@@ -57,7 +57,6 @@ class LongToolWatch:
             self._seq += 1
             toolCallId = f"anon-{self._seq}"
         text = collectText(update)
-        pids = extractPids(text)
         background = isBackgroundMarker(text)
         status = update.get("status")
         if status is not None and (not isinstance(status, str) or status not in (_OPEN | _CLOSED)):
@@ -80,14 +79,9 @@ class LongToolWatch:
                 tool.background = True
             elif status in _CLOSED:
                 tool.status = status
-        if pids and tool.pid is None:
-            tool.pid = pids[0]
-            tool.marker = processMarker(tool.pid)
-        elif background and tool.pid is None and agentPid is not None:
-            child = newestChild(agentPid)
-            if child is not None:
-                tool.pid = child
-                tool.marker = processMarker(child)
+        # Never attach newestChild(agentPid): live grok [bg] wrappers exit in seconds
+        # and that guessed PID is not evidence. Keep open until timeout or a text PID.
+        _bindReliablePid(tool, update, text)
         return tool
 
     def poll(self, *, now: float | None = None) -> list[dict]:
@@ -123,6 +117,48 @@ def extractPids(text: str) -> list[int]:
     if not text:
         return []
     return [int(match.group(1)) for match in _PID.finditer(text)]
+
+
+def extractBarePids(value: object) -> list[int]:
+    """Grok [bg] later content is often a lone PID line, not pid=N."""
+    found: list[int] = []
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            pid = int(stripped)
+            if pid > 0:
+                found.append(pid)
+        return found
+    if isinstance(value, dict):
+        for item in value.values():
+            found.extend(extractBarePids(item))
+        return found
+    if isinstance(value, list):
+        for item in value:
+            found.extend(extractBarePids(item))
+        return found
+    return found
+
+
+def firstReliablePid(pids: list[int]) -> int | None:
+    """Bind a still-live text PID. Skip already-exited wrapper shells."""
+    for pid in pids:
+        if pid > 0 and not processGone(pid, None):
+            return pid
+    return None
+
+
+def _bindReliablePid(tool: LongTool, update: dict, text: str) -> None:
+    if tool.pid is not None:
+        return
+    pids = extractPids(text)
+    if not pids and tool.background:
+        pids = extractBarePids(update)
+    chosen = firstReliablePid(pids)
+    if chosen is None:
+        return
+    tool.pid = chosen
+    tool.marker = processMarker(chosen)
 
 
 def collectText(value: object) -> str:
@@ -162,15 +198,20 @@ def turnCloseKind(message: object) -> str | None:
     result = message.get("result")
     if isinstance(result, dict) and "stopReason" in result and "id" in message:
         return "prompt_result"
-    if message.get("method") != "session/update":
+    method = message.get("method")
+    if method == "_x.ai/session/prompt_complete":
+        return "prompt_complete"
+    if method != "session/update":
         return None
     params = message.get("params")
     if not isinstance(params, dict):
         return None
     update = params.get("update")
-    if not isinstance(update, dict):
-        return None
-    if "stopReason" in update:
+    update = update if isinstance(update, dict) else {}
+    if (update.get("sessionUpdate") == "turn_completed"
+            or params.get("sessionUpdate") == "turn_completed"):
+        return "turn_completed"
+    if "stopReason" in update or "stopReason" in params:
         return "state_stop"
     if update.get("sessionUpdate") == "state" and update.get("state") == "idle":
         return "state_idle"
@@ -286,31 +327,27 @@ def processGone(pid: int, marker: str | None) -> bool:
         return False
     except OSError:
         return True
+    if _isZombie(pid):
+        return True
     current = processMarker(pid)
     if marker is not None and current is not None and marker != current:
         return True
     return False
 
 
-def newestChild(pid: int) -> int | None:
-    children = listChildren(pid)
-    return max(children) if children else None
-
-
-def listChildren(pid: int) -> list[int]:
-    path = Path(f"/proc/{pid}/task/{pid}/children")
+def _isZombie(pid: int) -> bool:
     try:
-        text = path.read_text()
+        for line in Path(f"/proc/{pid}/status").read_text().splitlines():
+            if line.startswith("State:"):
+                return line.split()[1].upper() == "Z"
     except OSError:
-        text = ""
-    if text.strip():
-        return [int(item) for item in text.split() if item.isdigit()]
+        pass
     try:
-        output = subprocess.check_output(["pgrep", "-P", str(pid)], text=True,
-                                         stderr=subprocess.DEVNULL, timeout=2)
+        state = subprocess.check_output(["ps", "-p", str(pid), "-o", "state="], text=True,
+                                        stderr=subprocess.DEVNULL, timeout=2).strip()
     except (OSError, subprocess.SubprocessError):
-        return []
-    return [int(item) for item in output.split() if item.isdigit()]
+        return False
+    return bool(state) and state[0].upper() == "Z"
 
 
 def _runInherited(command: list[str], env: dict[str, str]) -> int:
@@ -395,7 +432,7 @@ def _runExecutorGate(command: list[str], env: dict[str, str], *, policy: LongToo
                 update = toolUpdateFromMessage(parsed)
                 with lock:
                     if update is not None:
-                        watch.apply(update, agentPid=child.pid)
+                        watch.apply(update)
                     if cancelled:
                         emit(raw)
                         continue
