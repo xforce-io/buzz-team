@@ -330,14 +330,13 @@ class CLITests(Fixture):
     def test_launch_executor_inherits_when_already_confined(self):
         runtime = Runtime(self.config, self.key)
         with patch("buzz_team.runtime.underSeatbelt", return_value=True), \
-             patch("os.chdir"), patch("os.execve", side_effect=SystemExit(0)) as execve:
-            with self.assertRaises(SystemExit):
-                runtime.launch("executor", ["acp"])
-        argv = execve.call_args.args[1]
+             patch("os.chdir"), patch("buzz_team.runtime.runTurnGate", return_value=0) as gated:
+            self.assertEqual(runtime.launch("executor", ["acp"]), 0)
+        argv = gated.call_args.args[0]
         self.assertEqual(argv[0], str(self.fake))
         self.assertNotEqual(argv[0], "/usr/bin/sandbox-exec")
         self.assertEqual(argv[1:], ["acp"])
-        self.assertEqual(execve.call_args.args[2]["GROK_SANDBOX"], "off")
+        self.assertEqual(gated.call_args.args[1]["GROK_SANDBOX"], "off")
 
     def test_launch_executor_wraps_when_unconfined(self):
         runtime = Runtime(self.config, self.key)
@@ -348,14 +347,13 @@ class CLITests(Fixture):
             return realIsFile(self)
         with patch("buzz_team.runtime.underSeatbelt", return_value=False), \
              patch.object(Path, "is_file", fakeIsFile), \
-             patch("os.chdir"), patch("os.execve", side_effect=SystemExit(0)) as execve:
-            with self.assertRaises(SystemExit):
-                runtime.launch("executor", ["acp"])
-        argv = execve.call_args.args[1]
+             patch("os.chdir"), patch("buzz_team.runtime.runTurnGate", return_value=0) as gated:
+            self.assertEqual(runtime.launch("executor", ["acp"]), 0)
+        argv = gated.call_args.args[0]
         self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
         self.assertEqual(argv[1], "-p")
         self.assertEqual(argv[-2:], [str(self.fake), "acp"])
-        self.assertEqual(execve.call_args.args[2]["GROK_SANDBOX"], "off")
+        self.assertEqual(gated.call_args.args[1]["GROK_SANDBOX"], "off")
 
     def test_harness_launch_allows_plain_acp_without_task(self):
         self.config.data["policies"]["development"]["production_write"] = True
@@ -365,10 +363,9 @@ class CLITests(Fixture):
             for name in ("BUZZ_TASK_ID", "BUZZ_TASK_SCOPE", "BUZZ_TASK_WORKSPACE",
                          "BUZZ_WAKE_SURFACE", "BUZZ_WAKE_PAYLOAD", "BUZZ_CONSUME_HANDOFF"):
                 os.environ.pop(name, None)
-            with patch("os.chdir"), patch("os.execve", side_effect=SystemExit(0)) as execve:
-                with self.assertRaises(SystemExit):
-                    runtime.launch("harness", ["acp"])
-            env = execve.call_args.args[2]
+            with patch("os.chdir"), patch("buzz_team.runtime.runTurnGate", return_value=0) as gated:
+                self.assertEqual(runtime.launch("harness", ["acp"]), 0)
+            env = gated.call_args.args[1]
             self.assertNotIn("BUZZ_TASK_ID", env)
             self.assertNotIn("BUZZ_TASK_SCOPE", env)
             self.assertNotIn("BUZZ_TASK_WORKSPACE", env)

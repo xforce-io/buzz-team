@@ -14,6 +14,7 @@ import uuid
 
 from .adapters import adapter
 from .config import Config, overlap
+from .turn_gate import longToolPolicy, runTurnGate
 
 SEATBELT_EXEC = Path("/usr/bin/sandbox-exec")
 SEATBELT_LIB = "/usr/lib/libsandbox.dylib"
@@ -266,6 +267,7 @@ class Runtime:
             env["BUZZ_ACP_AGENT_COMMAND"] = str(self.config.instance / "bin/agent-executor")
         task_args = self.executor.task_session_args(session["session_id"]) if session and mode == "executor" else []
         command = self.command([binary, *task_args, *args])
+        policy = longToolPolicy(self.config.data, env)
         print(f"buzz-team: launching {mode} with bound identity", file=sys.stderr)
         if task_id and not inherited_owner:
             ready_r, ready_w = os.pipe()
@@ -281,7 +283,9 @@ class Runtime:
                         os._exit(126)
                     os.close(ready_r)
                     os.chdir(launch_cwd)
-                    os.execve(command[0], command, env)
+                    code = runTurnGate(command, env, policy=policy, mode=mode,
+                                       config=self.config, taskId=task_id)
+                    os._exit(code if isinstance(code, int) else 0)
                 finally:
                     os._exit(127)
             os.close(ready_r)
@@ -347,7 +351,8 @@ class Runtime:
                            scope=session["scope"], task_id=session["task_id"],
                            workspace=session["workspace"], owner=owner)
         os.chdir(launch_cwd)
-        os.execve(command[0], command, env)
+        return runTurnGate(command, env, policy=policy, mode=mode,
+                           config=self.config, taskId=task_id)
 
     def git(self, args: list[str], cwd: Path) -> str:
         return subprocess.check_output(["git", *args], cwd=cwd, env=self.env(dict(os.environ)), text=True, timeout=120).strip()

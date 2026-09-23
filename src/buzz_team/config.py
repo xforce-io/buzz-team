@@ -97,8 +97,10 @@ class Config:
         absolute(c["desktop"]["managed_agents"])
         absolute(c["desktop"]["app"])
         from .wake import validateChannelWake, validateMentionAliases
+        from .turn_gate import validateLongTool
         validateMentionAliases(c)
         validateChannelWake(c)
+        validateLongTool(c)
 
     def agent(self, key: str) -> dict:
         if key not in self.data["agents"]:

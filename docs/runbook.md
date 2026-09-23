@@ -70,3 +70,7 @@ buzz-team --instance /absolute/instance diagnose
 Desktop 频道 stream 唤醒必须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`（或一次写入 `BUZZ_WAKE_PAYLOAD` JSON，由 `applyWakePayload` 展开）。缺字段 fail-closed。无 `BUZZ_WAKE_SURFACE=stream` 且无 `BUZZ_WAKE_FUSE` 的冷启动不过该门，即使实例已配置 `channel_wake` / `mention_aliases`，也不要写入假 `BUZZ_WAKE_*`。硬停时进程带 `BUZZ_WAKE_FUSE=<turns|usd|input_tokens|budget_exceeded>`，#15 消费后回帖并换窗。
 
 超限后 ledger 为 `budget_exceeded`（或 rotate 等价上限 / 金额 `unavailable`）时拒绝同 task 再 launch（硬闸）。handoff 为 ready 时须 `buzz-team context consume --task TASK` 或 `launch --consume-handoff`（或 `BUZZ_CONSUME_HANDOFF=1`）后再开跑；换窗/rotate 见 #15。
+
+## 长工具 turn gate（#29）
+
+`launch executor` 在 ACP stdio 上扣住 `session/prompt` 的 `end_turn`，直到未完成长工具（含 `[bg]`）退出且可判定。可选 `long_tool.timeout_seconds`（默认 1200）与 `long_tool.poll_seconds`（默认 60，上限 120）。环境变量 `BUZZ_LONG_TOOL_TIMEOUT_SECONDS` / `BUZZ_LONG_TOOL_POLL_SECONDS` 可覆盖。超时或进程消失写 stderr `long_tool_alert`；有 `BUZZ_WAKE_CHANNEL` + `BUZZ_WAKE_POST_REF` 时回帖 `【长工具】`，不走 #15 熔断换窗。非法配置 fail-closed。不做 inflight job 账本。
