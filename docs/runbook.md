@@ -60,7 +60,7 @@ buzz-team --instance /absolute/instance diagnose
 
 ## 已知限制
 
-受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限、不包裹 sandbox-exec。development 启动只在尚未 confined 时套一层 Seatbelt；harness 已 seatbelt 后再 launch executor 继承现有 profile，避免二次 `sandbox_apply` EPERM。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
+受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限、不包裹 sandbox-exec。development 启动只在尚未 confined 时套一层 Seatbelt；harness 已 seatbelt 后再 launch executor 继承现有 profile，并把 `GROK_SANDBOX=off`，避免二次 `sandbox_apply` EPERM。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
 
 
 ## Desktop ACP 任务账本（#16）

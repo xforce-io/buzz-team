@@ -164,8 +164,28 @@ class ConfigurationTests(Fixture):
         env = r.env({"PATH": "/usr/bin", "KAIRO_SERVE_ROOT": "wrong", "XAI_API_KEY": "test-secret"})
         self.assertEqual(env["KAIRO_SERVE_ROOT"], str(self.base / "test-data"))
         self.assertEqual(env["GROK_HOME"], str(self.base / "grok"))
+        self.assertEqual(env["GROK_SANDBOX"], "off")
         self.assertNotIn("XAI_API_KEY", env)
         self.assertEqual(r.cwd, self.base / "workspace")
+
+    def test_development_grok_forces_sandbox_off(self):
+        env = Runtime(self.config, self.key).env({"GROK_SANDBOX": "workspace"})
+        self.assertEqual(env["GROK_SANDBOX"], "off")
+
+    def test_business_grok_leaves_sandbox_unset(self):
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        env = Runtime(self.config, self.key).env({"GROK_SANDBOX": "workspace"})
+        self.assertNotIn("GROK_SANDBOX", env)
+
+    def test_generic_adapter_does_not_set_grok_sandbox(self):
+        self.config.data["adapters"] = {"other": {
+            "kind": "acp-command", "command": str(self.fake), "home_directory": "other",
+            "env": {"EXAMPLE_HOME": "{executor_home}"}}}
+        self.config.data["agents"][self.key]["adapter"] = "other"
+        self.save()
+        env = Runtime(self.config, self.key).env({"GROK_SANDBOX": "workspace"})
+        self.assertNotIn("GROK_SANDBOX", env)
 
     def test_invalid_worktree_names(self):
         runtime = Runtime(self.config, self.key)
@@ -317,6 +337,7 @@ class CLITests(Fixture):
         self.assertEqual(argv[0], str(self.fake))
         self.assertNotEqual(argv[0], "/usr/bin/sandbox-exec")
         self.assertEqual(argv[1:], ["acp"])
+        self.assertEqual(execve.call_args.args[2]["GROK_SANDBOX"], "off")
 
     def test_launch_executor_wraps_when_unconfined(self):
         runtime = Runtime(self.config, self.key)
@@ -334,6 +355,7 @@ class CLITests(Fixture):
         self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
         self.assertEqual(argv[1], "-p")
         self.assertEqual(argv[-2:], [str(self.fake), "acp"])
+        self.assertEqual(execve.call_args.args[2]["GROK_SANDBOX"], "off")
 
     def test_harness_launch_allows_plain_acp_without_task(self):
         self.config.data["policies"]["development"]["production_write"] = True
@@ -350,6 +372,7 @@ class CLITests(Fixture):
             self.assertNotIn("BUZZ_TASK_ID", env)
             self.assertNotIn("BUZZ_TASK_SCOPE", env)
             self.assertNotIn("BUZZ_TASK_WORKSPACE", env)
+            self.assertNotIn("GROK_SANDBOX", env)
         result = self.cli("launch", "harness", "--", "acp", BUZZ_RUNTIME_ID=self.key)
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertNotIn("requires task_id", result.stderr)
@@ -841,6 +864,7 @@ class BindingTests(Fixture):
                 with patch("buzz_team.desktop.live_processes", return_value=[]):
                     result = desktop.bind(self.config)
                     bound = json.loads(self.desktop_file.read_text())
+                    self.assertNotIn("GROK_SANDBOX", bound[0]["env_vars"])
                     for name in ("GROK_MEMORY", "GROK_AGENT_DASHBOARD"):
                         self.assertEqual(bound[0]["env_vars"].get(name), persisted.get(name))
                         bound[0]["env_vars"].pop(name, None)
@@ -848,9 +872,11 @@ class BindingTests(Fixture):
                     self.assertTrue(desktop.status(self.config)["bound"])
                     self.assertEqual(desktop.bind(self.config)["changed"], 0)
                     desktop.rollback(self.config, Path(result["receipt"]))
-                launched = Runtime(self.config, self.key).env({"GROK_MEMORY": "1", "GROK_AGENT_DASHBOARD": "1"})
+                launched = Runtime(self.config, self.key).env({
+                    "GROK_MEMORY": "1", "GROK_AGENT_DASHBOARD": "1", "GROK_SANDBOX": "workspace"})
                 self.assertEqual(launched["GROK_MEMORY"], "0")
                 self.assertEqual(launched["GROK_AGENT_DASHBOARD"], "0")
+                self.assertEqual(launched["GROK_SANDBOX"], "off")
                 self.assert_auth_unchanged()
 
     def test_bind_and_rollback_no_secret_or_auth_mutation(self):

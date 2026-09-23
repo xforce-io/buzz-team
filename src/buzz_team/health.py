@@ -619,7 +619,8 @@ def collect_checks(config: Config, *, depth: str = "doctor",
             if SEATBELT_EXEC.is_file():
                 checks.append(check(
                     f"seatbelt_policy:{key[:20]}", "pass", "buzz_runtime",
-                    "restricted identity wraps with sandbox-exec unless already confined (inherit)"))
+                    "restricted identity wraps with sandbox-exec unless already confined (inherit); "
+                    "GROK_SANDBOX=off under that fence"))
             else:
                 checks.append(check(
                     f"seatbelt_policy:{key[:20]}", "fail", "buzz_runtime",

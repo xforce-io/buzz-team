@@ -185,6 +185,7 @@ class HealthTaxonomyTests(Fixture):
         if sys.platform == "darwin":
             self.assertEqual(policy[0]["status"], "pass")
             self.assertIn("inherit", policy[0]["summary"])
+            self.assertIn("GROK_SANDBOX=off", policy[0]["summary"])
         else:
             self.assertEqual(policy[0]["status"], "fail")
             self.assertIn("Seatbelt unavailable", policy[0]["summary"])

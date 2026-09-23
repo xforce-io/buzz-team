@@ -103,6 +103,10 @@ class Runtime:
             raise ValueError("runtime identity belongs to a different community")
         self.executor.clean_inherited(env)
         env.update(self.executor.environment(self.base, cwd))
+        # Grok may apply its own Seatbelt from GROK_SANDBOX or GROK_HOME config.toml.
+        # Under the buzz-team fence, force off so ACP initialize is one layer.
+        if not self.policy["production_write"] and self.executor.kind == "grok":
+            env["GROK_SANDBOX"] = "off"
         env.update(BUZZ_RUNTIME_ID=self.key, BUZZ_TEAM_INSTANCE=str(self.config.instance),
                    TMPDIR=str(self.base / "tmp") + "/", XDG_CACHE_HOME=str(self.base / "cache"),
                    UV_CACHE_DIR=str(self.base / "cache/uv"), npm_config_cache=str(self.base / "cache/npm"),

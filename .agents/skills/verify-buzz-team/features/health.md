@@ -36,7 +36,7 @@
 
 安装差异按实例 pin / 部署目标判断，不以仓库 HEAD 代替实际运行版本。
 
-macOS `tool_seatbelt` 不只报 `sandbox-exec` 存在：`tool_seatbelt_nested` 会做廉价的二次 `sandbox_apply` 探测。development 启动在进程已 confined 时继承现有 Seatbelt，不再套第二层 `sandbox-exec`。嵌套 apply 失败时检查仍可通过，但 summary 必须写明 inherit-only，不得只报「present」。business / `production_write=true` 仍不包裹 sandbox-exec。
+macOS `tool_seatbelt` 不只报 `sandbox-exec` 存在：`tool_seatbelt_nested` 会做廉价的二次 `sandbox_apply` 探测。development 启动在进程已 confined 时继承现有 Seatbelt，不再套第二层 `sandbox-exec`；Grok 在该外层下设 `GROK_SANDBOX=off`，避免再走 Grok 自己的 Seatbelt。嵌套 apply 失败时检查仍可通过，但 summary 必须写明 inherit-only，不得只报「present」。business / `production_write=true` 仍不包裹 sandbox-exec，也不写入 `GROK_SANDBOX`。
 
 
 
