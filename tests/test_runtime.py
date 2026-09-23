@@ -242,21 +242,30 @@ class ConfigurationTests(Fixture):
 
     def test_probe_nested_seatbelt_apply_statuses(self):
         from buzz_team.runtime import probeNestedSeatbeltApply
-        with patch("buzz_team.runtime.SEATBELT_EXEC.is_file", return_value=False):
+
+        class FakeExec:
+            def __init__(self, exists):
+                self.exists = exists
+            def is_file(self):
+                return self.exists
+            def __str__(self):
+                return "/usr/bin/sandbox-exec"
+
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(False)):
             self.assertEqual(probeNestedSeatbeltApply(), "missing")
-        with patch("buzz_team.runtime.SEATBELT_EXEC.is_file", return_value=True), \
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(True)), \
              patch("buzz_team.runtime.subprocess.run",
                    return_value=subprocess.CompletedProcess([], 0)) as run:
             self.assertEqual(probeNestedSeatbeltApply(), "nested_ok")
             argv = run.call_args.args[0]
             self.assertEqual(argv[0], "/usr/bin/sandbox-exec")
             self.assertEqual(argv.count("/usr/bin/sandbox-exec"), 2)
-        with patch("buzz_team.runtime.SEATBELT_EXEC.is_file", return_value=True), \
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(True)), \
              patch("buzz_team.runtime.subprocess.run",
                    return_value=subprocess.CompletedProcess(
                        [], 1, stderr="sandbox-exec: sandbox_apply: Operation not permitted")):
             self.assertEqual(probeNestedSeatbeltApply(), "inherit_only")
-        with patch("buzz_team.runtime.SEATBELT_EXEC.is_file", return_value=True), \
+        with patch("buzz_team.runtime.SEATBELT_EXEC", FakeExec(True)), \
              patch("buzz_team.runtime.subprocess.run", side_effect=OSError("gone")):
             self.assertEqual(probeNestedSeatbeltApply(), "missing")
 
