@@ -87,9 +87,39 @@ print(json.dumps({"jsonrpc": "2.0", "method": "_x.ai/session/prompt_complete",
 print(json.dumps({"jsonrpc": "2.0", "method": "session/update",
                   "params": {"sessionId": sid, "update": {
                       "sessionUpdate": "turn_completed", "stopReason": "end_turn"}}}), flush=True)
+print(json.dumps({"jsonrpc": "2.0", "method": "_x.ai/session_notification",
+                  "params": {"sessionId": sid, "update": {
+                      "sessionUpdate": "turn_completed", "prompt_id": "247e8338",
+                      "stop_reason": "end_turn"}}}), flush=True)
 print("REAL_PID=%d EPHEM_PID=%d" % (real.pid, ephem.pid), file=sys.stderr, flush=True)
 ephem.wait()
 time.sleep(spec.get("linger", 8))
+"""
+
+FAKE_LIVE_SESSION_NOTIFICATION = r"""
+import json, sys, time
+req = json.loads(sys.stdin.readline())
+sid = req["params"]["sessionId"]
+tid = "call-56b62bfc-8922-49ea-8344-bb99b14a6c1d-0"
+print(json.dumps({
+    "jsonrpc": "2.0", "method": "session/update",
+    "params": {"sessionId": sid, "update": {
+        "sessionUpdate": "tool_call_update", "toolCallId": tid,
+        "status": "completed",
+        "title": "[bg] nohup sleep 900 >/dev/null 2>&1 & echo $!",
+        "content": [{"type": "content", "content": {"type": "text",
+            "text": "Background task started (task_id 01a0ce91-e5a3-7663-93f6-6ee7921c50b9)"}}],
+    }},
+}), flush=True)
+print(json.dumps({
+    "jsonrpc": "2.0", "method": "_x.ai/session_notification",
+    "params": {"sessionId": sid, "update": {
+        "sessionUpdate": "turn_completed",
+        "prompt_id": "247e8338-b366-4efd-894d-7b394ad20dc7",
+        "stop_reason": "end_turn",
+    }},
+}), flush=True)
+time.sleep(8)
 """
 
 
@@ -274,6 +304,43 @@ class TurnGateUnitTests(unittest.TestCase):
             }},
         }), "state_stop")
 
+    def test_live_session_notification_turn_completed_is_close(self):
+        # Hogan live re-verify 2026-09-23 ~22:01 CST: grok forwarded this ~8s
+        # after natural [bg] because turnCloseKind only knew prompt_complete /
+        # session/update turn_completed.
+        live = {
+            "jsonrpc": "2.0",
+            "method": "_x.ai/session_notification",
+            "params": {
+                "sessionId": "01a0ce91-95cf-7462-9083-4936f25940c1",
+                "update": {
+                    "sessionUpdate": "turn_completed",
+                    "prompt_id": "247e8338-b366-4efd-894d-7b394ad20dc7",
+                    "stop_reason": "end_turn",
+                    "usage": {"inputTokens": 62525, "outputTokens": 1220},
+                },
+            },
+        }
+        self.assertEqual(turnCloseKind(live), "turn_completed")
+        self.assertEqual(turnCloseKind({
+            "method": "_x.ai/session_notification",
+            "params": {"sessionId": "sess", "stop_reason": "end_turn",
+                       "update": {"sessionUpdate": "agent_message_chunk"}},
+        }), "state_stop")
+        self.assertIsNone(turnCloseKind({
+            "method": "_x.ai/session_notification",
+            "params": {"sessionId": "sess", "update": {
+                "sessionUpdate": "tool_call_update", "status": "completed",
+            }},
+        }))
+        self.assertIsNone(turnCloseKind({
+            "method": "_x.ai/task_completed",
+            "params": {"sessionId": "sess", "update": {
+                "sessionUpdate": "task_completed",
+                "tool_call_id": "call-56b62bfc",
+            }},
+        }))
+
     def test_policy_defaults_and_fail_closed_config(self):
         self.assertEqual(longToolPolicy({}).timeoutSeconds, DEFAULT_TIMEOUT_SECONDS)
         self.assertEqual(longToolPolicy({}).pollSeconds, float(DEFAULT_POLL_SECONDS))
@@ -375,7 +442,9 @@ class TurnGateRelayTests(unittest.TestCase):
     def _closeMarkers(self, rows):
         return [row for row in rows if (
             '"stopReason": "end_turn"' in row or '"stopReason":"end_turn"' in row
-            or "prompt_complete" in row or "turn_completed" in row)]
+            or '"stop_reason": "end_turn"' in row or '"stop_reason":"end_turn"' in row
+            or "prompt_complete" in row or "turn_completed" in row
+            or "session_notification" in row)]
 
     def test_s1_holds_end_turn_until_background_pid_exits(self):
         proc = self._runGate(child="import time; time.sleep(1.2)", waitChild=True,
@@ -503,12 +572,52 @@ class TurnGateRelayTests(unittest.TestCase):
                     any("end_turn" in row for row in rows)
                     and any("prompt_complete" in row for row in rows)
                     and any("turn_completed" in row for row in rows)
+                    and any("session_notification" in row for row in rows)
                 ), 4)
             self.assertTrue(any("end_turn" in row for row in released), released)
             self.assertTrue(any("prompt_complete" in row for row in released), released)
             self.assertTrue(any("turn_completed" in row for row in released), released)
+            self.assertTrue(any("session_notification" in row for row in released), released)
         finally:
             self._closeGate(proc, extra)
+
+    def test_s1_holds_live_session_notification_close(self):
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"),
+                   GATE_TIMEOUT="60", GATE_POLL="0.1",
+                   GATE_CMD=json.dumps([sys.executable, "-c", FAKE_LIVE_SESSION_NOTIFICATION]))
+        proc = subprocess.Popen([sys.executable, "-c", GATE_WRAPPER], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+                                bufsize=0)
+        prompt = json.dumps({
+            "jsonrpc": "2.0", "id": 4, "method": "session/prompt",
+            "params": {"sessionId": "sess-live-notify", "prompt": [
+                {"type": "text", "text": "bg"},
+            ]},
+        }) + "\n"
+        proc.stdin.write(prompt.encode())
+        proc.stdin.flush()
+        try:
+            lines = self._readUntil(
+                proc, lambda rows: any("[bg]" in row for row in rows), 4)
+            self.assertTrue(any("[bg]" in row for row in lines), lines)
+            leaked = self._readUntil(
+                proc, lambda rows: any("session_notification" in row for row in rows), 0.4)
+            lines.extend(leaked)
+            self.assertFalse(any("session_notification" in row for row in lines), lines)
+            self.assertFalse(self._closeMarkers(lines), lines)
+            cancel = json.dumps({
+                "jsonrpc": "2.0", "method": "session/cancel",
+                "params": {"sessionId": "sess-live-notify"},
+            }) + "\n"
+            proc.stdin.write(cancel.encode())
+            proc.stdin.flush()
+            released = self._readUntil(
+                proc, lambda rows: any("session_notification" in row for row in rows), 3)
+            self.assertTrue(any("session_notification" in row for row in released), released)
+            self.assertTrue(any("turn_completed" in row for row in released), released)
+            self.assertTrue(any("end_turn" in row for row in released), released)
+        finally:
+            self._closeGate(proc)
 
     def test_s2_timeout_alerts_and_then_allows_close(self):
         proc = self._runGate(child="import time; time.sleep(30)", waitChild=False,

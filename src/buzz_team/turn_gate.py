@@ -201,7 +201,10 @@ def turnCloseKind(message: object) -> str | None:
     method = message.get("method")
     if method == "_x.ai/session/prompt_complete":
         return "prompt_complete"
-    if method != "session/update":
+    # Live grok (Hogan 2026-09-23) closes via proprietary _x.ai/session_notification
+    # with update.sessionUpdate=turn_completed and stop_reason=end_turn — not
+    # session/update and not _x.ai/session/prompt_complete.
+    if method not in {"session/update", "_x.ai/session_notification"}:
         return None
     params = message.get("params")
     if not isinstance(params, dict):
@@ -211,11 +214,15 @@ def turnCloseKind(message: object) -> str | None:
     if (update.get("sessionUpdate") == "turn_completed"
             or params.get("sessionUpdate") == "turn_completed"):
         return "turn_completed"
-    if "stopReason" in update or "stopReason" in params:
+    if _hasStopReason(update) or _hasStopReason(params):
         return "state_stop"
     if update.get("sessionUpdate") == "state" and update.get("state") == "idle":
         return "state_idle"
     return None
+
+
+def _hasStopReason(payload: dict) -> bool:
+    return "stopReason" in payload or "stop_reason" in payload
 
 
 def isCancelMessage(message: object) -> bool:
