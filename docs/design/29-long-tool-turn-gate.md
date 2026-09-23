@@ -48,10 +48,11 @@
 
 - `session/prompt` JSON-RPC `result.stopReason`（含 `end_turn`）
 - 带 `stopReason` 的 `session/update`
+- 专有 turn-close：`_x.ai/session/prompt_complete`，以及 `session/update` 的 `turn_completed`（含 `stopReason: end_turn`）
 
 `session/cancel` 立即转发已扣住的 `stopReason` 帧（放行，不丢弃），否则 prompt JSON-RPC 可能没有 result。非 JSON / 非 ACP 行原样转发（测试夹具与诊断）。JSON-RPC batch 整包转发，不拆开持有。
 
-无 PID 的 `[bg]`：对 executor PID 做子进程快照；仍没有则保持打开直到超时，禁止猜成功。
+无可靠 PID 的 `[bg]`：不要把 `newestChild(agentPid)` / 子进程快照当作权威 PID（短命 wrapper 退出会被误判为工具结束）。保持打开直到超时，或直到后续出现可靠 PID：`pid=N`，或后台工具仍无 PID 时的纯数字工具输出。只绑定仍存活的文本 PID；已退出的 wrapper 不是证据。禁止因猜到的子进程退出而放行 `end_turn` 或标 `exited`。
 
 ## 5 告警
 
@@ -60,7 +61,7 @@
 | 事件 | 动作 |
 |---|---|
 | 超时 | `timeout` 告警，工具标失败，放行 turn |
-| PID 在 agent 非后台终态之前消失（含被杀） | `exited` 告警，同上 |
+| PID 在 agent 非后台终态之前消失（含被杀、未回收的 zombie） | `exited` 告警，同上 |
 | agent 后发非后台 completed/failed | 闭合，无告警 |
 
 出口（脱敏，无 command / prompt / 凭据）：
@@ -85,7 +86,7 @@
 
 | Story | 覆盖 |
 |---|---|
-| S1 | 假 ACP：`[bg]` + 立即 `end_turn` 必须等到 PID 退出；`canCloseTurn`；`session/cancel` 立即转发已扣住的 `stopReason`（不得丢弃） |
-| S2 | 短超时 / 杀 PID → 告警；`poll_seconds > 120` 拒绝；缺省 1200/60 |
+| S1 | 假 ACP：`[bg]` + 立即 `end_turn` 必须等到 PID 退出；`canCloseTurn`；`session/cancel` 立即转发已扣住的 `stopReason`（不得丢弃）。自然 `[bg]` 无 `pid=` + 短命 newestChild 退出不得放行 / 不得标 `exited`；后续纯数字内容绑定仍存活 PID；`prompt_complete` / `turn_completed` 在长工具打开时扣住 |
+| S2 | 短超时 / 杀 **已绑定** PID → 告警；`poll_seconds > 120` 拒绝；缺省 1200/60 |
 
 Mac/Desktop 真 grok `[bg]` 与 Activity 仍须活机验证。

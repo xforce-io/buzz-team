@@ -13,8 +13,8 @@ from buzz_team.config import Config, identity
 from buzz_team.instance import init_legacy, write_json
 from buzz_team.turn_gate import (
     DEFAULT_POLL_SECONDS, DEFAULT_TIMEOUT_SECONDS, LongToolPolicy, LongToolWatch,
-    canCloseTurn, extractPids, isBackgroundMarker, longToolPolicy, parseAcpLine,
-    runTurnGate, turnCloseKind, validateLongTool,
+    canCloseTurn, extractBarePids, extractPids, isBackgroundMarker, longToolPolicy,
+    parseAcpLine, runTurnGate, turnCloseKind, validateLongTool,
 )
 
 
@@ -54,6 +54,44 @@ raise SystemExit(runTurnGate(json.loads(os.environ["GATE_CMD"]), dict(os.environ
                              policy=policy, mode="executor"))
 """
 
+FAKE_NATURAL_BG = r"""
+import json, os, subprocess, sys, time
+spec = json.loads(os.environ.get("FAKE_AGENT_SPEC", "{}"))
+real = subprocess.Popen([sys.executable, "-c", spec.get("real", "import time; time.sleep(20)")])
+ephem = subprocess.Popen([sys.executable, "-c", spec.get("ephem", "import time; time.sleep(0.4)")])
+req = json.loads(sys.stdin.readline())
+sid = req["params"]["sessionId"]
+tid = "call-599f0ca3-7f3c-4fa2-9c0e-aaaaaaaaaaaa"
+print(json.dumps({
+    "jsonrpc": "2.0", "method": "session/update",
+    "params": {"sessionId": sid, "update": {
+        "sessionUpdate": "tool_call_update", "toolCallId": tid,
+        "status": "completed", "title": "[bg] nohup sleep 900",
+        "content": [{"type": "content", "content": {"type": "text",
+            "text": "Background task started (task_id 01a0ce6c-3d9f-7351-b8ad-c6c699b68a20)"}}],
+    }},
+}), flush=True)
+if spec.get("emit_bare_pid", True):
+    print(json.dumps({
+        "jsonrpc": "2.0", "method": "session/update",
+        "params": {"sessionId": sid, "update": {
+            "sessionUpdate": "tool_call_update", "toolCallId": tid,
+            "status": "in_progress",
+            "content": [{"type": "content", "content": {"type": "text",
+                "text": "%d\n" % real.pid}}],
+        }},
+    }), flush=True)
+print(json.dumps({"jsonrpc": "2.0", "id": req["id"], "result": {"stopReason": "end_turn"}}), flush=True)
+print(json.dumps({"jsonrpc": "2.0", "method": "_x.ai/session/prompt_complete",
+                  "params": {"sessionId": sid, "stopReason": "end_turn"}}), flush=True)
+print(json.dumps({"jsonrpc": "2.0", "method": "session/update",
+                  "params": {"sessionId": sid, "update": {
+                      "sessionUpdate": "turn_completed", "stopReason": "end_turn"}}}), flush=True)
+print("REAL_PID=%d EPHEM_PID=%d" % (real.pid, ephem.pid), file=sys.stderr, flush=True)
+ephem.wait()
+time.sleep(spec.get("linger", 8))
+"""
+
 
 class TurnGateUnitTests(unittest.TestCase):
     def test_background_marker_and_pid_extraction(self):
@@ -61,6 +99,9 @@ class TurnGateUnitTests(unittest.TestCase):
         self.assertTrue(isBackgroundMarker("Command backgrounded"))
         self.assertFalse(isBackgroundMarker("echo done"))
         self.assertEqual(extractPids("shell [bg] pid=4321 extra"), [4321])
+        self.assertEqual(extractBarePids("79588\n"), [79588])
+        self.assertEqual(extractBarePids(
+            "Background task started (task_id 01a0ce6c-3d9f-7351-b8ad-c6c699b68a20)"), [])
 
     def test_cannot_close_turn_while_background_tool_runs(self):
         watch = LongToolWatch(LongToolPolicy(timeoutSeconds=1200, pollSeconds=60))
@@ -110,6 +151,128 @@ class TurnGateUnitTests(unittest.TestCase):
         self.assertIsNone(turnCloseKind({"method": "session/update", "params": {
             "update": {"sessionUpdate": "agent_message_chunk"}}}))
         self.assertIsNone(parseAcpLine(b"not-json\n"))
+
+    def test_bg_without_pid_does_not_guess_newest_child(self):
+        watch = LongToolWatch(LongToolPolicy(timeoutSeconds=30, pollSeconds=1))
+        ephemeral = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(0.05)"])
+        ephemeral.wait()
+        watch.apply({
+            "sessionUpdate": "tool_call_update",
+            "toolCallId": "call-599f0ca3",
+            "status": "completed",
+            "title": "[bg] nohup sleep 900",
+            "content": [{"type": "content", "content": {
+                "type": "text",
+                "text": "Background task started (task_id 01a0ce6c-3d9f-7351-b8ad-c6c699b68a20)",
+            }}],
+        }, now=0)
+        self.assertIsNone(watch.tools["call-599f0ca3"].pid)
+        self.assertEqual(watch.tools["call-599f0ca3"].status, "background")
+        self.assertFalse(canCloseTurn(watch))
+        events = watch.poll(now=1)
+        self.assertEqual(events, [])
+        self.assertFalse(canCloseTurn(watch))
+        self.assertNotEqual(watch.tools["call-599f0ca3"].status, "exited")
+
+    def test_bare_numeric_content_binds_live_pid(self):
+        watch = LongToolWatch(LongToolPolicy(timeoutSeconds=1200, pollSeconds=1))
+        real = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        wrapper = subprocess.Popen([sys.executable, "-c", "pass"])
+        wrapper.wait()
+        try:
+            watch.apply({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call-bg",
+                "status": "completed",
+                "title": "[bg] nohup sleep 900",
+                "content": [{"type": "content", "content": {
+                    "type": "text",
+                    "text": "Background task started (task_id 01a0ce6c-3d9f-7351-b8ad-c6c699b68a20)",
+                }}],
+            }, now=0)
+            self.assertIsNone(watch.tools["call-bg"].pid)
+            watch.apply({
+                "sessionUpdate": "tool_call_update",
+                "toolCallId": "call-bg",
+                "status": "in_progress",
+                "content": [{"type": "content", "content": {
+                    "type": "text", "text": "%d\n" % real.pid,
+                }}],
+            }, now=1)
+            self.assertEqual(watch.tools["call-bg"].pid, real.pid)
+            self.assertFalse(canCloseTurn(watch))
+            events = watch.poll(now=2)
+            self.assertEqual(events, [])
+        finally:
+            real.kill()
+            real.wait()
+        events = watch.poll(now=3)
+        self.assertEqual([item["reason"] for item in events], ["exited"])
+        self.assertTrue(canCloseTurn(watch))
+
+    def test_zombie_pid_counts_as_gone(self):
+        from buzz_team.turn_gate import processGone
+        child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        watch = LongToolWatch(LongToolPolicy(timeoutSeconds=1200, pollSeconds=1))
+        watch.apply({
+            "toolCallId": "call-bg",
+            "status": "completed",
+            "title": "[bg] pid=%d" % child.pid,
+        }, now=0)
+        self.assertEqual(watch.tools["call-bg"].pid, child.pid)
+        os.kill(child.pid, 9)
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline and not processGone(child.pid, watch.tools["call-bg"].marker):
+            time.sleep(0.02)
+        events = watch.poll(now=1)
+        child.wait()
+        self.assertEqual([item["reason"] for item in events], ["exited"])
+        self.assertTrue(canCloseTurn(watch))
+
+    def test_dead_pid_equals_is_not_bound(self):
+        watch = LongToolWatch(LongToolPolicy(timeoutSeconds=30, pollSeconds=1))
+        dead = subprocess.Popen([sys.executable, "-c", "pass"])
+        dead.wait()
+        live = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(30)"])
+        try:
+            watch.apply({
+                "toolCallId": "call-bg",
+                "status": "completed",
+                "title": "[bg] pid=%d" % dead.pid,
+            }, now=0)
+            self.assertIsNone(watch.tools["call-bg"].pid)
+            self.assertFalse(canCloseTurn(watch))
+            watch.apply({
+                "toolCallId": "call-bg",
+                "status": "in_progress",
+                "content": [{"type": "content", "content": {
+                    "type": "text", "text": "%d\n" % live.pid,
+                }}],
+            }, now=1)
+            self.assertEqual(watch.tools["call-bg"].pid, live.pid)
+        finally:
+            live.kill()
+            live.wait()
+
+    def test_proprietary_turn_close_kinds(self):
+        self.assertEqual(turnCloseKind({
+            "jsonrpc": "2.0",
+            "method": "_x.ai/session/prompt_complete",
+            "params": {"sessionId": "sess", "stopReason": "end_turn"},
+        }), "prompt_complete")
+        self.assertEqual(turnCloseKind({
+            "jsonrpc": "2.0",
+            "method": "session/update",
+            "params": {"sessionId": "sess", "update": {
+                "sessionUpdate": "turn_completed", "stopReason": "end_turn",
+            }},
+        }), "turn_completed")
+        self.assertEqual(turnCloseKind({
+            "method": "session/update",
+            "params": {"stopReason": "end_turn", "update": {
+                "sessionUpdate": "agent_message_chunk",
+            }},
+        }), "state_stop")
 
     def test_policy_defaults_and_fail_closed_config(self):
         self.assertEqual(longToolPolicy({}).timeoutSeconds, DEFAULT_TIMEOUT_SECONDS)
@@ -169,6 +332,51 @@ class TurnGateRelayTests(unittest.TestCase):
             lines.append(buf.decode())
         return lines
 
+    def _runNaturalGate(self, *, emitBarePid: bool, timeout: int, poll: float,
+                        linger: int = 8):
+        spec = json.dumps({"emit_bare_pid": emitBarePid, "linger": linger})
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"),
+                   FAKE_AGENT_SPEC=spec, GATE_TIMEOUT=str(timeout), GATE_POLL=str(poll),
+                   GATE_CMD=json.dumps([sys.executable, "-c", FAKE_NATURAL_BG]))
+        proc = subprocess.Popen([sys.executable, "-c", GATE_WRAPPER], stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env,
+                                bufsize=0)
+        prompt = json.dumps({
+            "jsonrpc": "2.0", "id": 3, "method": "session/prompt",
+            "params": {"sessionId": "sess-natural", "prompt": [{"type": "text", "text": "bg"}]},
+        }) + "\n"
+        proc.stdin.write(prompt.encode())
+        proc.stdin.flush()
+        return proc
+
+    def _closeGate(self, proc, extraPids=None):
+        if proc.stdin:
+            try:
+                proc.stdin.close()
+            except OSError:
+                pass
+        proc.kill()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        for stream in (proc.stdout, proc.stderr):
+            if stream:
+                try:
+                    stream.close()
+                except OSError:
+                    pass
+        for pid in extraPids or []:
+            try:
+                os.kill(pid, 9)
+            except OSError:
+                pass
+
+    def _closeMarkers(self, rows):
+        return [row for row in rows if (
+            '"stopReason": "end_turn"' in row or '"stopReason":"end_turn"' in row
+            or "prompt_complete" in row or "turn_completed" in row)]
+
     def test_s1_holds_end_turn_until_background_pid_exits(self):
         proc = self._runGate(child="import time; time.sleep(1.2)", waitChild=True,
                              linger=0, timeout=30, poll=0.1)
@@ -217,6 +425,90 @@ class TurnGateRelayTests(unittest.TestCase):
                 pass
         self.assertTrue(any("end_turn" in row for row in released), released)
         self.assertLess(elapsed, 1.5)
+
+    def _stderrPids(self, text: str) -> list[int]:
+        found = []
+        for part in text.split():
+            if part.startswith("REAL_PID=") or part.startswith("EPHEM_PID="):
+                found.append(int(part.split("=", 1)[1]))
+        return found
+
+    def _contentPids(self, rows):
+        found = []
+        for row in rows:
+            try:
+                found.extend(extractBarePids(json.loads(row)))
+            except json.JSONDecodeError:
+                continue
+        return found
+
+    def test_s1_natural_bg_ephemeral_child_does_not_release(self):
+        proc = self._runNaturalGate(emitBarePid=False, timeout=60, poll=0.1, linger=8)
+        extra = []
+        err = b""
+        try:
+            lines = self._readUntil(
+                proc, lambda rows: any("[bg]" in row for row in rows), 4)
+            self.assertTrue(any("[bg]" in row for row in lines), lines)
+            time.sleep(0.7)
+            more = self._readUntil(
+                proc, lambda rows: bool(self._closeMarkers(rows)), 0.3)
+            lines.extend(more)
+            if proc.stderr:
+                import select as sel
+                if sel.select([proc.stderr], [], [], 0.05)[0]:
+                    err = os.read(proc.stderr.fileno(), 8192)
+            extra.extend(self._stderrPids(err.decode(errors="replace")))
+            self.assertFalse(self._closeMarkers(lines), lines)
+            self.assertNotIn(b'"reason": "exited"', err)
+            self.assertFalse(any("【长工具】" in row for row in lines), lines)
+            cancel = json.dumps({
+                "jsonrpc": "2.0", "method": "session/cancel",
+                "params": {"sessionId": "sess-natural"},
+            }) + "\n"
+            proc.stdin.write(cancel.encode())
+            proc.stdin.flush()
+            released = self._readUntil(
+                proc, lambda rows: bool(self._closeMarkers(rows)), 3)
+            self.assertTrue(self._closeMarkers(released), released)
+        finally:
+            if proc.stderr:
+                try:
+                    leftover = proc.stderr.read()
+                    extra.extend(self._stderrPids(
+                        leftover.decode(errors="replace") if leftover else ""))
+                except OSError:
+                    pass
+            self._closeGate(proc, extra)
+
+    def test_s1_natural_bg_bare_pid_and_proprietary_hold(self):
+        proc = self._runNaturalGate(emitBarePid=True, timeout=60, poll=0.1, linger=8)
+        extra = []
+        try:
+            lines = self._readUntil(
+                proc, lambda rows: bool(self._contentPids(rows)), 4)
+            self.assertTrue(any("[bg]" in row for row in lines), lines)
+            time.sleep(0.7)
+            more = self._readUntil(
+                proc, lambda rows: bool(self._closeMarkers(rows)), 0.3)
+            lines.extend(more)
+            self.assertFalse(self._closeMarkers(lines), lines)
+            self.assertFalse(any("【长工具】" in row for row in lines), lines)
+            realPids = self._contentPids(lines)
+            self.assertTrue(realPids, lines)
+            extra.extend(realPids)
+            os.kill(realPids[0], 9)
+            released = self._readUntil(
+                proc, lambda rows: (
+                    any("end_turn" in row for row in rows)
+                    and any("prompt_complete" in row for row in rows)
+                    and any("turn_completed" in row for row in rows)
+                ), 4)
+            self.assertTrue(any("end_turn" in row for row in released), released)
+            self.assertTrue(any("prompt_complete" in row for row in released), released)
+            self.assertTrue(any("turn_completed" in row for row in released), released)
+        finally:
+            self._closeGate(proc, extra)
 
     def test_s2_timeout_alerts_and_then_allows_close(self):
         proc = self._runGate(child="import time; time.sleep(30)", waitChild=False,
