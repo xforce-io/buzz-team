@@ -17,7 +17,7 @@ from . import __version__
 from .config import Config
 from . import desktop
 from .instance import digest
-from .runtime import Runtime
+from .runtime import Runtime, SEATBELT_EXEC, probeNestedSeatbeltApply, underSeatbelt
 
 STATUSES = frozenset({"pass", "fail", "unverified", "na"})
 COMPONENTS = frozenset({"dev_env", "install", "buzz_runtime", "external_deps", "proxy"})
@@ -455,6 +455,32 @@ def _git_boundary_check() -> dict[str, str]:
         "not applicable (na), not 'git unavailable'. Business prompts are out of scope.")
 
 
+def _seatbeltDevEnvChecks() -> list[dict[str, str]]:
+    """Seatbelt presence plus nested-apply / inherit semantics."""
+    if sys.platform != "darwin":
+        return [check(
+            "tool_seatbelt", "na", "dev_env",
+            "Seatbelt applies on macOS only; not applicable on this platform for unrestricted writer identities")]
+    if not SEATBELT_EXEC.is_file():
+        return [check("tool_seatbelt", "fail", "dev_env", "Seatbelt unavailable")]
+    confined = underSeatbelt()
+    nested = probeNestedSeatbeltApply()
+    if nested == "nested_ok":
+        nestedSummary = (
+            "nested sandbox_apply works; development launch still inherits when already confined")
+    else:
+        nestedSummary = (
+            "nested sandbox_apply unavailable; development launch inherits existing confinement")
+    if confined:
+        nestedSummary += "; this process is already confined"
+    return [
+        check(
+            "tool_seatbelt", "pass", "dev_env",
+            "Seatbelt sandbox-exec present; development launch wraps once then inherits"),
+        check("tool_seatbelt_nested", "pass", "dev_env", nestedSummary),
+    ]
+
+
 def collect_checks(config: Config, *, depth: str = "doctor",
                    process_env: dict[str, str] | None = None) -> tuple[list[dict[str, str]], dict[str, Any]]:
     if depth not in {"doctor", "diagnose"}:
@@ -534,15 +560,7 @@ def collect_checks(config: Config, *, depth: str = "doctor",
         checks.append(check(
             "tool_lsof", "fail", "dev_env",
             "lsof unavailable; cannot verify idle identity workspaces"))
-    if sys.platform == "darwin":
-        if Path("/usr/bin/sandbox-exec").is_file():
-            checks.append(check("tool_seatbelt", "pass", "dev_env", "Seatbelt sandbox-exec present"))
-        else:
-            checks.append(check("tool_seatbelt", "fail", "dev_env", "Seatbelt unavailable"))
-    else:
-        checks.append(check(
-            "tool_seatbelt", "na", "dev_env",
-            "Seatbelt applies on macOS only; not applicable on this platform for unrestricted writer identities"))
+    checks.extend(_seatbeltDevEnvChecks())
 
     # --- Component: buzz_runtime (per-identity) ---
     counts: dict[str, int] = {}
@@ -598,10 +616,10 @@ def collect_checks(config: Config, *, depth: str = "doctor",
                 "identity workspace directory present"))
 
         if not runtime.policy["production_write"]:
-            if Path("/usr/bin/sandbox-exec").is_file():
+            if SEATBELT_EXEC.is_file():
                 checks.append(check(
                     f"seatbelt_policy:{key[:20]}", "pass", "buzz_runtime",
-                    "restricted identity has Seatbelt available"))
+                    "restricted identity wraps with sandbox-exec unless already confined (inherit)"))
             else:
                 checks.append(check(
                     f"seatbelt_policy:{key[:20]}", "fail", "buzz_runtime",

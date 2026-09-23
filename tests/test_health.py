@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 from pathlib import Path
 from unittest.mock import patch
 
@@ -146,6 +147,51 @@ class HealthTaxonomyTests(Fixture):
         self.assertFalse(result["ok"])
         self.assertTrue(result["errors"])
         self.assertTrue(any(c["status"] == "fail" and c["component"] == "install" for c in result["checks"]))
+
+    def test_tool_seatbelt_reports_inherit_semantics(self):
+        from buzz_team.health import _seatbeltDevEnvChecks
+        with patch("buzz_team.health.sys.platform", "linux"):
+            checks = _seatbeltDevEnvChecks()
+            self.assertEqual(len(checks), 1)
+            self.assertEqual(checks[0]["id"], "tool_seatbelt")
+            self.assertEqual(checks[0]["status"], "na")
+        with patch("buzz_team.health.sys.platform", "darwin"), \
+             patch("buzz_team.health.SEATBELT_EXEC") as binary:
+            binary.is_file.return_value = False
+            checks = _seatbeltDevEnvChecks()
+            self.assertEqual(checks[0]["status"], "fail")
+            self.assertEqual(checks[0]["summary"], "Seatbelt unavailable")
+            binary.is_file.return_value = True
+            with patch("buzz_team.health.underSeatbelt", return_value=False), \
+                 patch("buzz_team.health.probeNestedSeatbeltApply", return_value="inherit_only"):
+                checks = _seatbeltDevEnvChecks()
+            ids = {c["id"]: c for c in checks}
+            self.assertEqual(ids["tool_seatbelt"]["status"], "pass")
+            self.assertIn("inherits", ids["tool_seatbelt"]["summary"])
+            self.assertEqual(ids["tool_seatbelt_nested"]["status"], "pass")
+            self.assertIn("inherit", ids["tool_seatbelt_nested"]["summary"])
+            self.assertIn("unavailable", ids["tool_seatbelt_nested"]["summary"])
+            with patch("buzz_team.health.underSeatbelt", return_value=True), \
+                 patch("buzz_team.health.probeNestedSeatbeltApply", return_value="nested_ok"):
+                checks = _seatbeltDevEnvChecks()
+            nested = [c for c in checks if c["id"] == "tool_seatbelt_nested"][0]
+            self.assertIn("already confined", nested["summary"])
+            self.assertIn("inherits", nested["summary"])
+
+    def test_seatbelt_policy_documents_inherit_for_restricted(self):
+        result = health.run(self.config, depth="doctor")
+        policy = [c for c in result["checks"] if c["id"].startswith("seatbelt_policy:")]
+        self.assertTrue(policy)
+        if sys.platform == "darwin":
+            self.assertEqual(policy[0]["status"], "pass")
+            self.assertIn("inherit", policy[0]["summary"])
+        else:
+            self.assertEqual(policy[0]["status"], "fail")
+            self.assertIn("Seatbelt unavailable", policy[0]["summary"])
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        writer = health.run(self.config, depth="doctor")
+        self.assertFalse(any(c["id"].startswith("seatbelt_policy:") for c in writer["checks"]))
 
     def test_no_proxy_bypass_list_does_not_crash(self):
         from buzz_team.health import redact_endpoint, run

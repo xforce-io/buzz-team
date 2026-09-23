@@ -21,7 +21,7 @@
 
 | component | 覆盖 |
 |---|---|
-| `dev_env` | 本机工具（lsof、Seatbelt 可用性等） |
+| `dev_env` | 本机工具（lsof、Seatbelt 可用性与嵌套 apply / inherit 语义等） |
 | `install` | Desktop 基线、二进制/executor 相对 pin 的指纹与 harness 能力 |
 | `buzz_runtime` | 实例身份目录、执行器 home、**凭据文件存在性**、工作区、策略 |
 | `external_deps` | 声明依赖与未做的上游/对话面（多为 unverified） |
@@ -35,6 +35,10 @@
 - 不回显令牌、完整 URL 用户信息或进程环境机密值。
 
 安装差异按实例 pin / 部署目标判断，不以仓库 HEAD 代替实际运行版本。
+
+macOS `tool_seatbelt` 不只报 `sandbox-exec` 存在：`tool_seatbelt_nested` 会做廉价的二次 `sandbox_apply` 探测。development 启动在进程已 confined 时继承现有 Seatbelt，不再套第二层 `sandbox-exec`。嵌套 apply 失败时检查仍可通过，但 summary 必须写明 inherit-only，不得只报「present」。business / `production_write=true` 仍不包裹 sandbox-exec。
+
+
 
 ## 频道只读（S3）
 
