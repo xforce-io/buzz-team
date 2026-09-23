@@ -572,6 +572,7 @@ class TurnGateRelayTests(unittest.TestCase):
                     any("end_turn" in row for row in rows)
                     and any("prompt_complete" in row for row in rows)
                     and any("turn_completed" in row for row in rows)
+                    and any("session_notification" in row for row in rows)
                 ), 4)
             self.assertTrue(any("end_turn" in row for row in released), released)
             self.assertTrue(any("prompt_complete" in row for row in released), released)
