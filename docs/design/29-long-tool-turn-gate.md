@@ -48,7 +48,7 @@
 
 - `session/prompt` JSON-RPC `result.stopReason`（含 `end_turn`）
 - 带 `stopReason` 的 `session/update`
-- 专有 turn-close：`_x.ai/session/prompt_complete`，以及 `session/update` 的 `turn_completed`（含 `stopReason: end_turn`）
+- 专有 turn-close：`_x.ai/session/prompt_complete`；`session/update` 的 `turn_completed`（含 `stopReason: end_turn`）；以及 live grok 的 `_x.ai/session_notification` + `update.sessionUpdate=turn_completed`（含 snake_case `stop_reason: end_turn`）。`_x.ai/task_completed` 不是 turn close。
 
 `session/cancel` 立即转发已扣住的 `stopReason` 帧（放行，不丢弃），否则 prompt JSON-RPC 可能没有 result。非 JSON / 非 ACP 行原样转发（测试夹具与诊断）。JSON-RPC batch 整包转发，不拆开持有。
 
@@ -86,7 +86,7 @@
 
 | Story | 覆盖 |
 |---|---|
-| S1 | 假 ACP：`[bg]` + 立即 `end_turn` 必须等到 PID 退出；`canCloseTurn`；`session/cancel` 立即转发已扣住的 `stopReason`（不得丢弃）。自然 `[bg]` 无 `pid=` + 短命 newestChild 退出不得放行 / 不得标 `exited`；后续纯数字内容绑定仍存活 PID；`prompt_complete` / `turn_completed` 在长工具打开时扣住 |
+| S1 | 假 ACP：`[bg]` + 立即 `end_turn` 必须等到 PID 退出；`canCloseTurn`；`session/cancel` 立即转发已扣住的 `stopReason`（不得丢弃）。自然 `[bg]` 无 `pid=` + 短命 newestChild 退出不得放行 / 不得标 `exited`；后续纯数字内容绑定仍存活 PID；`prompt_complete` / `session/update` `turn_completed` / `_x.ai/session_notification` `turn_completed` 在长工具打开时扣住 |
 | S2 | 短超时 / 杀 **已绑定** PID → 告警；`poll_seconds > 120` 拒绝；缺省 1200/60 |
 
 Mac/Desktop 真 grok `[bg]` 与 Activity 仍须活机验证。
