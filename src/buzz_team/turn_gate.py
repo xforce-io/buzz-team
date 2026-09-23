@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -16,6 +17,7 @@ import time
 DEFAULT_TIMEOUT_SECONDS = 1200
 DEFAULT_POLL_SECONDS = 60
 MAX_POLL_SECONDS = 120
+_LOOP_SECONDS = 0.25
 _BG = re.compile(r"\[bg\]|backgrounded|running in background", re.I)
 _PID = re.compile(r"\bpid[=:\s]+(\d+)\b", re.I)
 _OPEN = frozenset({"pending", "in_progress", "background"})
@@ -330,8 +332,8 @@ def _runExecutorGate(command: list[str], env: dict[str, str], *, policy: LongToo
         stdout.write(raw if raw.endswith(b"\n") else raw + b"\n")
         stdout.flush()
 
-    def releaseHeld() -> None:
-        if not canCloseTurn(watch) or cancelled:
+    def releaseHeld(*, force: bool = False) -> None:
+        if not force and not canCloseTurn(watch):
             return
         pending = list(hold)
         hold.clear()
@@ -354,13 +356,18 @@ def _runExecutorGate(command: list[str], env: dict[str, str], *, policy: LongToo
                                   "error": type(exc).__name__}, ensure_ascii=False),
                       file=stderr, flush=True)
 
+    stopRead, stopWrite = os.pipe()
+    os.set_blocking(stopRead, False)
+
     def inbound() -> None:
         nonlocal cancelled, sessionId
         try:
-            for raw in _readLines(stdin):
+            for raw in _readLines(stdin, stopFd=stopRead):
                 parsed = parseAcpLine(raw)
                 if isCancelMessage(parsed):
-                    cancelled = True
+                    with lock:
+                        cancelled = True
+                        releaseHeld(force=True)
                 sid = sessionIdFromMessage(parsed)
                 if sid:
                     sessionId = sid
@@ -399,10 +406,23 @@ def _runExecutorGate(command: list[str], env: dict[str, str], *, policy: LongToo
         except BrokenPipeError:
             pass
 
-    inboundThread = threading.Thread(target=inbound, name="acp-in", daemon=True)
-    outboundThread = threading.Thread(target=outbound, name="acp-out", daemon=True)
+    inboundThread = threading.Thread(target=inbound, name="acp-in", daemon=False)
+    outboundThread = threading.Thread(target=outbound, name="acp-out", daemon=False)
     inboundThread.start()
     outboundThread.start()
+
+    def wakeInbound() -> None:
+        try:
+            os.write(stopWrite, b"x")
+        except OSError:
+            pass
+
+    def joinRelays() -> None:
+        outboundThread.join(timeout=2)
+        inboundThread.join(timeout=2)
+        if inboundThread.is_alive() or outboundThread.is_alive():
+            raise RuntimeError("ACP relay threads did not stop")
+
     previous = {}
 
     def forward(signum, _frame):
@@ -414,31 +434,35 @@ def _runExecutorGate(command: list[str], env: dict[str, str], *, policy: LongToo
     for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
         previous[signum] = signal.signal(signum, forward)
     try:
+        lastPoll = 0.0
+        tick = min(_LOOP_SECONDS, float(policy.pollSeconds))
         while True:
             try:
-                code = child.wait(timeout=0.25)
+                code = child.wait(timeout=tick)
             except subprocess.TimeoutExpired:
                 code = None
+            now = time.monotonic()
             with lock:
-                for event in watch.poll():
-                    handleAlert(event)
-                if cancelled:
-                    hold.clear()
-                else:
-                    releaseHeld()
+                if now - lastPoll >= policy.pollSeconds:
+                    for event in watch.poll():
+                        handleAlert(event)
+                    lastPoll = now
+                releaseHeld(force=cancelled)
             if code is not None:
-                outboundThread.join(timeout=1)
+                wakeInbound()
+                joinRelays()
                 with lock:
                     for tool in watch.tools.values():
                         if tool.status in _OPEN:
                             tool.status = "exited"
                             tool.lastReason = "exited"
                             handleAlert(_event(tool, "exited", time.monotonic() - tool.startedAt))
-                    releaseHeld()
+                    releaseHeld(force=cancelled)
                 return code
     finally:
         for signum, handler in previous.items():
             signal.signal(signum, handler)
+        wakeInbound()
         if child.poll() is None:
             child.terminate()
             try:
@@ -446,6 +470,12 @@ def _runExecutorGate(command: list[str], env: dict[str, str], *, policy: LongToo
             except subprocess.TimeoutExpired:
                 child.kill()
                 child.wait()
+        joinRelays()
+        for fd in (stopRead, stopWrite):
+            try:
+                os.close(fd)
+            except OSError:
+                pass
 
 
 def _waitChild(child: subprocess.Popen) -> int:
@@ -473,12 +503,48 @@ def _waitChild(child: subprocess.Popen) -> int:
                 child.wait()
 
 
-def _readLines(stream):
+def _readLines(stream, stopFd=None):
+    streamFd = _streamFd(stream)
+    if stopFd is None or streamFd is None:
+        while True:
+            line = stream.readline()
+            if not line:
+                return
+            yield line
+        return
+    leftover = b""
     while True:
-        line = stream.readline()
-        if not line:
+        try:
+            ready, _, _ = select.select([streamFd, stopFd], [], [])
+        except (ValueError, OSError):
             return
-        yield line
+        if stopFd in ready:
+            try:
+                os.read(stopFd, 4096)
+            except OSError:
+                pass
+            return
+        if streamFd not in ready:
+            continue
+        try:
+            chunk = os.read(streamFd, 4096)
+        except OSError:
+            return
+        if not chunk:
+            if leftover:
+                yield leftover
+            return
+        leftover += chunk
+        while b"\n" in leftover:
+            line, leftover = leftover.split(b"\n", 1)
+            yield line + b"\n"
+
+
+def _streamFd(stream):
+    try:
+        return stream.fileno()
+    except (AttributeError, OSError, ValueError):
+        return None
 
 
 def _recordLedgerAlert(config, taskId: str | None, event: dict) -> None:

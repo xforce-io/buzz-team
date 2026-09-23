@@ -1,6 +1,6 @@
 # #29 长工具 turn gate 与超时/进程消失告警
 
-状态：L2（实现事实源；L1 仍为 Draft，未 Approved）。
+状态：L2（实现事实源；L1 Approved，peng 2026-09-23）。
 
 ## 1 范围
 
@@ -49,13 +49,13 @@
 - `session/prompt` JSON-RPC `result.stopReason`（含 `end_turn`）
 - 带 `stopReason` 的 `session/update`
 
-`session/cancel` 立即放行。非 JSON / 非 ACP 行原样转发（测试夹具与诊断）。JSON-RPC batch 整包转发，不拆开持有。
+`session/cancel` 立即转发已扣住的 `stopReason` 帧（放行，不丢弃），否则 prompt JSON-RPC 可能没有 result。非 JSON / 非 ACP 行原样转发（测试夹具与诊断）。JSON-RPC batch 整包转发，不拆开持有。
 
 无 PID 的 `[bg]`：对 executor PID 做子进程快照；仍没有则保持打开直到超时，禁止猜成功。
 
 ## 5 告警
 
-轮询间隔 = `poll_seconds`。
+工具存活/超时检测间隔 = `poll_seconds`。stdio 与 `session/cancel` 的中继循环保持短 tick（约 0.25s），不把 cancel 或子进程退出拖到一个 poll 周期。
 
 | 事件 | 动作 |
 |---|---|
@@ -85,7 +85,7 @@
 
 | Story | 覆盖 |
 |---|---|
-| S1 | 假 ACP：`[bg]` + 立即 `end_turn` 必须等到 PID 退出；`canCloseTurn`；cancel 立即放行 |
+| S1 | 假 ACP：`[bg]` + 立即 `end_turn` 必须等到 PID 退出；`canCloseTurn`；`session/cancel` 立即转发已扣住的 `stopReason`（不得丢弃） |
 | S2 | 短超时 / 杀 PID → 告警；`poll_seconds > 120` 拒绝；缺省 1200/60 |
 
 Mac/Desktop 真 grok `[bg]` 与 Activity 仍须活机验证。

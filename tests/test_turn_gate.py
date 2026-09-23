@@ -184,6 +184,29 @@ class TurnGateRelayTests(unittest.TestCase):
             _, err = proc.communicate(timeout=5)
         self.assertNotIn("timeout", err.decode() if isinstance(err, bytes) else err)
 
+    def test_s1_cancel_immediately_releases_held_end_turn(self):
+        proc = self._runGate(child="import time; time.sleep(30)", waitChild=False,
+                             linger=30, timeout=60, poll=0.1)
+        lines = self._readUntil(proc, lambda rows: any("tool_call_update" in row for row in rows), 4)
+        self.assertTrue(any("tool_call_update" in row for row in lines), lines)
+        self.assertFalse(any("end_turn" in row for row in lines), lines)
+        cancel = json.dumps({
+            "jsonrpc": "2.0", "method": "session/cancel",
+            "params": {"sessionId": "sess-test"},
+        }) + "\n"
+        proc.stdin.write(cancel.encode())
+        proc.stdin.flush()
+        started = time.monotonic()
+        lines = self._readUntil(proc, lambda rows: any("end_turn" in row for row in rows), 3)
+        elapsed = time.monotonic() - started
+        try:
+            proc.kill()
+            proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            pass
+        self.assertTrue(any("end_turn" in row for row in lines), lines)
+        self.assertLess(elapsed, 1.5)
+
     def test_s2_timeout_alerts_and_then_allows_close(self):
         proc = self._runGate(child="import time; time.sleep(30)", waitChild=False,
                              linger=30, timeout=1, poll=0.1)
@@ -237,6 +260,28 @@ class TurnGateRelayTests(unittest.TestCase):
         out, err = proc.communicate(input=b"", timeout=5)
         self.assertEqual(proc.returncode, 0, err)
         self.assertEqual(json.loads(out.decode())["args"], ["acp"])
+
+    def test_cold_executor_exits_cleanly_with_open_stdin(self):
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"),
+                   GATE_TIMEOUT="30", GATE_POLL="0.1",
+                   GATE_CMD=json.dumps([sys.executable, "-c",
+                                        "import json; print(json.dumps({'ok': True}))"]))
+        readFd, writeFd = os.pipe()
+        try:
+            proc = subprocess.Popen([sys.executable, "-c", GATE_WRAPPER], stdin=readFd,
+                                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, env=env)
+        finally:
+            os.close(readFd)
+        try:
+            out, err = proc.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            out, err = proc.communicate(timeout=5)
+            os.close(writeFd)
+            self.fail("gate hung on open stdin: %r" % err)
+        os.close(writeFd)
+        self.assertEqual(proc.returncode, 0, err)
+        self.assertEqual(json.loads(out.decode())["ok"], True)
 
 
 class LongToolConfigTests(unittest.TestCase):
