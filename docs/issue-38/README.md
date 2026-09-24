@@ -12,3 +12,9 @@
 | `before/` `after/` `diffs/` | 实例侧变更冻结快照 |
 
 **不要在合入前 apply。** thin-bin pin `046ac43` 禁止改动。并行 Scout 实例车道：无冲突未提交周衡改动（本 PR 未写 live）。
+
+## Script smoke (read-only)
+
+```bash
+docs/issue-38/scripts/smoke-test.sh   # bash -n + guard refuse + pin/pid resolve; never mutates live
+```
