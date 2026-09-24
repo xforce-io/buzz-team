@@ -17,4 +17,6 @@
 
 ```bash
 docs/issue-38/scripts/smoke-test.sh   # bash -n + guard refuse + pin/pid resolve; never mutates live
+docs/issue-38/scripts/smoke-real-workflow.sh  # live relay: temp workflow create/update($(cat))/delete; list before==after
+# artifacts: docs/issue-38/smoke/
 ```

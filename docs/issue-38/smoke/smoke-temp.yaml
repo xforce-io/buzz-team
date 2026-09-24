@@ -1,0 +1,10 @@
+name: issue38-smoke-temp-do-not-keep
+description: TEMP smoke for #38 yaml-content proof; cron never fires; NO seat mention. Delete after smoke.
+trigger:
+  on: schedule
+  cron: "0 0 30 2 *"
+steps:
+  - id: smoke_noop
+    action: send_message
+    text: "issue38-smoke-temp placeholder — do not notify anyone; delete after smoke"
+    reply_in_thread: false
