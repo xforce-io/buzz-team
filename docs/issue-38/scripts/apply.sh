@@ -15,7 +15,9 @@ echo "== resolve 周衡 pid file (exact PUB__TEAM; abort on extras) =="
 ZH_PID_FILE=$(zhou_pid_file)
 echo "周衡 pid file: $ZH_PID_FILE"
 
-echo "== precondition: 周衡 ACP alive (doctor 9/9) =="
+echo "== precondition: doctor 9/9 (all TEAM seat pids alive) =="
+require_all_team_alive || exit 1
+echo "== precondition: 周衡 ACP pubkey-confirmed =="
 ZHOU_PID_BEFORE=$(require_zhou_alive) || exit 1
 
 echo "== assert live workflow == staged before =="
@@ -69,6 +71,29 @@ mkdir -p "$BACKUP/agent-pids/before"
 echo "BACKUP=$BACKUP"
 printf '%s\n' "$ZHOU_PID_BEFORE" > "$BACKUP/zhou-pid-before.txt"
 
+# F2: on failure after BACKUP exists, print rollback cmd; keep config_written_at if mutated.
+APPLY_STEP="snapshot-before"
+MUTATED=0
+APPLY_FAIL_REPORTED=0
+apply_fail_report() {
+  local ec=${1:-1}
+  [[ "${APPLY_FAIL_REPORTED}" -eq 1 ]] && return 0
+  APPLY_FAIL_REPORTED=1
+  echo "APPLY FAILED (exit=$ec) at step: ${APPLY_STEP:-unknown}" >&2
+  echo "BACKUP=$BACKUP" >&2
+  echo "Rollback command:" >&2
+  echo "  ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh $BACKUP" >&2
+  if [[ "${MUTATED}" -eq 1 ]]; then
+    if [[ ! -f "$BACKUP/config_written_at.txt" ]]; then
+      record_config_written_at "$BACKUP" || true
+    fi
+    echo "NOTE: mutations may have occurred; config_written_at recorded for Mode B verify." >&2
+  fi
+}
+trap 'ec=$?; apply_fail_report "$ec"; exit "$ec"' ERR
+trap 'ec=$?; [[ $ec -ne 0 ]] && apply_fail_report "$ec"' EXIT
+
+APPLY_STEP="snapshot-before"
 echo "== snapshot before =="
 cp -R "$PID_DIR"/. "$BACKUP/agent-pids/before/" || true
 snapshot_other_pids "$BACKUP/others-before.tsv"
@@ -101,10 +126,14 @@ print('saved workflow-live-before.yaml from live get')
 rm -f "$LIVE_GET"
 
 # ---- FIRST mutation: workflow body (YAML CONTENT, not path) ----
+APPLY_STEP="workflow-update"
 echo "== update workflow body FIRST (YAML content via cat; owner unchanged) =="
 AFTER_WF="$ROOT/after/workflow.yaml"
 test -f "$AFTER_WF"
 buzz workflows update --channel "$CH_ID" --workflow "$WF_ID" --yaml "$(cat "$AFTER_WF")"
+MUTATED=1
+# F5: record immediately after FIRST successful mutation
+record_config_written_at "$BACKUP"
 buzz workflows get --workflow "$WF_ID" > "$BACKUP/workflow-get-after.json"
 python3 -c "
 import json, sys
@@ -120,6 +149,7 @@ print('workflow read-back matches after/workflow.yaml OK')
 " "$BACKUP/workflow-get-after.json" "$AFTER_WF"
 
 # ---- only after workflow success: local patches ----
+APPLY_STEP="patch-managed-agents"
 echo "== patch managed-agents (周衡 row only; read-modify-write) =="
 python3 -c "
 import json
@@ -156,11 +186,13 @@ ma_path.write_text(json.dumps(agents, ensure_ascii=False, indent=2)+chr(10))
 print('patched 周衡 row only idle=180 effort=medium prompt_len', len(after_prompt))
 "
 
+APPLY_STEP="patch-prompt-files"
 echo "== patch pj.md / AGENTS.md / instructions-1.md =="
 cp "$ROOT/after/pj.md" "$PJ_MD"
 cp "$ROOT/after/AGENTS.md" "$ID_ROOT/AGENTS.md"
 cp "$ROOT/after/instructions-1.md" "$INSTR"
 
+APPLY_STEP="read-back-verify"
 echo "== read-back verify 周衡 row (medium/180) + prompt files =="
 python3 -c "
 import json
@@ -183,11 +215,16 @@ for label, path, src in [
     print(f'{label} read-back OK')
 "
 
+APPLY_STEP="record-config-after-local"
+# F5: refresh timestamp after local writes complete
 record_config_written_at "$BACKUP"
 
+APPLY_STEP="verify-other-pids"
 echo "== verify other seats untouched (read-only; no kill) =="
 verify_other_pids_unchanged "$BACKUP/others-before.tsv"
 
+APPLY_STEP="done"
+trap - ERR
 cat <<MSG
 
 ========== APPLY CONFIG DONE — NO KILL / NO RESPAWN WAIT ==========

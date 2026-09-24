@@ -124,14 +124,31 @@ for key in ('BUZZ_ACP_MAX_TURN_DURATION',):
 
 if got_effort is not None and got_idle is not None:
     method='process_env_cmdline'
+    # F4 Mode A: max must be visible too — missing => FAIL (no silent skip)
+    if got_max is None:
+        print('FAIL: Mode A (process_env_cmdline) missing max_turn in process env/cmdline', file=sys.stderr)
+        sys.exit(1)
 else:
     method='managed_agents_plus_start_time'
     agents=json.loads(Path(ma_path).read_text())
     row=next(a for a in agents if a.get('pubkey')==pub or a.get('name')=='周衡')
     env2=row.get('env_vars') or {}
     got_effort=env2.get('BUZZ_ACP_EFFORT_LEVEL')
-    got_idle=int(row.get('idle_timeout_seconds') or env2.get('BUZZ_ACP_IDLE_TIMEOUT') or -1)
-    got_max=int(row.get('max_turn_duration_seconds') or env2.get('BUZZ_ACP_MAX_TURN_DURATION') or want_max)
+    idle_raw=row.get('idle_timeout_seconds')
+    if idle_raw is None:
+        idle_raw=env2.get('BUZZ_ACP_IDLE_TIMEOUT')
+    if idle_raw is None:
+        print('FAIL: Mode B missing idle_timeout in managed-agents row', file=sys.stderr)
+        sys.exit(1)
+    got_idle=int(idle_raw)
+    # F4 Mode B: do NOT default missing max to want_max
+    max_raw=row.get('max_turn_duration_seconds')
+    if max_raw is None:
+        max_raw=env2.get('BUZZ_ACP_MAX_TURN_DURATION')
+    if max_raw is None or max_raw=='':
+        print('FAIL: Mode B missing max_turn_duration (unchecked would be silent pass)', file=sys.stderr)
+        sys.exit(1)
+    got_max=int(max_raw)
     # start time must be after config_written_at
     # macOS: ps -o lstart= / or etimes
     import subprocess
@@ -165,7 +182,9 @@ if str(got_effort) != str(want_effort):
     print(f'FAIL: effort want={want_effort} got={got_effort}', file=sys.stderr); ok=False
 if int(got_idle) != int(want_idle):
     print(f'FAIL: idle want={want_idle} got={got_idle}', file=sys.stderr); ok=False
-if got_max is not None and int(got_max) != int(want_max):
+if got_max is None:
+    print('FAIL: max_turn missing/unchecked', file=sys.stderr); ok=False
+elif int(got_max) != int(want_max):
     print(f'FAIL: max_turn want={want_max} got={got_max}', file=sys.stderr); ok=False
 if not ok:
     sys.exit(1)

@@ -87,8 +87,34 @@ require_zhou_alive() {
     echo "Ask peng to restart ONLY 周衡 from Desktop, then re-run apply." >&2
     return 1
   fi
-  echo "周衡 ACP alive OK: pid=$old_pid (pubkey confirmed)"
+  echo "周衡 ACP alive OK: pid=$old_pid (pubkey confirmed)" >&2
   printf '%s\n' "$old_pid"
+}
+
+# Enforce doctor 9/9: every *__${TEAM}.json pid must be alive (kill -0). Abort otherwise.
+require_all_team_alive() {
+  local f base pid n=0
+  local -a dead=()
+  for f in "$PID_DIR"/*__"${TEAM}".json; do
+    [[ -e "$f" ]] || continue
+    base=$(basename "$f")
+    pid=$(python3 -c "import json; print(json.load(open(r'''${f}'''))['pid'])")
+    n=$((n+1))
+    if ! kill -0 "$pid" 2>/dev/null; then
+      dead+=("$base:$pid")
+    fi
+  done
+  if [[ "$n" -ne 9 ]]; then
+    echo "ABORT: expected 9 *__${TEAM}.json seats, found $n. doctor 9/9 required before apply." >&2
+    return 1
+  fi
+  if ((${#dead[@]} > 0)); then
+    echo "ABORT: doctor 9/9 failed — dead seat pid(s):" >&2
+    printf '  %s\n' "${dead[@]}" >&2
+    echo "Ask peng to restart dead seats from Desktop (prefer ONLY those seats), then re-run apply." >&2
+    return 1
+  fi
+  echo "doctor 9/9 OK: all $n TEAM seat pids alive" >&2
 }
 
 # Other seats on this TEAM, excluding 周衡's exact file. Prints "name\tpid" lines.
