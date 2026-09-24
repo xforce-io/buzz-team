@@ -48,6 +48,111 @@ def check(id: str, status: str, component: str, summary: str) -> dict[str, str]:
     return {"id": id, "status": status, "component": component, "summary": summary}
 
 
+_DEPRECATED_WRAPPER = "grok-acp-wrapper"
+
+
+def _inventory_pubkey(row: dict) -> str:
+    value = row.get("pubkey")
+    if isinstance(value, str):
+        return value.strip()
+    return ""
+
+
+def _inventory_commands(row: dict) -> str:
+    parts = []
+    for key in ("agent_command", "agent_command_override", "acp_command"):
+        value = row.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    return "\n".join(parts)
+
+
+def _inventory_runtime_id(row: dict) -> str:
+    env = row.get("env_vars")
+    if isinstance(env, dict):
+        value = env.get("BUZZ_RUNTIME_ID")
+        if isinstance(value, str):
+            return value
+    return ""
+
+
+def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]:
+    """Classify a Desktop inventory against this instance. Does not mutate rows.
+
+    Empty-pubkey launch rows are attributed to this instance only when they
+    point at the retired grok-acp-wrapper or already carry this instance's
+    BUZZ_RUNTIME_ID. Same display name is not treated as the same pubkey.
+    Rows outside that set are reported and left in place.
+    """
+    if not isinstance(rows, list):
+        return [check(
+            "inventory_shape", "fail", "buzz_runtime",
+            "Desktop inventory is not a list")]
+    by_pubkey: dict[str, str] = {}
+    relays: dict[str, str] = {}
+    for key, agent in agents.items():
+        if not isinstance(agent, dict):
+            continue
+        pubkey = agent.get("pubkey")
+        relay = agent.get("relay_url")
+        if isinstance(pubkey, str) and pubkey:
+            by_pubkey[pubkey] = key
+        if isinstance(relay, str):
+            relays[key] = relay
+    seen: dict[str, list[int]] = {key: [] for key in agents}
+    checks: list[dict[str, str]] = []
+    outside = 0
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            checks.append(check(
+                f"inventory_shape:{index}", "fail", "buzz_runtime",
+                f"inventory row {index} is not an object"))
+            continue
+        pubkey = _inventory_pubkey(row)
+        commands = _inventory_commands(row)
+        runtime_id = _inventory_runtime_id(row)
+        if not pubkey:
+            if _DEPRECATED_WRAPPER in commands or runtime_id in seen:
+                reason = "empty pubkey"
+                if _DEPRECATED_WRAPPER in commands:
+                    reason += " on a grok-acp-wrapper launch row"
+                checks.append(check(
+                    f"inventory_empty_pubkey:{index}", "fail", "buzz_runtime",
+                    f"inventory row {index} has {reason}"))
+            else:
+                outside += 1
+            continue
+        key = by_pubkey.get(pubkey)
+        if key is None:
+            outside += 1
+            continue
+        seen[key].append(index)
+        reasons = []
+        relay = row.get("relay_url")
+        expected = relays.get(key)
+        if isinstance(expected, str) and relay != expected:
+            reasons.append("relay_url")
+        if runtime_id and runtime_id != key:
+            reasons.append("BUZZ_RUNTIME_ID")
+        if reasons:
+            checks.append(check(
+                f"inventory_binding_mismatch:{key[:20]}", "fail", "buzz_runtime",
+                f"inventory row for {key[:20]} disagrees on {', '.join(reasons)}"))
+    for key, indexes in seen.items():
+        if not indexes:
+            checks.append(check(
+                f"inventory_missing:{key[:20]}", "fail", "buzz_runtime",
+                f"instance identity {key[:20]} has no inventory row"))
+        elif len(indexes) > 1:
+            checks.append(check(
+                f"inventory_duplicate:{key[:20]}", "fail", "buzz_runtime",
+                f"instance identity {key[:20]} has {len(indexes)} launch rows"))
+    checks.append(check(
+        "inventory_non_instance", "pass", "buzz_runtime",
+        f"reported {outside} inventory row(s) outside this instance; not deleted"))
+    return checks
+
+
 def redact_endpoint(value: str | None) -> str | None:
     """Return host:port only; never credentials, paths, or query strings.
 
@@ -265,15 +370,33 @@ def _read_desktop_proxy_maps(
         return maps, checks
     try:
         rows = json.loads(path.read_text())
-        selected = desktop.selected_rows(config, rows)
-    except (OSError, ValueError, json.JSONDecodeError, TypeError, KeyError):
+    except (OSError, json.JSONDecodeError, TypeError):
         checks.append(check(
             "desktop_inventory", "fail", "buzz_runtime",
             "Desktop managed-agents inventory unreadable or mismatched"))
         return maps, checks
-    checks.append(check(
-        "desktop_inventory", "pass", "buzz_runtime",
-        "Desktop managed-agents inventory readable for bound identities"))
+    inventory = classify_desktop_inventory(config.data.get("agents") or {}, rows)
+    checks.extend(inventory)
+    anomaly = any(
+        item["status"] == "fail" and item["id"].startswith("inventory_")
+        for item in inventory)
+    try:
+        selected = desktop.selected_rows(config, rows)
+    except (ValueError, TypeError, KeyError):
+        checks.append(check(
+            "desktop_inventory", "fail", "buzz_runtime",
+            "Desktop managed-agents inventory has instance anomalies"
+            if anomaly else
+            "Desktop managed-agents inventory unreadable or mismatched"))
+        return maps, checks
+    if anomaly:
+        checks.append(check(
+            "desktop_inventory", "fail", "buzz_runtime",
+            "Desktop managed-agents inventory has instance anomalies"))
+    else:
+        checks.append(check(
+            "desktop_inventory", "pass", "buzz_runtime",
+            "Desktop managed-agents inventory readable for bound identities"))
     pidIndex, deadPids = _load_agent_pid_index(path, pidIsAlive=pidIsAlive)
     pubkeyToRef = {
         row["pubkey"]: key[:20]

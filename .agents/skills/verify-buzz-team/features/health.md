@@ -83,3 +83,16 @@ buzz-team --instance /absolute/instance diagnose
 `diagnose` 必须同时看 managed-agents **binding** `env_vars` 与 live ACP **进程**环境（`runtime_pid`）；仅 binding 键不能覆盖 Desktop 烘焙死代理事故。死代理不得只报成 auth 缺失。
 
 `desktop_agent_pids` 只计入 `os.kill(pid, 0)` 仍存活的 ACP pid。agent-pid 文件指向已退出进程时，对应 `desktop_agent_pid:*` 为 **fail**（顶层 `ok` 为 false），不得仅凭 `pid>0` 报 live / 假绿。活 pid 仍通过该检查。
+
+## 桌面库存（#46）
+
+`doctor` 在读代理对照之前用 `classify_desktop_inventory` 对照本机实例身份，不改库存文件：
+
+| id | 何时 fail |
+|---|---|
+| `inventory_missing:*` | 实例身份没有任何公钥匹配的行 |
+| `inventory_empty_pubkey:*` | 启动行公钥为空，且命令指向 `grok-acp-wrapper` 或已带本实例 `BUZZ_RUNTIME_ID` |
+| `inventory_duplicate:*` | 同一实例身份有多于一行启动项 |
+| `inventory_binding_mismatch:*` | 公钥已匹配，但 `relay_url` 或 `BUZZ_RUNTIME_ID` 与实例不一致 |
+
+同名不推断为同一公钥。不属于上述集合的行记在 `inventory_non_instance`（pass），summary 写明行数和 `not deleted`。有任一类实例异常时 `desktop_inventory` 为 fail，顶层 `ok` 为 false。
