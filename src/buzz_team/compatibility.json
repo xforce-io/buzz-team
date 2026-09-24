@@ -16,10 +16,17 @@
   "upstream_pin": {
     "status": "recorded-not-applied",
     "buzz_acp_sha256": "7c52822c5e450d99b421d4f9616ad573453b676cedc1a893720faeb2e7455a3c",
-    "relay_image": "ghcr.io/block/buzz:0.2.1",
-    "relay_index_digest": "sha256:4e31b7c7abb7d00b6f513dc559e58d2b980416f1dc400aa01bcf762cf2989cfc",
-    "git_tag": "relay-v0.2.1",
-    "note": "observed_baseline.harness_sha256 remains the running local fork until cutover. This pin is not applied."
+    "relay_image": "ghcr.io/block/buzz:sha-c507a4d",
+    "relay_index_digest": "sha256:1cf32474cb798ab2dec07b60835424c5895c4edf49b38f24ef052860c447d19f",
+    "git_commit": "c507a4d488ca27796e78d876b9c24ee38442cc1b",
+    "rejected_relay": {
+      "relay_image": "ghcr.io/block/buzz:0.2.1",
+      "relay_index_digest": "sha256:4e31b7c7abb7d00b6f513dc559e58d2b980416f1dc400aa01bcf762cf2989cfc",
+      "git_tag": "relay-v0.2.1",
+      "git_commit": "6e5c462ac524de60d7edb46c66130fd779cc9006",
+      "reason": "2026-08-08 tag; migrations stop at 0028. Production _sqlx_migrations is at 0045."
+    },
+    "note": "Schema-matching official image of the fork baseline. Not :main. Not applied. observed_baseline.harness_sha256 stays the running local fork until cutover."
   },
   "candidate_verification": {
     "status": "requires-external-exact-sha-evidence",

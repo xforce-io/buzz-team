@@ -6,7 +6,7 @@
 
 ## S2 目标版本
 
-`compatibility.json` 的 `upstream_pin` 与 `docs/runbooks/44-upstream-pin.md` 写下 Desktop `buzz-acp` SHA、`ghcr.io/block/buzz:0.2.1` 和 index digest。`observed_baseline.harness_sha256` 仍是正在跑的本地 fork。未切换时 S2 为 fail。
+`compatibility.json` 的 `upstream_pin` 与 `docs/runbooks/44-upstream-pin.md` 写下 Desktop `buzz-acp` SHA、`ghcr.io/block/buzz:sha-c507a4d` 和 index digest。`0.2.1` 写在 `rejected_relay`，不是切换目标。`observed_baseline.harness_sha256` 仍是正在跑的本地 fork。未切换时 S2 为 fail。
 
 ## S3 收发与规则
 

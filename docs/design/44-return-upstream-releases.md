@@ -24,7 +24,7 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 5 思路与折衷
 
-先归档再谈切换。relay pin 用已发布的固定标签 `ghcr.io/block/buzz:0.2.1`，不用 `:main`。`buzz-acp` pin 用这次 Desktop 包内文件的 SHA，不写成「永远等于 Desktop 当前文件」。
+先归档再谈切换。relay pin 用与现库迁移 0045 对齐的官方镜像 `ghcr.io/block/buzz:sha-c507a4d`，不用 2026-08-08 的 `0.2.1`，也不用滚动的 `:main`。`buzz-acp` pin 用这次 Desktop 包内文件的 SHA，不写成「永远等于 Desktop 当前文件」。
 
 放弃：把本地镜像继续当作生产事实源。
 
