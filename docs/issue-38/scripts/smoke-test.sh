@@ -23,6 +23,9 @@ else
   echo "shellcheck not installed — skipped"
 fi
 
+echo "== F5 order: config_written_at after first mutation + after local writes =="
+python3 "$DIR/_check_f5_order.py" "$DIR/apply.sh"
+
 echo "== no safe_kill / kill-wait in call paths =="
 if grep -nE '^[[:space:]]*safe_kill_zhou|^[[:space:]]*kill[[:space:]]+-?[0-9]|TIMEOUT waiting for Desktop to respawn' \
     "$DIR/apply.sh" "$DIR/rollback.sh" "$DIR/common.sh" "$DIR/verify-after-restart.sh"; then
@@ -35,15 +38,39 @@ if grep -nE '^safe_kill_zhou\(\)' "$DIR/common.sh"; then
 fi
 echo "no kill/respawn call paths OK"
 
-echo "== quit-first: baseline-only + desktop-not-running + SKIP_DESKTOP_CHECK =="
+echo "== quit-first: baseline-only + desktop-not-running; escape hatch ABSENT =="
 grep -q -- '--baseline-only' "$DIR/apply.sh"
 grep -q 'require_desktop_not_running' "$DIR/apply.sh"
 grep -q 'require_desktop_not_running' "$DIR/rollback.sh"
-grep -q 'SKIP_DESKTOP_CHECK' "$DIR/common.sh"
+# Assert escape hatch gone from product scripts + RUNBOOK (not this smoke file's assertion text).
+if grep -n 'SKIP_DESKTOP_CHECK' "$DIR/common.sh" "$DIR/apply.sh" "$DIR/rollback.sh" \
+    "$DIR/verify-after-restart.sh" "$DIR/../RUNBOOK.md"; then
+  echo "FAIL: SKIP_DESKTOP_CHECK escape hatch must be fully removed" >&2
+  exit 1
+fi
+echo "SKIP_DESKTOP_CHECK absent OK"
 grep -q 'snapshot_all_team_pids' "$DIR/apply.sh"
 grep -q 'all-pids-before.tsv' "$DIR/apply.sh"
 grep -q 'all-pids-before.tsv' "$DIR/verify-after-restart.sh"
-# mutate phase must not require seats alive
+# D1: require_desktop_not_running checks TEAM pid files + pgrep -P children (not machine-wide buzz-acp)
+grep -q 'pgrep -P' "$DIR/common.sh"
+grep -q 'TEAM seat wrapper/child' "$DIR/common.sh"
+if grep -nE 'pgrep[[:space:]].*buzz-acp' "$DIR/common.sh" "$DIR/apply.sh" "$DIR/rollback.sh"; then
+  echo "FAIL: machine-wide buzz-acp pgrep must not be used (yuanbao false-abort)" >&2
+  exit 1
+fi
+echo "D1 TEAM pid + child check present; no machine-wide buzz-acp OK"
+# D3: baseline_at + age check + mutate re-assert
+grep -q 'BASELINE_MAX_AGE_S=1800' "$DIR/common.sh"
+grep -q 'record_baseline_at' "$DIR/common.sh"
+grep -q 'record_baseline_at' "$DIR/apply.sh"
+grep -q 'require_baseline_fresh' "$DIR/common.sh"
+grep -q 'require_baseline_fresh' "$DIR/apply.sh"
+grep -q 'assert_live_workflow_matches_before' "$DIR/common.sh"
+grep -q 'assert_live_workflow_matches_before' "$DIR/apply.sh"
+grep -q 'baseline_at' "$DIR/../RUNBOOK.md"
+echo "D3 baseline_at + freshness + mutate re-assert OK"
+# mutate phase must not require seats alive; freshness+re-assert before write
 DIR="$DIR" python3 - <<'PY'
 import os, re
 from pathlib import Path
@@ -55,7 +82,15 @@ if re.search(r"^\s*require_all_team_alive\b", tail, re.M):
     raise SystemExit("FAIL: require_all_team_alive in mutate phase")
 if re.search(r"^\s*ZHOU_PID_BEFORE=\$\(require_zhou_alive\)", tail, re.M):
     raise SystemExit("FAIL: require_zhou_alive capture in mutate phase")
-print("mutate phase does not require seats alive OK")
+if "require_baseline_fresh" not in tail:
+    raise SystemExit("FAIL: require_baseline_fresh missing from mutate phase")
+if "assert_live_workflow_matches_before" not in tail:
+    raise SystemExit("FAIL: assert_live_workflow_matches_before missing from mutate phase")
+upd = tail.find("buzz workflows update")
+ra = tail.find("assert_live_workflow_matches_before")
+if upd < 0 or ra < 0 or not (ra < upd):
+    raise SystemExit(f"FAIL: mutate re-assert must precede workflows update (ra={ra} upd={upd})")
+print("mutate phase does not require seats alive; freshness+re-assert before write OK")
 PY
 
 echo "== N1: Mode A only if ALL THREE effort+idle+max visible =="
@@ -99,6 +134,19 @@ if [[ ! "$epoch" =~ ^-?[0-9]+$ ]]; then
   exit 1
 fi
 echo "zh_CN lstart parser OK (epoch=$epoch)"
+
+echo "== D4: verify error must not prescribe Dock/Launchpad reopen =="
+if grep -nE 'Reopen Desktop from Dock/Launchpad|from Dock/Launchpad, wait'     "$DIR/verify-after-restart.sh"; then
+  echo "FAIL: verify still prescribes Dock/Launchpad reopen" >&2
+  exit 1
+fi
+grep -q 'peng-approved proxy-fix method (RUNBOOK A13)' "$DIR/verify-after-restart.sh"
+echo "D4 proxy-fix reopen wording OK"
+
+echo "== D5: quit-first implies app (single is experiment-only) =="
+grep -q 'quit-first (Cmd+Q) always implies --restart-mode app' "$DIR/common.sh"
+grep -q 'only for experiments without Cmd+Q' "$DIR/../RUNBOOK.md"
+echo "D5 single-vs-app messaging OK"
 
 echo "== --restart-mode single|app required (no auto-guess) =="
 grep -q -- '--restart-mode' "$DIR/verify-after-restart.sh"

@@ -5,7 +5,7 @@
 #   2) peng Cmd+Q fully quits Buzz Desktop
 #   3) apply.sh --backup <dir>    # Desktop DOWN; write workflow+row+prompts; no seat-alive req
 #   4) peng reopens Desktop via the proxy-fix method peng approved; then MA read-back + verify
-# Does NOT kill ACP processes. ESCAPE: SKIP_DESKTOP_CHECK=1 (see RUNBOOK).
+# Does NOT kill ACP processes. Desktop must be fully quit before mutate (no escape hatch).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -47,21 +47,7 @@ eval "$(grep -E '^PJ_PRIVATE_KEY=' /Users/xupeng/.local/share/buzz/config/agents
 export PATH="/Users/xupeng/lab/buzz/bin:$PATH"
 export BUZZ_RELAY_URL="${BUZZ_RELAY_URL:-ws://127.0.0.1:3000}"
 LIVE_GET=$(mktemp)
-buzz workflows get --workflow "$WF_ID" > "$LIVE_GET"
-python3 -c "
-import json, sys
-from pathlib import Path
-live=json.loads(Path(sys.argv[1]).read_text())['content']
-staged=Path(sys.argv[2]).read_text()
-def norm(s):
-    return s.replace('\r\n','\n').strip()+'\n'
-if norm(live)!=norm(staged):
-    print('ABORT: live workflow content != docs/issue-38/before/workflow.yaml', file=sys.stderr)
-    print('--- live ---', file=sys.stderr); print(norm(live)[:500], file=sys.stderr)
-    print('--- staged ---', file=sys.stderr); print(norm(staged)[:500], file=sys.stderr)
-    sys.exit(1)
-print('live workflow matches staged before OK')
-" "$LIVE_GET" "$ROOT/before/workflow.yaml"
+assert_live_workflow_matches_before "$ROOT" "$LIVE_GET"
 
 echo "== preflight: active 周衡 row (idle=1500, effort=low) =="
 python3 -c "
@@ -125,6 +111,7 @@ p.write_text(c if c.endswith(chr(10)) else c+chr(10))
 print('saved workflow-live-before.yaml from live get')
 "
   rm -f "$LIVE_GET"
+  record_baseline_at "$BACKUP"
 
   cat <<MSG
 
@@ -156,6 +143,9 @@ test -f "$BACKUP/instructions-1.md"
 echo "== mutate phase: require Desktop NOT running =="
 require_desktop_not_running || exit 1
 
+echo "== mutate phase: require baseline freshness (max age ${BASELINE_MAX_AGE_S}s) =="
+require_baseline_fresh "$BACKUP" || exit 1
+
 echo "== resolve 周衡 pid file path (exact; extras abort; dead pid OK while Desktop quit) =="
 ZH_PID_FILE=$(zhou_pid_file)
 echo "周衡 pid file: $ZH_PID_FILE (pid may be stale/dead — expected after Cmd+Q)"
@@ -185,6 +175,9 @@ eval "$(grep -E '^PJ_PRIVATE_KEY=' /Users/xupeng/.local/share/buzz/config/agents
 export PATH="/Users/xupeng/lab/buzz/bin:$PATH"
 export BUZZ_RELAY_URL="${BUZZ_RELAY_URL:-ws://127.0.0.1:3000}"
 
+echo "== mutate phase: re-assert live workflow == staged before (before any write) =="
+assert_live_workflow_matches_before "$ROOT" || exit 1
+
 echo "== preflight: on-disk 周衡 row still idle=1500 effort=low (pre-patch) =="
 python3 -c "
 import json
@@ -206,6 +199,7 @@ if target is None:
 print('preflight OK: on-disk 周衡 row still low/1500')
 "
 
+APPLY_STEP="workflow-update"
 echo "== update workflow body FIRST (YAML content via cat; owner unchanged) =="
 AFTER_WF="$ROOT/after/workflow.yaml"
 test -f "$AFTER_WF"

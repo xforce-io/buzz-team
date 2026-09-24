@@ -8,6 +8,8 @@ TEAM=a558771623f298980db444a8406459dff1cbd20f264a72d00ffaca270c0fa16f
 ID_TEAM=a558771623f29898
 PIN_SHORT=046ac43
 PIN_FULL=046ac4345647ea6bc9c57bbf91ddb556a91694cd
+# Max age of a --baseline-only backup before mutate will refuse it (seconds).
+BASELINE_MAX_AGE_S=1800
 
 WF_ID=f5cc62c0-3756-419e-8a3f-8e694df2e93e
 CH_ID=9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3
@@ -194,7 +196,7 @@ record_config_written_at() {
 # ---- Desktop process helpers (macOS Buzz.app) ----
 # Matcher: prefer Buzz.app MacOS binary path; fall back to exact process name "Buzz".
 # No prior matcher existed in these scripts; keep narrow to avoid ACP python wrappers.
-# Escape hatch: SKIP_DESKTOP_CHECK=1 (documented in RUNBOOK).
+# No Desktop-check escape hatch — mutate/rollback always require a full quit.
 
 desktop_main_pids() {
   local pids=""
@@ -205,19 +207,111 @@ desktop_main_pids() {
   printf '%s\n' "$pids" | awk 'NF' | sort -u
 }
 
+# Abort if Desktop main process is up, OR any of the 9 TEAM seat wrapper pids
+# (exact *__${TEAM}.json) is still kill -0, OR any direct child of those wrappers
+# is still alive (e.g. buzz-acp child). Does NOT scan machine-wide for ACP processes
+# (other registrations like yuanbao would false-abort).
 require_desktop_not_running() {
-  if [[ "${SKIP_DESKTOP_CHECK:-}" == "1" ]]; then
-    echo "WARN: SKIP_DESKTOP_CHECK=1 — skipping Desktop-not-running check" >&2
-    return 0
-  fi
   local pids
   pids=$(desktop_main_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
   if [[ -n "$pids" ]]; then
     echo "ABORT: Buzz Desktop appears running (pids: $pids)." >&2
-    echo "Cmd+Q fully quit Desktop first, then re-run. Override: SKIP_DESKTOP_CHECK=1 (see RUNBOOK)." >&2
+    echo "Cmd+Q fully quit Desktop first, then re-run." >&2
     return 1
   fi
   echo "Desktop not running OK"
+
+  local f base pid child kids
+  local -a alive_list=()
+  for f in "$PID_DIR"/*__"${TEAM}".json; do
+    [[ -e "$f" ]] || continue
+    base=$(basename "$f")
+    pid=$(python3 -c "import json; print(json.load(open(r'''${f}'''))['pid'])")
+    if kill -0 "$pid" 2>/dev/null; then
+      alive_list+=("wrapper:${base}:${pid}")
+    fi
+    kids=$(pgrep -P "$pid" 2>/dev/null || true)
+    for child in $kids; do
+      if kill -0 "$child" 2>/dev/null; then
+        alive_list+=("child_of_${base}:${child}(ppid=${pid})")
+      fi
+    done
+  done
+  if ((${#alive_list[@]} > 0)); then
+    echo "ABORT: TEAM seat wrapper/child pid(s) still alive (Desktop quit incomplete):" >&2
+    printf '  %s\n' "${alive_list[@]}" >&2
+    echo "Cmd+Q fully quit Desktop and wait for ACP teardown, then re-run." >&2
+    return 1
+  fi
+  echo "TEAM seat wrappers/children not running OK"
+}
+
+# Record baseline capture time (epoch seconds) for mutate freshness gate.
+record_baseline_at() {
+  local backup=$1
+  local epoch
+  epoch=$(date +%s)
+  printf '%s\n' "$epoch" > "$backup/baseline_at"
+  echo "baseline_at=$epoch (epoch) -> $backup/baseline_at (max age ${BASELINE_MAX_AGE_S}s)"
+}
+
+# Reject backup dirs whose baseline_at is missing or older than BASELINE_MAX_AGE_S.
+require_baseline_fresh() {
+  local backup=$1
+  local stamp now age
+  if [[ ! -f "$backup/baseline_at" ]]; then
+    echo "ABORT: missing $backup/baseline_at (re-run apply.sh --baseline-only; unstamped baselines are rejected)." >&2
+    return 1
+  fi
+  stamp=$(tr -d '[:space:]' < "$backup/baseline_at")
+  if [[ ! "$stamp" =~ ^[0-9]+$ ]]; then
+    echo "ABORT: invalid baseline_at '$stamp' in $backup/baseline_at" >&2
+    return 1
+  fi
+  now=$(date +%s)
+  age=$((now - stamp))
+  if (( age < 0 )); then
+    echo "ABORT: baseline_at $stamp is in the future (now=$now)" >&2
+    return 1
+  fi
+  if (( age > BASELINE_MAX_AGE_S )); then
+    echo "ABORT: baseline is ${age}s old (max ${BASELINE_MAX_AGE_S}s). Re-run --baseline-only." >&2
+    return 1
+  fi
+  echo "baseline freshness OK: age=${age}s (max ${BASELINE_MAX_AGE_S}s)"
+}
+
+# Assert live workflow content == docs/issue-38/before/workflow.yaml.
+# Requires buzz CLI + BUZZ_PRIVATE_KEY / PATH / BUZZ_RELAY_URL already exported.
+# $1 = issue-38 root (parent of before/). Optional $2 = path to save raw get JSON.
+assert_live_workflow_matches_before() {
+  local root=$1
+  local save_as=${2:-}
+  local live_get
+  live_get=$(mktemp)
+  buzz workflows get --workflow "$WF_ID" > "$live_get"
+  if ! python3 -c "
+import json, sys
+from pathlib import Path
+live=json.loads(Path(sys.argv[1]).read_text())['content']
+staged=Path(sys.argv[2]).read_text()
+def norm(s):
+    return s.replace('\r\n','\n').strip()+'\n'
+if norm(live)!=norm(staged):
+    print('ABORT: live workflow content != docs/issue-38/before/workflow.yaml', file=sys.stderr)
+    print('--- live ---', file=sys.stderr); print(norm(live)[:500], file=sys.stderr)
+    print('--- staged ---', file=sys.stderr); print(norm(staged)[:500], file=sys.stderr)
+    sys.exit(1)
+print('live workflow matches staged before OK')
+" "$live_get" "$root/before/workflow.yaml"; then
+    rm -f "$live_get"
+    return 1
+  fi
+  if [[ -n "$save_as" ]]; then
+    cp "$live_get" "$save_as"
+  fi
+  rm -f "$live_get"
+  return 0
 }
 
 # Snapshot ALL TEAM seat pids (including 周衡) as name<TAB>pid lines.
@@ -321,6 +415,11 @@ if mode == "single":
     if others_changed:
         print("FAIL: --restart-mode single but other seat pid(s) changed:", file=sys.stderr)
         print("  " + "\n  ".join(others_changed), file=sys.stderr)
+        print(
+            "Hint: quit-first (Cmd+Q) always implies --restart-mode app; "
+            "use --restart-mode single only for experiments without Cmd+Q.",
+            file=sys.stderr,
+        )
         sys.exit(1)
     if len(others_unchanged) != 8:
         print(
