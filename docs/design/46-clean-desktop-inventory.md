@@ -44,11 +44,12 @@ N/A。检查落在现有 health 模块。
 - `inventory_empty_pubkey:<index>`
 - `inventory_duplicate:<ref>`
 - `inventory_binding_mismatch:<ref>`
+- `inventory_deprecated_wrapper:<index>`（`agent_command` 或 `acp_command` 指向 `grok-acp-wrapper`，公钥可以不属于本实例）
 - `inventory_non_instance`（pass，含 `not deleted`）
 
 ## 9 边界
 
-分类不删除行。同名不是同一公钥。实例外行不进入四类 fail。
+分类不删除行。同名不是同一公钥。实例外、且启动命令不是 `grok-acp-wrapper` 的行不进入 fail。只改 `agent_command_override` 不算启动命令。
 
 ## 10 迁移/兼容/回滚
 

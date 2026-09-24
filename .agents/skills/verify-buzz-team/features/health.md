@@ -94,5 +94,6 @@ buzz-team --instance /absolute/instance diagnose
 | `inventory_empty_pubkey:*` | 启动行公钥为空（有启动命令，或已带本实例 `BUZZ_RUNTIME_ID`） |
 | `inventory_duplicate:*` | 同一实例身份有多于一行启动项 |
 | `inventory_binding_mismatch:*` | 公钥已匹配，但 `relay_url` 或 `BUZZ_RUNTIME_ID` 与实例不一致 |
+| `inventory_deprecated_wrapper:*` | `agent_command` 或 `acp_command` 指向 `grok-acp-wrapper`，包括公钥不属于本实例的行 |
 
-同名不推断为同一公钥。不属于上述集合的行记在 `inventory_non_instance`（pass），summary 写明行数和 `not deleted`。有任一类实例异常时 `desktop_inventory` 为 fail，顶层 `ok` 为 false。
+同名不推断为同一公钥。只在 `agent_command_override` 里出现 wrapper、启动命令不是 wrapper 的行，不走上一行。其余不属于上述集合的行记在 `inventory_non_instance`（pass），summary 写明行数和 `not deleted`。有任一类上述 fail 时顶层 `ok` 为 false。
