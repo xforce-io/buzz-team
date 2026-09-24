@@ -25,6 +25,9 @@ verify_thin_pin
 echo "== rollback: require Desktop NOT running (quit-first flow) =="
 require_desktop_not_running || exit 1
 
+echo "== rollback: require relay :3000 listening (A14) =="
+require_relay_3000_listening || exit 1
+
 
 test -f "$BACKUP/zhouheng-row-before.json"
 test -f "$BACKUP/pj.md"

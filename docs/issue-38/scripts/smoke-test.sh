@@ -52,14 +52,98 @@ echo "SKIP_DESKTOP_CHECK absent OK"
 grep -q 'snapshot_all_team_pids' "$DIR/apply.sh"
 grep -q 'all-pids-before.tsv' "$DIR/apply.sh"
 grep -q 'all-pids-before.tsv' "$DIR/verify-after-restart.sh"
-# D1: require_desktop_not_running checks TEAM pid files + pgrep -P children (not machine-wide buzz-acp)
-grep -q 'pgrep -P' "$DIR/common.sh"
-grep -q 'TEAM seat wrapper/child' "$DIR/common.sh"
+# D1: identity scan (pubkey from pid-file names + BUZZ_RELAY_URL); no pid-file kill -0 / pgrep -P
+grep -q 'scan_team_seat_identity_matches' "$DIR/common.sh"
+grep -q 'team_seat_pubkeys_from_pid_files' "$DIR/common.sh"
+grep -q 'require_team_seats_not_running' "$DIR/common.sh"
+grep -q '_seat_identity_scan.py' "$DIR/common.sh"
+test -f "$DIR/_seat_identity_scan.py"
+# Seat-dead check must NOT use pgrep -P or kill -0 on pid-file pids
+DIR="$DIR" python3 - <<'PY'
+import os, re
+from pathlib import Path
+text = Path(os.environ["DIR"], "common.sh").read_text()
+start = text.find("# ---- TEAM seat identity scan")
+end = text.find("# Record baseline capture time")
+assert start >= 0 and end > start, "D1 identity-scan region missing"
+region = text[start:end]
+code = "\n".join(l for l in region.splitlines() if not l.lstrip().startswith("#"))
+if re.search(r"\bpgrep\s+-P\b", code):
+    raise SystemExit("FAIL: D1 still uses pgrep -P")
+if re.search(r"\bkill\s+-0\b", code):
+    raise SystemExit("FAIL: D1 still uses kill -0 on pid-file pids")
+assert "team_seat_pubkeys_from_pid_files" in region
+assert "__" in region and "TEAM" in region
+print("D1 identity scan present; no pgrep -P / kill -0 in seat-dead check OK")
+PY
 if grep -nE 'pgrep[[:space:]].*buzz-acp' "$DIR/common.sh" "$DIR/apply.sh" "$DIR/rollback.sh"; then
   echo "FAIL: machine-wide buzz-acp pgrep must not be used (yuanbao false-abort)" >&2
   exit 1
 fi
-echo "D1 TEAM pid + child check present; no machine-wide buzz-acp OK"
+echo "D1 no machine-wide buzz-acp OK"
+
+# A14: :3000 preflight in apply mutate + rollback
+grep -q 'require_relay_3000_listening' "$DIR/common.sh"
+grep -q 'require_relay_3000_listening' "$DIR/apply.sh"
+grep -q 'require_relay_3000_listening' "$DIR/rollback.sh"
+grep -q 'relay :3000 not listening' "$DIR/common.sh"
+# mutate-phase ordering: relay preflight before workflow re-assert / write
+DIR="$DIR" python3 - <<'PY'
+import os, re
+from pathlib import Path
+t = Path(os.environ["DIR"], "apply.sh").read_text()
+m = re.search(r"mutate phase: require Desktop NOT running", t)
+assert m, "mutate phase marker missing"
+tail = t[m.start():]
+rel = tail.find("require_relay_3000_listening")
+ra = tail.find("assert_live_workflow_matches_before")
+upd = tail.find("buzz workflows update")
+if rel < 0:
+    raise SystemExit("FAIL: require_relay_3000_listening missing from mutate phase")
+if not (rel < ra < upd):
+    raise SystemExit(f"FAIL: mutate order relay < re-assert < update (rel={rel} ra={ra} upd={upd})")
+print("A14 :3000 preflight in apply mutate (before re-assert) + rollback OK")
+PY
+
+# D1 fixture: yuanbao same-pubkey different relay → not matched; grep line → not matched; real seat → matched
+echo "== D1 identity-scan fixture (yuanbao/grep self-exclusion) =="
+FIX=$(mktemp)
+PUB=51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e
+cat > "$FIX" <<FIXEOF
+99901 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /Users/xupeng/lab/buzz launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=a558771623f29898/${PUB} GROK_ACP_CWD=/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/${PUB}/workspace
+99902 /Users/xupeng/.local/share/buzz/binaries/4937-activity-recovery/buzz-acp BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=a558771623f29898/${PUB}
+99903 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /tmp/yuanbao launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3001 BUZZ_RUNTIME_ID=a558771623f29898/${PUB} GROK_ACP_CWD=/tmp/yuanbao/identities/a558771623f29898/${PUB}/workspace
+99904 grep ${PUB} /tmp/something
+99905 bash -c "echo ${PUB} and BUZZ_RELAY_URL=ws://127.0.0.1:3000"
+# Self pipeline: scanner pid 88880 with a child whose cmdline contains the pubkey (must be excluded)
+88880 bash /tmp/fake-scan-script.sh
+88881 grep ${PUB} /proc/fake
+PPIDMAP 99901 100
+PPIDMAP 99902 99901
+PPIDMAP 99903 100
+PPIDMAP 99904 100
+PPIDMAP 99905 100
+PPIDMAP 88880 100
+PPIDMAP 88881 88880
+FIXEOF
+SCAN_OUT=$(python3 "$DIR/_seat_identity_scan.py" --relay "ws://127.0.0.1:3000" --pubkey "$PUB" --self-pid 88880 < "$FIX" || true)
+rm -f "$FIX"
+echo "$SCAN_OUT"
+# Expect only 99901 and 99902 (real team seats). 99903 yuanbao different relay; 99904 grep; 99905 bash — excluded.
+echo "$SCAN_OUT" | grep -q '^99901[[:space:]]'
+echo "$SCAN_OUT" | grep -q '^99902[[:space:]]'
+if echo "$SCAN_OUT" | grep -qE '^99903|^99904|^99905|^88880|^88881'; then
+  echo "FAIL: fixture matched yuanbao/grep/bash/self line" >&2
+  echo "$SCAN_OUT" >&2
+  exit 1
+fi
+# Count matches == 2
+n=$(echo "$SCAN_OUT" | awk 'NF' | wc -l | tr -d ' ')
+if [[ "$n" != "2" ]]; then
+  echo "FAIL: expected 2 fixture matches, got $n" >&2
+  exit 1
+fi
+echo "D1 fixture: team seats matched; yuanbao/grep/bash excluded OK"
 # D3: baseline_at + age check + mutate re-assert
 grep -q 'BASELINE_MAX_AGE_S=1800' "$DIR/common.sh"
 grep -q 'record_baseline_at' "$DIR/common.sh"

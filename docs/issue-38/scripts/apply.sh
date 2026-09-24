@@ -175,6 +175,9 @@ eval "$(grep -E '^PJ_PRIVATE_KEY=' /Users/xupeng/.local/share/buzz/config/agents
 export PATH="/Users/xupeng/lab/buzz/bin:$PATH"
 export BUZZ_RELAY_URL="${BUZZ_RELAY_URL:-ws://127.0.0.1:3000}"
 
+echo "== mutate phase: require relay :3000 listening (A14) =="
+require_relay_3000_listening || exit 1
+
 echo "== mutate phase: re-assert live workflow == staged before (before any write) =="
 assert_live_workflow_matches_before "$ROOT" || exit 1
 

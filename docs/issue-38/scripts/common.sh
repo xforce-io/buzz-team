@@ -207,10 +207,120 @@ desktop_main_pids() {
   printf '%s\n' "$pids" | awk 'NF' | sort -u
 }
 
-# Abort if Desktop main process is up, OR any of the 9 TEAM seat wrapper pids
-# (exact *__${TEAM}.json) is still kill -0, OR any direct child of those wrappers
-# is still alive (e.g. buzz-acp child). Does NOT scan machine-wide for ACP processes
-# (other registrations like yuanbao would false-abort).
+# ---- TEAM seat identity scan (D1 / A15) ----
+# Why identity (pubkey + relay) instead of kill -0 on pid-file pids / pgrep -P:
+#   - After Cmd+Q, orphaned ACP children reparent to pid 1 (launchd); pgrep -P
+#     on the old wrapper pid misses them.
+#   - Stale pid-file numbers can be reused by unrelated processes → false positives.
+#   - Scope is this TEAM only (pubkey from *__${TEAM}.json names + BUZZ_RELAY_URL);
+#     do NOT scan machine-wide for `buzz-acp` by name (yuanbao duplicates may share
+#     the same seat pubkeys but use a different relay — see A15).
+# Match rule (all required): seat executable (buzz_team.cli wrapper OR buzz-acp
+# argv0) AND seat pubkey AND BUZZ_RELAY_URL=${TEAM_RELAY_URL} AND not self/descendants.
+
+# Relay URL that identifies THIS Desktop TEAM's seats in process env (A14/A15).
+TEAM_RELAY_URL="${TEAM_RELAY_URL:-ws://127.0.0.1:3000}"
+
+# Extract seat pubkeys from the 9 TEAM pid file names ($PID_DIR/<pubkey>__<TEAM>.json).
+team_seat_pubkeys_from_pid_files() {
+  local f base
+  shopt -s nullglob
+  for f in "$PID_DIR"/*__"${TEAM}".json; do
+    base=$(basename "$f")
+    printf '%s\n' "${base%%__*}"
+  done
+  shopt -u nullglob
+}
+
+# Emit ps pid/command lines for identity scan.
+# macOS: ps -axww (cmdline) AND ps -Eaxww (env visible for our own processes).
+# Linux/CI: ps -eww e; live Desktop checks are macOS-only.
+# ISSUE38_PS_FIXTURE=path → read fixture instead (smoke tests; no live ps).
+_collect_ps_pid_command_lines() {
+  if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
+    cat "$ISSUE38_PS_FIXTURE"
+    return 0
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      ps -axww -o pid=,command= 2>/dev/null || true
+      ps -Eaxww -o pid=,command= 2>/dev/null || true
+      ;;
+    *)
+      ps -eww -o pid=,args= 2>/dev/null || true
+      ps -eww e -o pid=,args= 2>/dev/null || true
+      ;;
+  esac
+}
+
+# Emit PPIDMAP lines so the scanner can exclude $$ descendants (ps/python pipeline).
+_collect_ppid_map_lines() {
+  if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
+    return 0
+  fi
+  ps -axww -o pid=,ppid= 2>/dev/null | while read -r pid ppid; do
+    [[ -n "${pid:-}" && -n "${ppid:-}" ]] || continue
+    printf 'PPIDMAP %s %s\n' "$pid" "$ppid"
+  done
+}
+
+# Run identity scan. Prints "pid<TAB>pubkey<TAB>via" matches to stdout.
+# $1 = path to pubkeys file (one per line). Excludes $$ and descendants.
+scan_team_seat_identity_matches() {
+  local pubs_file=$1
+  local self_pid=$$
+  local scanner
+  scanner="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_seat_identity_scan.py"
+  {
+    _collect_ps_pid_command_lines
+    _collect_ppid_map_lines
+  } | python3 "$scanner" \
+      --relay "$TEAM_RELAY_URL" \
+      --pubkeys-file "$pubs_file" \
+      --self-pid "$self_pid" \
+      --exclude-pid "$self_pid"
+}
+
+# Abort if any TEAM seat identity is still live (wrapper or buzz-acp).
+require_team_seats_not_running() {
+  local pubs_file matches
+  pubs_file=$(mktemp)
+  team_seat_pubkeys_from_pid_files > "$pubs_file"
+  if [[ ! -s "$pubs_file" ]]; then
+    rm -f "$pubs_file"
+    echo "ABORT: no TEAM pid files matching *__${TEAM}.json under $PID_DIR" >&2
+    return 1
+  fi
+  matches=$(scan_team_seat_identity_matches "$pubs_file" || true)
+  rm -f "$pubs_file"
+  if [[ -n "$matches" ]]; then
+    echo "ABORT: TEAM seat process(es) still alive (identity match; Desktop quit incomplete):" >&2
+    while IFS=$'\t' read -r pid pub via; do
+      [[ -n "${pid:-}" ]] || continue
+      echo "  pid=${pid} pubkey=${pub} via=${via}" >&2
+    done <<< "$matches"
+    echo "Cmd+Q fully quit Desktop and wait for ACP teardown, then re-run." >&2
+    return 1
+  fi
+  echo "TEAM seat identity scan: no live seats OK"
+}
+
+# Abort unless something is listening on TCP :3000 (relay / colima forward — A14).
+require_relay_3000_listening() {
+  local out
+  out=$(lsof -nP -iTCP:3000 -sTCP:LISTEN 2>/dev/null || true)
+  if [[ -z "$out" ]]; then
+    echo "ABORT: relay :3000 not listening (colima down?) — see RUNBOOK A14" >&2
+    return 1
+  fi
+  echo "relay :3000 listening OK"
+  printf '%s\n' "$out"
+}
+
+# Abort if Desktop main process is up, OR any TEAM seat still matches the
+# identity scan (pubkey + BUZZ_RELAY_URL + wrapper/buzz-acp). Does NOT use
+# pid-file kill -0 or pgrep -P (see comment above). Does NOT scan machine-wide
+# for buzz-acp by name alone.
 require_desktop_not_running() {
   local pids
   pids=$(desktop_main_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
@@ -221,29 +331,7 @@ require_desktop_not_running() {
   fi
   echo "Desktop not running OK"
 
-  local f base pid child kids
-  local -a alive_list=()
-  for f in "$PID_DIR"/*__"${TEAM}".json; do
-    [[ -e "$f" ]] || continue
-    base=$(basename "$f")
-    pid=$(python3 -c "import json; print(json.load(open(r'''${f}'''))['pid'])")
-    if kill -0 "$pid" 2>/dev/null; then
-      alive_list+=("wrapper:${base}:${pid}")
-    fi
-    kids=$(pgrep -P "$pid" 2>/dev/null || true)
-    for child in $kids; do
-      if kill -0 "$child" 2>/dev/null; then
-        alive_list+=("child_of_${base}:${child}(ppid=${pid})")
-      fi
-    done
-  done
-  if ((${#alive_list[@]} > 0)); then
-    echo "ABORT: TEAM seat wrapper/child pid(s) still alive (Desktop quit incomplete):" >&2
-    printf '  %s\n' "${alive_list[@]}" >&2
-    echo "Cmd+Q fully quit Desktop and wait for ACP teardown, then re-run." >&2
-    return 1
-  fi
-  echo "TEAM seat wrappers/children not running OK"
+  require_team_seats_not_running || return 1
 }
 
 # Record baseline capture time (epoch seconds) for mutate freshness gate.
