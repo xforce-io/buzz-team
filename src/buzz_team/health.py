@@ -184,13 +184,37 @@ def _agent_pids_dir(managed_agents: Path) -> Path:
     return managed_agents.resolve().parent / "agent-pids"
 
 
-def _load_agent_pid_index(managed_agents: Path) -> dict[str, int]:
-    """Map agent pubkey -> live pid from agent-pids/<pubkey>__*.json."""
-    index: dict[str, int] = {}
+def _pidIsAlive(pid: int) -> bool:
+    """True only when the process exists. pid>0 is not sufficient (stale Desktop leftovers)."""
+    if pid <= 0:
+        return False
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    except OSError:
+        return False
+    return True
+
+
+def _load_agent_pid_index(
+    managed_agents: Path,
+    *,
+    pidIsAlive=_pidIsAlive,
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
+    """Map agent pubkey -> live pid; collect dead agent-pid files separately.
+
+    A numeric pid>0 is not live. Stale leftovers (e.g. dead `__283d*` files)
+    must not be counted as healthy ACP processes.
+    """
+    live: dict[str, int] = {}
+    dead: list[dict[str, Any]] = []
     root = _agent_pids_dir(managed_agents)
     if not root.is_dir():
-        return index
-    for path in root.glob("*.json"):
+        return live, dead
+    for path in sorted(root.glob("*.json")):
         pubkey = path.name.split("__", 1)[0]
         try:
             data = json.loads(path.read_text())
@@ -200,12 +224,16 @@ def _load_agent_pid_index(managed_agents: Path) -> dict[str, int]:
             continue
         pid = data.get("pid")
         try:
-            pid_i = int(pid)
+            pidI = int(pid)
         except (TypeError, ValueError):
             continue
-        if pid_i > 0 and re.fullmatch(r"[0-9a-f]{64}", pubkey):
-            index[pubkey] = pid_i
-    return index
+        if pidI <= 0 or not re.fullmatch(r"[0-9a-f]{64}", pubkey):
+            continue
+        if not pidIsAlive(pidI):
+            dead.append({"pubkey": pubkey, "pid": pidI, "file": path.name})
+            continue
+        live[pubkey] = pidI
+    return live, dead
 
 
 def _resolve_acp_pid(row: dict, pid_index: dict[str, int]) -> int | None:
@@ -224,6 +252,7 @@ def _read_desktop_proxy_maps(
     config: Config,
     *,
     process_reader=_read_process_environ,
+    pidIsAlive=_pidIsAlive,
 ) -> tuple[list[dict[str, Any]], list[dict[str, str]]]:
     """Load per-identity Desktop binding + live ACP process proxy maps."""
     checks: list[dict[str, str]] = []
@@ -245,16 +274,29 @@ def _read_desktop_proxy_maps(
     checks.append(check(
         "desktop_inventory", "pass", "buzz_runtime",
         "Desktop managed-agents inventory readable for bound identities"))
-    pid_index = _load_agent_pid_index(path)
-    if selected and not pid_index and not any(
+    pidIndex, deadPids = _load_agent_pid_index(path, pidIsAlive=pidIsAlive)
+    pubkeyToRef = {
+        row["pubkey"]: key[:20]
+        for key, row in selected.items()
+        if isinstance(row.get("pubkey"), str)
+    }
+    for entry in deadPids:
+        identityRef = pubkeyToRef.get(entry["pubkey"], entry["pubkey"][:20])
+        checks.append(check(
+            f"desktop_agent_pid:{identityRef}:{entry['pid']}",
+            "fail",
+            "proxy",
+            f"agent-pid file {entry['file']} for {identityRef} references dead process "
+            f"pid={entry['pid']}; pid>0 is not proof of liveness"))
+    if pidIndex:
+        checks.append(check(
+            "desktop_agent_pids", "pass", "proxy",
+            f"Loaded {len(pidIndex)} live ACP pid(s) from agent-pids next to managed-agents"))
+    elif selected and not deadPids and not any(
             (row.get("runtime_pid") not in (None, "", 0, "0")) for row in selected.values()):
         checks.append(check(
             "desktop_agent_pids", "unverified", "proxy",
             f"No agent-pids index at {_agent_pids_dir(path)} and managed-agents runtime_pid empty"))
-    elif pid_index:
-        checks.append(check(
-            "desktop_agent_pids", "pass", "proxy",
-            f"Loaded {len(pid_index)} live ACP pid(s) from agent-pids next to managed-agents"))
     process_reads = 0
     for key, row in selected.items():
         env = row.get("env_vars") or {}
@@ -265,7 +307,7 @@ def _read_desktop_proxy_maps(
             continue
         binding_proxy = _proxy_map({str(k): str(v) for k, v in env.items() if isinstance(v, str)})
         binding_keys = sorted(k for k in PROXY_ENV_KEYS if k in env)
-        pid = _resolve_acp_pid(row, pid_index)
+        pid = _resolve_acp_pid(row, pidIndex)
         proc_env = process_reader(pid) if pid is not None else {}
         if proc_env:
             process_reads += 1
