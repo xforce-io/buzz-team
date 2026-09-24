@@ -5,7 +5,7 @@
 | 项 | 记录 |
 |---|---|
 | Desktop 自带 `buzz-acp` | `/Applications/Buzz.app/Contents/MacOS/buzz-acp` |
-| Desktop SHA256 | `7c52822c5e450d99b421d4f9616ad573453b676cedc1a893720faeb2e7455a3c` |
+| Desktop SHA256 | `c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64`（0.5.25；早先的 `7c52822c…` 已过时） |
 | 官方 relay 镜像 | `ghcr.io/block/buzz:sha-c507a4d` |
 | 官方 relay index digest | `sha256:1cf32474cb798ab2dec07b60835424c5895c4edf49b38f24ef052860c447d19f` |
 | 对应提交 | `c507a4d488ca27796e78d876b9c24ee38442cc1b`（2026-09-16） |
@@ -25,6 +25,12 @@
 
 镜像回退目标仍是当前生产镜像 `buzz-local:4937-activity-recovery`（`sha256:df31bcb1b77426e7688376a57e12d86c49879b9b66f0cfe542c3575df7c6af3d`）。切换还没有做。
 
-当前生产仍是上述本地镜像。9 个运行中的 `buzz-acp` 仍是 `e0d7bbcfc3128657ef5442e478629f36f9f89944b77920c13422994272a95366`。切换生产和合入默认分支都还没有授权。
+## 2026-09-25 已切换
+
+生产 relay 容器 `buzz-prod-relay-1` 已换成 `ghcr.io/block/buzz:sha-c507a4d@sha256:1cf32474cb798ab2dec07b60835424c5895c4edf49b38f24ef052860c447d19f`。启动日志有 `Database migrations complete`。`_sqlx_migrations` 仍是成功 45 条，最高 version 45。健康检查为 running healthy。
+
+Desktop 现为 0.5.25。包内 `buzz-acp` 的 SHA256 是 `c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64`，不再是早先记下的 `7c52822c…`。9 个本实例身份的日志在切换后都出现 `presence set to online`，进程二进制是这个 Desktop 文件。回退镜像仍是备份里的 `buzz-local:4937-activity-recovery`。库存备份在 `/Users/xupeng/lab/buzz/backups/20260925-cutover/`。
+
+炼丹房 `9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3` 在新 relay 上收发了一条「上游 relay 收发核对」，event `f1b965d45451b62b`。Activity 面板没有单独取证。合入默认分支没有做。
 
 Desktop 以后如果更新，上面的 SHA 不会自动跟着变。9/9 对齐指的是对齐这次记下的 SHA。

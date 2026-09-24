@@ -4,18 +4,18 @@
   "python": ">=3.11",
   "platform": "macOS (Seatbelt required for restricted identities)",
   "observed_baseline": {
-    "desktop": "0.5.23",
+    "desktop": "0.5.25",
     "desktop_bundle_id": "xyz.block.buzz.app",
     "grok": "1.0.34 (3736acbc8658)",
     "buzz_cli_sha256": "6034d9bcf04ee765b057bb8f374825c2107a4d0e53d28e9a1c36ba502b70bc57",
-    "harness_sha256": "e0d7bbcfc3128657ef5442e478629f36f9f89944b77920c13422994272a95366",
+    "harness_sha256": "c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64",
     "harness_source_commit": null,
     "harness_source_note": "二进制来自本机定制构建；源码对应关系待验证，不用当前检出 SHA 冒充构建来源。",
     "client_verified": false
   },
   "upstream_pin": {
-    "status": "recorded-not-applied",
-    "buzz_acp_sha256": "7c52822c5e450d99b421d4f9616ad573453b676cedc1a893720faeb2e7455a3c",
+    "status": "applied",
+    "buzz_acp_sha256": "c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64",
     "relay_image": "ghcr.io/block/buzz:sha-c507a4d",
     "relay_index_digest": "sha256:1cf32474cb798ab2dec07b60835424c5895c4edf49b38f24ef052860c447d19f",
     "git_commit": "c507a4d488ca27796e78d876b9c24ee38442cc1b",
@@ -26,7 +26,7 @@
       "git_commit": "6e5c462ac524de60d7edb46c66130fd779cc9006",
       "reason": "2026-08-08 tag; migrations stop at 0028. Production _sqlx_migrations is at 0045."
     },
-    "note": "Schema-matching official image of the fork baseline. Not :main. Not applied. observed_baseline.harness_sha256 stays the running local fork until cutover."
+    "note": "Applied 2026-09-25. Desktop buzz-acp is the 0.5.25 bundle, not the earlier 7c52822c pin. Relay image is sha-c507a4d. Not :main."
   },
   "candidate_verification": {
     "status": "requires-external-exact-sha-evidence",
