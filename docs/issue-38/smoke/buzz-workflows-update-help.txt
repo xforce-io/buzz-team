@@ -1,0 +1,9 @@
+Update a workflow's YAML definition
+
+Usage: buzz workflows update --channel <CHANNEL> --workflow <WORKFLOW> --yaml <YAML>
+
+Options:
+      --channel <CHANNEL>    Channel UUID the workflow belongs to
+      --workflow <WORKFLOW>  Workflow UUID
+      --yaml <YAML>          Updated workflow YAML definition
+  -h, --help                 Print help

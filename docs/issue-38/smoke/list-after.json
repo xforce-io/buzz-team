@@ -1,0 +1,120 @@
+[
+  {
+    "channel_id": "148eed2e-cd56-47c5-babb-8225984de263",
+    "name": "DM",
+    "workflows": []
+  },
+  {
+    "channel_id": "1867815d-f672-456d-8a51-b336b4a51fc0",
+    "name": "local-lab",
+    "workflows": []
+  },
+  {
+    "channel_id": "9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3",
+    "name": "炼丹房",
+    "workflows": [
+      {
+        "content": "name: issue38-smoke-temp-do-not-keep\ndescription: TEMP smoke UPDATED body for #38; cron never fires; NO seat mention.\ntrigger:\n  on: schedule\n  cron: \"0 0 30 2 *\"\nsteps:\n  - id: smoke_noop\n    action: send_message\n    text: \"issue38-smoke-temp UPDATED — still no seat; delete after smoke\"\n    reply_in_thread: false",
+        "created_at": 1790228918,
+        "pubkey": "51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e",
+        "workflow_id": "037a83e7-ebfc-4080-be20-b875cd23d4bc"
+      },
+      {
+        "content": "name: 站会开窗唤醒\ndescription: 工作日 01:00 UTC（Asia/Shanghai 09:00）点名项目经理发开窗帖。不发摘要。\ntrigger:\n  on: schedule\n  cron: \"0 1 * * 1-5\"\nsteps:\n  - id: wake_pj\n    action: send_message\n    text: \"@项目经理 09:00 开窗。请发开窗帖，点名五角色（产品经理、项目经理、工程师、测试、运维）。本帖不是摘要，不要当正式摘要。\"\n    reply_in_thread: false\n\n",
+        "created_at": 1789610271,
+        "pubkey": "db5955756e3825e2f208cb4b69a33ee4a2b20313474a213ea9efcbf931ce7861",
+        "workflow_id": "0ec65559-05de-4487-9154-72afe030422f"
+      },
+      {
+        "content": "name: issue38-smoke-temp-do-not-keep\ndescription: TEMP smoke UPDATED body for #38; cron never fires; NO seat mention.\ntrigger:\n  on: schedule\n  cron: \"0 0 30 2 *\"\nsteps:\n  - id: smoke_noop\n    action: send_message\n    text: \"issue38-smoke-temp UPDATED — still no seat; delete after smoke\"\n    reply_in_thread: false",
+        "created_at": 1790228850,
+        "pubkey": "51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e",
+        "workflow_id": "38ad49f3-b5c5-4f2e-a5ac-e70fda814c03"
+      },
+      {
+        "content": "name: issue38-smoke-temp-do-not-keep\ndescription: TEMP smoke for #38 yaml-content proof; cron never fires; NO seat mention. Delete after smoke.\ntrigger:\n  on: schedule\n  cron: \"0 0 30 2 *\"\nsteps:\n  - id: smoke_noop\n    action: send_message\n    text: \"issue38-smoke-temp placeholder — do not notify anyone; delete after smoke\"\n    reply_in_thread: false",
+        "created_at": 1790228900,
+        "pubkey": "51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e",
+        "workflow_id": "910066ef-e737-4d7b-84e6-8c99652e1d55"
+      },
+      {
+        "content": "name: issue38-smoke-temp-do-not-keep\ndescription: TEMP smoke for #38 yaml-content proof; cron never fires; NO seat mention. Delete after smoke.\ntrigger:\n  on: schedule\n  cron: \"0 0 30 2 *\"\nsteps:\n  - id: smoke_noop\n    action: send_message\n    text: \"issue38-smoke-temp placeholder — do not notify anyone; delete after smoke\"\n    reply_in_thread: false",
+        "created_at": 1790228839,
+        "pubkey": "51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e",
+        "workflow_id": "ce80d151-114f-447a-a496-5f6fcc667c9f"
+      },
+      {
+        "content": "name: 站会开窗唤醒\ndescription: 工作日 01:00 UTC（Asia/Shanghai 09:00）点名项目经理发开窗帖。不发摘要。\ntrigger:\n  on: schedule\n  cron: \"0 1 * * 1-5\"\nsteps:\n  - id: wake_pj\n    action: send_message\n    text: \"@周衡 09:00 开窗。请发开窗帖，点名五角色（产品经理、项目经理、工程师、测试、运维）。本帖不是摘要，不要当正式摘要。\"\n    reply_in_thread: false",
+        "created_at": 1790217646,
+        "pubkey": "51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e",
+        "workflow_id": "f5cc62c0-3756-419e-8a3f-8e694df2e93e"
+      }
+    ]
+  },
+  {
+    "channel_id": "dba84516-ed4d-4ae2-bd54-5a9a65527324",
+    "name": "freeman事务秘书处",
+    "workflows": [
+      {
+        "content": "name: probe-disabled\nenabled: false\ndescription: 探测残留，已停用，不触发简报。\ntrigger:\n  on: schedule\n  cron: \"0 0 31 2 *\"\nsteps:\n  - id: noop\n    action: send_message\n    reply_in_thread: false\n    text: \"此工作流已停用，不发布简报。\"",
+        "created_at": 1790224014,
+        "pubkey": "265e4fc1258c1a9a596a5ad0562c73d04aeae090401382ea26ba4ddbe6d97529",
+        "workflow_id": "107226dd-c569-470a-987a-3b9223b20b77"
+      },
+      {
+        "content": "name: 中台PBU收集-0915-1715\nenabled: true\ndurable: true\nowner: a5cab3959de16db291ff97fe0b5802eeb897104127a973c8d9c8f118099bb0a0\ndescription: 每个自然日北京时间 09:15 与 17:15（UTC 01:15、09:15）点名卫平，在事务秘书处收集中台PBU。早于秘书长 09:30/17:30 简报唤醒。\ntrigger:\n  on: schedule\n  cron: \"15 1,9 * * *\"\nsteps:\n  - id: wake_pbu\n    action: send_message\n    reply_in_thread: false\n    text: \"@卫平 请按中台PBU收集规则，在本频道回复本帖：只报中台PBU，跑只读源（kairo list/status 与 understanding、kairo project list、企微 control status、wecom-grok 的 git 仓库判断）。失败写不可用加原因。不要发当日简报，不要报能源或技术。\"",
+        "created_at": 1790225557,
+        "pubkey": "a5cab3959de16db291ff97fe0b5802eeb897104127a973c8d9c8f118099bb0a0",
+        "workflow_id": "2d75251c-48bc-46b7-9bec-8e06d2989c85"
+      },
+      {
+        "content": "name: probe-mention\nenabled: false\nowner: 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\ndurable: true\ntrigger:\n  on: schedule\n  cron: \"0 0 31 2 *\"\nsteps:\n  - id: wake\n    action: send_message\n    reply_in_thread: false\n    mentions:\n      - 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\n    text: \"@秦牧 请提交技术线收集。\"",
+        "created_at": 1790225578,
+        "pubkey": "7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41",
+        "workflow_id": "33b7bd61-0741-4786-b9f3-e85653e7e424"
+      },
+      {
+        "content": "name: probe-schema\nenabled: false\nowner: 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\ndurable: true\ntrigger:\n  on: schedule\n  cron: \"0 0 31 2 *\"\nsteps:\n  - id: wake\n    action: send_message\n    reply_in_thread: false\n    text: \"@秦牧 请按技术线收集规则回帖。\"\n",
+        "created_at": 1790225561,
+        "pubkey": "7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41",
+        "workflow_id": "33e8caad-530b-4f71-82bf-d4da55b49cce"
+      },
+      {
+        "content": "name: 事务秘书处当日简报-1730\ndescription: 每天北京时间 17:30（UTC 09:30）在事务秘书处频道点名裴昭，发布顶级当日简报。\ntrigger:\n  on: schedule\n  cron: \"30 9 * * *\"\nsteps:\n  - id: wake_briefing\n    action: send_message\n    reply_in_thread: false\n    text: \"@裴昭 现在是北京时间 17:30。请在事务秘书处频道发布顶级当日简报：先读取韩川、卫平、秦牧最近一次本线收集，再按能源、中台PBU、技术、需拍板四节综合；没有有效收集的线写未收集。本消息不是简报。\"",
+        "created_at": 1790223908,
+        "pubkey": "265e4fc1258c1a9a596a5ad0562c73d04aeae090401382ea26ba4ddbe6d97529",
+        "workflow_id": "50d27eb7-e768-4401-af80-8fc95b5f0bae"
+      },
+      {
+        "content": "name: 技术线收集-0910\ndescription: 每个自然日北京时间 09:10（UTC 01:10）在事务秘书处频道点名秦牧，提交技术线收集，供 09:30 简报使用。角色说明未写钟点；对齐频道已有简报唤醒（09:30 / 17:30）。\nowner: 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\ndurable: true\nenabled: true\ntrigger:\n  on: schedule\n  cron: \"10 1 * * *\"\nsteps:\n  - id: wake_collect\n    action: send_message\n    reply_in_thread: false\n    mentions:\n      - 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\n    text: \"@秦牧 现在是北京时间 09:10。请在本频道按技术线收集规则提交只读收集（kairo、企微、buzz 仓库），供 09:30 当日简报使用。本消息不是简报。\"",
+        "created_at": 1790225589,
+        "pubkey": "7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41",
+        "workflow_id": "619b47c8-4339-46b1-bbfa-2a7fa9b80c19"
+      },
+      {
+        "content": "name: 事务秘书处当日简报-0930\ndescription: 每天北京时间 09:30（UTC 01:30）在事务秘书处频道点名裴昭，发布顶级当日简报。\ntrigger:\n  on: schedule\n  cron: \"30 1 * * *\"\nsteps:\n  - id: wake_briefing\n    action: send_message\n    reply_in_thread: false\n    text: \"@裴昭 现在是北京时间 09:30。请在事务秘书处频道发布顶级当日简报：先读取韩川、卫平、秦牧最近一次本线收集，再按能源、中台PBU、技术、需拍板四节综合；没有有效收集的线写未收集。本消息不是简报。\"",
+        "created_at": 1790223908,
+        "pubkey": "265e4fc1258c1a9a596a5ad0562c73d04aeae090401382ea26ba4ddbe6d97529",
+        "workflow_id": "7d90ca75-51a1-40a6-8966-8fffc9c523c3"
+      },
+      {
+        "content": "name: 能源线收集唤醒\ndescription: 每个北京时间 09:00 与 17:00（UTC 01:00 与 09:00）点名韩川提交能源线收集。本帖不是收集结果，也不发布当日简报。\ntrigger:\n  on: schedule\n  cron: \"0 1,9 * * *\"\nsteps:\n  - id: wake_energy\n    action: send_message\n    reply_in_thread: false\n    text: \"@韩川 请按能源秘书收集规则，在本频道回复本帖，只报能源线。须跑只读源（kairo list/status、understanding.md、kairo project、企微 control status、资料目录 git 判断），正文含来源或不可用。不要发当日简报，不要报其他业务线。本消息不是收集结果。\"",
+        "created_at": 1790225587,
+        "pubkey": "5c37a76835e17b283cfea136088da26abecbe7b51c567eb57bcad967132917ac",
+        "workflow_id": "97152434-1ec3-4b51-b55d-4159ecec4162"
+      },
+      {
+        "content": "name: 技术线收集-1710\ndescription: 每个自然日北京时间 17:10（UTC 09:10）在事务秘书处频道点名秦牧，提交技术线收集，供 17:30 简报使用。角色说明未写钟点；对齐频道已有简报唤醒（09:30 / 17:30）。\nowner: 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\ndurable: true\nenabled: true\ntrigger:\n  on: schedule\n  cron: \"10 9 * * *\"\nsteps:\n  - id: wake_collect\n    action: send_message\n    reply_in_thread: false\n    mentions:\n      - 7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41\n    text: \"@秦牧 现在是北京时间 17:10。请在本频道按技术线收集规则提交只读收集（kairo、企微、buzz 仓库），供 17:30 当日简报使用。本消息不是简报。\"",
+        "created_at": 1790225590,
+        "pubkey": "7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41",
+        "workflow_id": "cd608a18-6254-41cc-a0d7-c23879b1fe79"
+      },
+      {
+        "content": "name: probe-schema\nenabled: false\ntrigger:\n  on: schedule\n  cron: \"0 0 31 2 *\"\nsteps:\n  - id: wake\n    action: send_message\n    text: \"x\"\n",
+        "created_at": 1790225561,
+        "pubkey": "7b7afbdd7c0c3b887b973a6d8ddaccbfb925bedfcc35bdca5d63684aa5ae8c41",
+        "workflow_id": "cf9e7de9-70ee-4691-af8e-6b48151938b2"
+      }
+    ]
+  }
+]

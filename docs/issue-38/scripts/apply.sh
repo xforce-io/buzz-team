@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Issue #38 live apply — 周衡 only. Do NOT run until merge gate + Hogan.
+# Workflow update FIRST (YAML CONTENT via $(cat)); local patches only if that succeeds.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -46,7 +47,6 @@ for a in agents:
     if (a.get('pubkey')==pub) and a.get('idle_timeout_seconds')==1500 and env.get('BUZZ_ACP_EFFORT_LEVEL')=='low':
         target=a; break
 if target is None:
-    # fallback name+idle+effort
     for a in agents:
         env=a.get('env_vars') or {}
         if a.get('name')=='周衡' and a.get('idle_timeout_seconds')==1500 and env.get('BUZZ_ACP_EFFORT_LEVEL')=='low':
@@ -58,7 +58,7 @@ if not (target.get('pubkey') or '').startswith('51fb6cd8'):
 print('preflight OK: 周衡 active row found')
 "
 
-# ---- guards passed: create backup ----
+# ---- guards passed: create backup (read-only snapshots; no mutation yet) ----
 TS=$(date +%Y%m%d-%H%M%S)
 BACKUP=/Users/xupeng/lab/buzz/evidence/issue-38/backup-${TS}
 mkdir -p "$BACKUP/agent-pids/before" "$BACKUP/agent-pids/after"
@@ -95,6 +95,29 @@ print('saved workflow-live-before.yaml from live get')
 "
 rm -f "$LIVE_GET"
 
+# ---- FIRST mutation: workflow body (YAML CONTENT, not path) ----
+# buzz workflows update --yaml <YAML> expects the definition string, not a file path.
+echo "== update workflow body FIRST (YAML content via cat; owner unchanged) =="
+AFTER_WF="$ROOT/after/workflow.yaml"
+test -f "$AFTER_WF"
+buzz workflows update --channel "$CH_ID" --workflow "$WF_ID" --yaml "$(cat "$AFTER_WF")"
+buzz workflows get --workflow "$WF_ID" > "$BACKUP/workflow-get-after.json"
+python3 -c "
+import json, sys
+from pathlib import Path
+live=json.loads(Path(sys.argv[1]).read_text())['content']
+want=Path(sys.argv[2]).read_text()
+def norm(s):
+    return s.replace('\r\n','\n').strip()+'\n'
+if norm(live)!=norm(want):
+    print('ABORT: post-update workflow != docs/issue-38/after/workflow.yaml — local files NOT patched', file=sys.stderr)
+    print('--- live ---', file=sys.stderr); print(norm(live)[:500], file=sys.stderr)
+    print('--- want ---', file=sys.stderr); print(norm(want)[:500], file=sys.stderr)
+    sys.exit(1)
+print('workflow read-back matches after/workflow.yaml OK')
+" "$BACKUP/workflow-get-after.json" "$AFTER_WF"
+
+# ---- only after workflow success: local patches ----
 echo "== patch managed-agents (周衡 row only; read-modify-write) =="
 python3 -c "
 import json
@@ -135,10 +158,6 @@ echo "== patch pj.md / AGENTS.md / instructions-1.md =="
 cp "$ROOT/after/pj.md" "$PJ_MD"
 cp "$ROOT/after/AGENTS.md" "$ID_ROOT/AGENTS.md"
 cp "$ROOT/after/instructions-1.md" "$INSTR"
-
-echo "== update workflow body from staged after (owner unchanged) =="
-buzz workflows update --channel "$CH_ID" --workflow "$WF_ID" --yaml "$ROOT/after/workflow.yaml"
-buzz workflows get --workflow "$WF_ID" > "$BACKUP/workflow-get-after.json"
 
 echo "== restart 周衡 ACP only (safe kill) =="
 safe_kill_zhou

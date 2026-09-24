@@ -31,10 +31,13 @@ ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/apply.sh
 
 1. 校验 `ISSUE38_I_UNDERSTAND_LIVE=yes`、thin-pin `046ac43`、周衡 pid 文件唯一（`${PUB}__${TEAM}.json`）
 2. 断言 live workflow content == `docs/issue-38/before/workflow.yaml`（不一致则 abort）
-3. **然后**才创建 `evidence/issue-38/backup-<ts>/`（含 live `workflow-get.json` → `workflow-live-before.yaml`、`zhouheng-row-before.json`）
-4. 只 patch managed-agents 的周衡行；更新 pj/AGENTS/instructions-1；`workflows update` body
-5. safe-kill：pid 来自精确文件 + `kill -0` 存活 + 进程 env/cmdline 含周衡全量 pubkey，否则 abort
-6. 校验其他 8 席（`*__${TEAM}.json` 减去周衡）pid 不变
+3. **然后**才创建 `evidence/issue-38/backup-<ts>/`（含 live `workflow-get.json` → `workflow-live-before.yaml`、`zhouheng-row-before.json`）— 仅快照，尚未改 live
+4. **先** `workflows update --yaml "$(cat after/workflow.yaml)"`（**YAML CONTENT**，不是路径；见 `buzz workflows update --help`），再 `get` 读回校验 == `after/workflow.yaml`。此步失败则 **不** patch 本地文件
+5. 仅 workflow 成功后：只 patch managed-agents 的周衡行；更新 pj/AGENTS/instructions-1
+6. safe-kill：pid 来自精确文件 + `kill -0` 存活 + 进程 env/cmdline 含周衡全量 pubkey，否则 abort
+7. 校验其他 8 席（`*__${TEAM}.json` 减去周衡）pid 不变
+
+实网 workflow 路径烟测：`docs/issue-38/scripts/smoke-real-workflow.sh`（只建/改/删临时 cron，不碰真实 workflow）；产物在 `docs/issue-38/smoke/`。
 
 ## 3. doctor + bind（after）
 
@@ -53,6 +56,6 @@ cd /Users/xupeng/dev/github/buzz-team
 ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh /Users/xupeng/lab/buzz/evidence/issue-38/backup-<timestamp>
 ```
 
-回滚从 **apply 当时的 live 快照** `workflow-live-before.yaml` / `zhouheng-row-before.json` 恢复（不是 staged `before/workflow.yaml`）；只写回周衡 managed-agents 行；同样 safe-kill + 校验其他 8 席 pid。
+回滚：先 `workflows get` 与 `workflow-live-before.yaml` 比较——相同则跳过 update；不同则 `--yaml "$(cat workflow-live-before.yaml)"`（CONTENT）并读回校验。然后只写回周衡 managed-agents 行 + pj/AGENTS/instructions-1；同样 safe-kill + 校验其他 8 席 pid。不用 staged `before/workflow.yaml`。
 
 再次 doctor+bind；确认仅周衡 pid 再变一次。

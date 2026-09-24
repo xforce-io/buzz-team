@@ -1,0 +1,7 @@
+exact_list_match=False
+canonical_strip_smoke_match=True
+smoke_workflow_id=037a83e7-ebfc-4080-be20-b875cd23d4bc
+ids_only_in_after=['037a83e7-ebfc-4080-be20-b875cd23d4bc']
+ids_only_in_before=[]
+kind30620_get_after_delete_lingers=True
+note: Nostr kind:30620 may linger in list/get after delete (refs #34); raw list diff may be non-empty solely due to smoke residue
