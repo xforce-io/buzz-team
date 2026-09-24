@@ -58,11 +58,12 @@ Owner：Scout · Product（instance/config/skills）。关联：[Issue #42](http
 | A1 | 炼丹房五席仍为苏晴/周衡/陆深/沈予/方维；秘书处不走 light-keel | 已活机核对 SP+AGENTS |
 | A2 | 频道门名仍为：设计通过 → 实现门 → 测试门 → 合入门 → 部署窗 | 频道惯例；本票只钉观感插入点与测试清单条 |
 | A3 | `pm`/`qa` 活执行值在 managed `system_prompt` | 已核对 |
-| A4 | `auto_restart_on_config_change=false`；Desktop 不因 kill 自动拉起 | 已读 managed 字段；与既有运维口径一致 |
+| A4 | `auto_restart_on_config_change=false`；单席 kill 后 Desktop 不自动拉起；**全量 Cmd+Q+重开**可一次换齐 9 pid（~8s 拉起；池懒初始化，首消息 ~11s） | 已读 managed；2026-09-24 周衡重开样例（Hogan） |
 | A5 | 合入本 PR 不自动改 Mac lab / managed；活激活另窗 | 流程约束 |
 | A6 | #38 活复检与本票激活错开（先 #38 reverify，再本清单） | 运维约定 |
 | A7 | 不修改 `managed-agents.json` 的自动化脚本进入本 PR | 本票仅文档化手工步骤 |
-| **A8** | **「prompt 什么时候读」**（进程启动一次 vs 每会话/每工具重读文件） | **待活机证据**（与 [#41](https://github.com/xforce-io/buzz-team/issues/41) A8 共享；可参考 Hogan 对周衡重启观察）。未证实前，激活以「同步 SP（若需要）+ 按席手工重启 + 受控消息」为准，不假设热读 |
+| **A8** | **「prompt 什么时候读」**（进程启动一次 vs 每会话/每工具重读文件） | **仍待活机证据**（与 [#41](https://github.com/xforce-io/buzz-team/issues/41) A8 共享）。Knox：2026-09-24 周衡全量重开样例**不能**区分启动读 vs 每会话重读；本票**不做 A8 实验**。激活保守策略：仅 Desktop **完全退出**时改 managed/lab，再 Dock/Launchpad 重开并回读 SP（见 ACTIVATION） |
+| **A11** | Desktop 可能在 relaunch 时把**内存态**写回 `managed-agents.json`（如 `last_started_at` / `updated_at`） | **待系统化活证**（Knox A11）；2026-09-24 样例见 managed 在 14:54:38 被重开改写。故 ACTIVATION **禁止**在 Desktop 运行中改 SP，并在重开后回读「观感通过」/cache 句是否仍在 |
 
 ## 7 门禁顺序
 
@@ -86,12 +87,13 @@ Owner：Scout · Product（instance/config/skills）。关联：[Issue #42](http
 本票无用户可摸产品界面；仓内无新 verify feature 文件（prompt 合同）。
 
 - 预合入：diff 审读 + dry-read 三文件含「观感通过」与 cache 条。
-- 合入后活证明：见 [`docs/issue-42/ACTIVATION.md`](../issue-42/ACTIVATION.md)（Hogan）：每重启席一条受控消息；苏晴须体现「观感通过」门；沈予须体现 cache/现网抽检；其余 light-keel 席须反映新节。
+- 合入后活证明：见 [`docs/issue-42/ACTIVATION.md`](../issue-42/ACTIVATION.md)（Hogan）：事前声明 `restart-mode`；Desktop 退出后改 SP/lab 再重开并回读；doctor/`proxy_contrast` 绿后，非周衡身份对各相关席一条受控消息（苏晴「观感通过」、沈予 cache/现网、其余席知会新 light-keel 节）。
 
 ## 10 开放问题
 
-1. A8 读时机 — 待活机；不阻塞 L1 字面合入，阻塞的是「只改文件不重启是否足够」的激活策略细化。
-2. lab 与 git 双份 — 激活时 Hogan 以合入后的仓内文件为准拷回 lab（或等价），避免 lab 漂移。
+1. A8 读时机 — 仍待活机（样例未分清）；激活已钉「退出后编辑 + 重开回读」，本票不做 A8 实验。
+2. A11 Desktop relaunch 回写 managed — 待系统化活证；ACTIVATION 已按最坏情况避让。
+3. lab 与 git 双份 — 激活时 Hogan 以合入后的仓内文件为准拷回 lab（或等价），避免 lab 漂移。
 
 ## 11 关联
 

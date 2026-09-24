@@ -1,60 +1,111 @@
 # #42 活激活清单（Hogan）
 
-**何时：** PR 合入 `main` 之后；**必须**在独立时间窗执行，且排在 **#38 reverify 完成之后**。  
-**谁：** Hogan 操作；**peng** 按席手工 Desktop 重启（`auto_restart_on_config_change=false`；kill 后 Desktop **不**自动拉起）。  
-**本清单不改** upstream / pin / workflow；默认 **手工**改 managed，不提供改 `managed-agents.json` 的脚本。
+**何时：** PR 合入 `main` 之后；**必须**在独立时间窗执行，且排在 **#38 / #41 活窗完成之后**（先 #38 reverify，再本清单；勿与 #38/#41 同窗踩踏）。  
+**前置活条件（硬）：** 仅当 **doctor `ok:true` 且 `proxy_contrast` 绿**、席位已能正常回复时，才开始本票活激活。今日（2026-09-24）全量重开样例曾全部 ACP 进程落到错误代理 `127.0.0.1:6478`——**proxy 未绿不得发受控消息**。  
+**谁：** Hogan 操作；**peng** 执行重启（见 §2；`auto_restart_on_config_change=false`；单席 kill 后 Desktop **不**自动拉起）。  
+**本清单不改** upstream / pin / workflow；默认 **手工**改 managed，不提供改 `managed-agents.json` 的脚本。  
+**证据参考（只读）：** `~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/`（全量重开样例；A8 仍未分清）。
 
 ## 0 前置
 
-- [ ] #38 活复检已通过或明确让路。
-- [ ] 本票已合入；记下 `main` SHA。
-- [ ] 只读打开合入后的：
-  - `team/prompts/light-keel.md`
-  - `team/prompts/pm.md`
-  - `team/prompts/qa.md`
-- [ ] 备份：复制当前  
-  `~/Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json`  
-  → 同目录 `managed-agents.json.bak-42-<date>`。
+- [ ] #38 活复检已通过或明确让路；#41 活窗已让路或不冲突。
+- [ ] 本票已合入；记下 `main` SHA 与计划编辑时刻（墙钟，CST）。
+- [ ] **先声明**本窗重启模式（**事前**填写，禁止事后推断）：
 
-## 1 按席同步
+  ```text
+  restart-mode: single|app
+  ```
 
-| 席位 | slug（若有） | 同步什么 | 怎么做（手工） |
-|---|---|---|---|
-| 苏晴 | `zhufeng-pm` | **SP 内联角色段** = 合入后 `pm.md` 全文，保持其后「回复规则 / 对外表达 / 技能」尾段不动 | 在 managed 该席 `system_prompt` 中：用新 `pm.md` **替换**原角色前缀（旧前缀曾与 lab `pm.md` 一致）；勿丢尾段 |
-| 沈予 | `zhufeng-qa` | **SP 内联角色段** = 合入后 `qa.md`，同上保留尾段 | 同苏晴手法 |
-| 周衡 / 陆深 / 方维 | `zhufeng-pj` / `eng` / `ops` | **不改 SP 角色段**（本票未改 `pj`/`eng`/`ops`） | — |
-| **五席共同** | 炼丹房全部 | **lab 文件** `~/lab/buzz-team/team/prompts/light-keel.md`（及 pm/qa 与仓对齐，避免漂移） | 将合入后三文件拷到 lab 同名路径（覆盖前可先 diff） |
+  | 声明 | 事后必须满足，否则 **FAIL → 停 → 回滚** |
+  |---|---|
+  | `single` | 仅目标席 pid 变；**其余 8 席 pid 不变** |
+  | `app` | **全部 9 席 pid 均变**且均存活（全量 Cmd+Q + 重开可一次覆盖五席 light-keel 引用方） |
 
-说明：五席 SP/`AGENTS.md` 均路径引用 `light-keel.md`；苏晴/沈予的 S1/S2 义务还依赖 SP 内联段，故二人必须改 SP。
+- [ ] 只读打开合入后的仓内：`team/prompts/{light-keel,pm,qa}.md`。
+- [ ] **备份（Desktop 仍可开着时先拷，随后必须退出再改）：**
+  - `managed-agents.json` → 同目录 `managed-agents.json.bak-42-<date>`
+  - lab 三文件 → `~/lab/buzz-team/team/prompts/*.bak-42-<date>`（或等价旁路拷贝）
+- [ ] 记录当前 **9 席 pid 基线**（见 §2.1），供声明校验。
 
-## 2 重启（peng）
+## 1 编辑窗口（必须先退出 Desktop）
 
-对**每个**受影响席位（至少：苏晴、沈予；建议五席都启一次以便重载 lab `light-keel` 上下文）：
+**危险：** Buzz Desktop 在 **launch/relaunch 时会回写** `managed-agents.json`（样例：全量重开后各席 `last_started_at` / `updated_at` 被改写）。在 Desktop **仍在运行**时改苏晴/沈予 `system_prompt`，有被 Desktop **内存态覆盖**的风险。
 
-1. Desktop 停该席 → 确认旧 pid 退出。
-2. 再启 → 记录**新 pid**。
-3. `buzz-team doctor`（或实例惯用 doctor）：目标 **9/9**（以当时实例口径为准）。
+**顺序（强制）：**
 
-回滚：恢复 `managed-agents.json.bak-42-*`；lab 三文件回备份；再按席手工重启。
+1. **完全退出 Desktop**：Cmd+Q；确认无 Desktop / buzz-acp 相关进程（`pgrep`/`ps`）。
+2. **再**改文件：
+   - lab：合入后三文件 → `~/lab/buzz-team/team/prompts/{light-keel,pm,qa}.md`
+   - managed：苏晴 `system_prompt` 角色前缀 ← 新 `pm.md`（保留「回复规则 / 对外表达 / 技能」尾段）
+   - managed：沈予同上 ← 新 `qa.md`
+   - 周衡 / 陆深 / 方维：**不改** SP 角色段（本票未改 `pj`/`eng`/`ops`）
+3. 记下**编辑完成墙钟**（CST）。**不要**用 `managed-agents.json` 的 mtime 当「配置写完时间」（Desktop 重开会改该文件）。
+4. **再开 Desktop**：从 **Dock / Launchpad** 打开（不要用终端冷启路径，除非运维另有钉死口径）。
+5. **回读存活证明（重开后立刻）：**
+   - 苏晴 `system_prompt` 仍含「观感通过」相关句（如 `grep` / 只读 JSON 抽头）
+   - 沈予 `system_prompt` 仍含 cache-param / 现网抽检相关句  
+   若回读失败 → **FAIL**：按 §5 回滚，勿继续。
 
-## 3 受控验证（每重启席一条消息）
+| 席位 | slug（若有） | 同步什么 |
+|---|---|---|
+| 苏晴 | `zhufeng-pm` | SP 角色段 = 新 `pm.md` + 保留尾段；lab `pm.md` |
+| 沈予 | `zhufeng-qa` | SP 角色段 = 新 `qa.md` + 保留尾段；lab `qa.md` |
+| 周衡 / 陆深 / 方维 | pj / eng / ops | 仅 lab `light-keel.md`（及与仓对齐的 pm/qa 文件树）；**不改**其 SP 角色段 |
+| 五席共同 | 炼丹房 | lab `light-keel.md` 与仓一致（路径引用） |
 
-在约定频道或 DM，对每个已重启席发**一条**受控问句（勿刷屏）：
+## 2 重启与 pid
+
+### 2.1 pid 语义
+
+- pid **文件**里通常是 **Python wrapper** pid；真正的 **buzz-acp** 是其子进程。核对存活时跟到子进程。
+- macOS `ps` **无** `etimes`；用：  
+  `ps -o etime=,lstart= -p <pid>`  
+  与「编辑完成墙钟」对照，确认进程晚于编辑时刻启动。
+
+### 2.2 执行声明的模式
+
+- **`restart-mode: app`（推荐覆盖五席 light-keel）：** 已在 §1 用 Cmd+Q + Dock/Launchpad 全量重开即可；样例约 **~8s** 拉起席位池，agent pool **懒初始化**（首条消息约再 **~11s**）。重开后 **重采全部 9 席 pid** 作新基线。
+- **`restart-mode: single`：** 仅停/启声明目标席；其余 8 席 pid 必须与 §0 基线一致。
+
+校验：实际结果与事前 `restart-mode` **不一致 → FAIL：停止并回滚**（§5）。记录实际模式与 9 pid 表。
+
+### 2.3 doctor（发消息前）
+
+- [ ] `doctor ok:true`
+- [ ] **`proxy_contrast` 绿**（ACP 进程代理与 CLI 一致；错误样例勿放过）
+- [ ] **9/9 alive**（口径以当时 doctor 为准）
+
+未绿 / 未 9/9 → **不得**进入 §3。
+
+## 3 受控验证
+
+**发送身份：** 必须用 **非周衡** 身份发探针；**不得**用目标席自己发（本机 CLI 默认身份常为周衡——Hogan 14:57 样例曾自提及）。从非周衡身份 @ 目标席。
+
+每个相关席 **一条**受控问句（勿刷屏）：
 
 | 席位 | 期望 |
 |---|---|
 | **苏晴** | 回复体现 **「观感通过」门**（实现门后、合入门前；真机/Console；L2 不可代） |
 | **沈予** | 回复体现 **cache-param 更新 + 生产抽检**（#411/#416） |
-| 周衡 / 陆深 / 方维 | 回复能反映新 `light-keel` 中「观感签收门」与「测试门清单」存在（不必代苏晴签观感） |
+| 周衡 / 陆深 / 方维 | 能反映新 `light-keel`「观感签收门」与「测试门清单」（不必代签观感） |
 
-记录：席位、新 pid、doctor、消息 id、是否命中期望。未命中 → 不宣称激活完成；查 SP 是否漏同步或是否未重启（见 L1 **A8**）。
+记录：`restart-mode`、编辑墙钟、9 pid 表、doctor/proxy、发送身份、消息 id、是否命中。未命中 → 不宣称完成；查 SP 回读 / 是否未按退出-编辑-重开（见 L1 **A8**，仍待分清）。
 
 ## 4 完成定义
 
-- [ ] 备份存在且可回滚  
-- [ ] 苏晴/沈予 SP 角色段已替换；lab `light-keel`（及 pm/qa）与合入 SHA 一致  
-- [ ] 计划内席位均已手工重启，新 pid + doctor 达标  
-- [ ] 受控消息：苏晴观感门、沈予缓存条、其余席知会新 light-keel 节  
-- [ ] 本窗与 #38 reverify 未互相踩踏  
+- [ ] 事前已声明 `restart-mode`，且实际与声明一致  
+- [ ] 备份可回滚；§1 退出 Desktop → 编辑 → Dock/Launchpad 重开 → SP 回读通过  
+- [ ] lab 三文件与合入 SHA 一致；苏晴/沈予 SP 角色段已换且尾段保留  
+- [ ] doctor `ok:true` + `proxy_contrast` 绿 + 9/9；pid/`etime,lstart` 相对编辑墙钟合理  
+- [ ] 受控消息：非周衡发送；苏晴观感门、沈予缓存条、其余席知会新 light-keel 节  
+- [ ] 本窗在 #38/#41 活窗之后，未互相踩踏  
 
-**活证明 = 本清单**；仓内 keel-verify 对 prompt-only 变更 skip（见 PR 验收表）。
+**活证明 = 本清单**；仓内 keel-verify 对 prompt-only skip（见 PR 验收表）。
+
+## 5 回滚
+
+与激活同序：**Cmd+Q 确认无 Desktop/buzz-acp →** 恢复 `managed-agents.json.bak-42-*` 与 lab 三文件备份 → **Dock/Launchpad 重开** → 回读确认旧文案恢复 → 按原声明模式校验 pid → doctor/proxy 再绿后再歇。
+
+## 6 A8
+
+「prompt 何时读」（启动一次 vs 每会话重读）**仍待活机证据**（Knox：2026-09-24 周衡重开样例**不能**区分）。本票 **不做 A8 实验**。保守策略即上文：**仅在 Desktop 完全退出时编辑，再重开**，避免半窗混读。
