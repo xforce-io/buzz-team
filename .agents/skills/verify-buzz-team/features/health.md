@@ -91,7 +91,7 @@ buzz-team --instance /absolute/instance diagnose
 | id | 何时 fail |
 |---|---|
 | `inventory_missing:*` | 实例身份没有任何公钥匹配的行 |
-| `inventory_empty_pubkey:*` | 启动行公钥为空，且命令指向 `grok-acp-wrapper` 或已带本实例 `BUZZ_RUNTIME_ID` |
+| `inventory_empty_pubkey:*` | 启动行公钥为空（有启动命令，或已带本实例 `BUZZ_RUNTIME_ID`） |
 | `inventory_duplicate:*` | 同一实例身份有多于一行启动项 |
 | `inventory_binding_mismatch:*` | 公钥已匹配，但 `relay_url` 或 `BUZZ_RUNTIME_ID` 与实例不一致 |
 

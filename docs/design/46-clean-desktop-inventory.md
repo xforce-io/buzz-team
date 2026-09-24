@@ -24,7 +24,7 @@ N/A。无页面。操作者看到的是 `doctor` JSON：`ok` 与 `inventory_*` �
 
 ## 5 思路与折衷
 
-在现有 `health.run` 里先分类再做代理对照。空公钥只在命令指向 `grok-acp-wrapper` 或已带本实例 `BUZZ_RUNTIME_ID` 时算本机异常，避免把无关空行当成实例身份。
+在现有 `health.run` 里先分类再做代理对照。空公钥的启动行算本机异常。没有启动命令、公钥也不属于本实例的行只报告。同名不合并公钥。
 
 放弃：让 `selected_rows` 继续把重复和缺失收成一句「unreadable」，调用方无法分辨四类。
 

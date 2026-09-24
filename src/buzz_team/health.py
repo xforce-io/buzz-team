@@ -79,9 +79,9 @@ def _inventory_runtime_id(row: dict) -> str:
 def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]:
     """Classify a Desktop inventory against this instance. Does not mutate rows.
 
-    Empty-pubkey launch rows are attributed to this instance only when they
-    point at the retired grok-acp-wrapper or already carry this instance's
-    BUZZ_RUNTIME_ID. Same display name is not treated as the same pubkey.
+    An empty pubkey on a row that has a launch command is an instance anomaly.
+    Same display name is not treated as the same pubkey. Rows that are neither
+    an instance pubkey nor an empty launch row are reported and left in place.
     Rows outside that set are reported and left in place.
     """
     if not isinstance(rows, list):
@@ -112,13 +112,13 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
         commands = _inventory_commands(row)
         runtime_id = _inventory_runtime_id(row)
         if not pubkey:
-            if _DEPRECATED_WRAPPER in commands or runtime_id in seen:
-                reason = "empty pubkey"
+            if commands.strip() or runtime_id in seen:
+                detail = "empty pubkey on a launch row"
                 if _DEPRECATED_WRAPPER in commands:
-                    reason += " on a grok-acp-wrapper launch row"
+                    detail += " pointing at grok-acp-wrapper"
                 checks.append(check(
                     f"inventory_empty_pubkey:{index}", "fail", "buzz_runtime",
-                    f"inventory row {index} has {reason}"))
+                    f"inventory row {index} has {detail}"))
             else:
                 outside += 1
             continue

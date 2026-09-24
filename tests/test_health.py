@@ -466,6 +466,13 @@ class InventoryDoctorTests(Fixture):
         self.assertIn("grok-acp-wrapper", empty[0]["summary"])
         self.assertEqual(self._rows()[-1]["agent_command"], wrapper["agent_command"])
 
+        plain = {"pubkey": "", "name": "seat", "acp_command": "/Applications/Buzz.app/Contents/MacOS/buzz-acp"}
+        self._write(base + [plain])
+        result, empty_plain = self._fails("inventory_empty_pubkey:")
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(empty_plain), 1)
+        self.assertIn("launch row", empty_plain[0]["summary"])
+
         outside = {
             "pubkey": "c" * 64,
             "relay_url": "ws://localhost:3000",
