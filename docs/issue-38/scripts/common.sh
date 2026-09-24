@@ -8,6 +8,8 @@ TEAM=a558771623f298980db444a8406459dff1cbd20f264a72d00ffaca270c0fa16f
 ID_TEAM=a558771623f29898
 PIN_SHORT=046ac43
 PIN_FULL=046ac4345647ea6bc9c57bbf91ddb556a91694cd
+# Exact deterministic Buzz reopen command (A13); printed by next-step hints.
+REOPEN_CMD='X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X'
 # Max age of a --baseline-only backup before mutate will refuse it (seconds).
 BASELINE_MAX_AGE_S=1800
 

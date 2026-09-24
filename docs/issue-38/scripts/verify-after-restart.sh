@@ -11,6 +11,7 @@
 # (pid-file pid = Python wrapper; buzz-acp is its child). Else Mode B: managed-agents
 # row + process start time AFTER backup/config_written_at.txt (never MA mtime).
 set -euo pipefail
+# Reopen command: X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X
 
 BACKUP=${1:?usage: verify-after-restart.sh <backup-dir> --expect after|before --restart-mode single|app}
 shift || true
@@ -79,7 +80,9 @@ NEW_PID=$(python3 -c "import json; print(json.load(open(r'''$ZH_PID_FILE'''))['p
 echo "周衡 pid file (wrapper) -> $NEW_PID"
 
 if ! kill -0 "$NEW_PID" 2>/dev/null; then
-  echo "FAIL: 周衡 wrapper pid $NEW_PID is not alive. Reopen via the peng-approved proxy-fix method (RUNBOOK A13), wait for seats." >&2
+  echo "FAIL: 周衡 wrapper pid $NEW_PID is not alive. Reopen with the exact RUNBOOK A13 command:" >&2
+  echo "$REOPEN_CMD" >&2
+  echo "Then wait for seats." >&2
   exit 1
 fi
 if [[ -n "$OLD_PID" && "$NEW_PID" == "$OLD_PID" ]]; then

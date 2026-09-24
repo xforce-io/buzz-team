@@ -385,8 +385,16 @@ if grep -nE 'Reopen Desktop from Dock/Launchpad|from Dock/Launchpad, wait'     "
   echo "FAIL: verify still prescribes Dock/Launchpad reopen" >&2
   exit 1
 fi
-grep -q 'peng-approved proxy-fix method (RUNBOOK A13)' "$DIR/verify-after-restart.sh"
-echo "D4 proxy-fix reopen wording OK"
+REOPEN_CMD_LITERAL='X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X'
+for f in "$DIR/../RUNBOOK.md" "$DIR/common.sh" "$DIR/apply.sh" "$DIR/rollback.sh" "$DIR/verify-after-restart.sh"; do
+  grep -Fq -- "$REOPEN_CMD_LITERAL" "$f" || { echo "FAIL: exact A13 reopen command missing from $f" >&2; exit 1; }
+done
+grep -Fq 'echo "$REOPEN_CMD"' "$DIR/verify-after-restart.sh"
+if grep -n -- 'open -a Buzz .* -n' "$DIR/../RUNBOOK.md"; then
+  echo "FAIL: RUNBOOK A13 reopen command must not use -n" >&2
+  exit 1
+fi
+echo "D4 exact six-var proxy-fix reopen command and wording OK"
 
 echo "== D5: quit-first implies app (single is experiment-only) =="
 grep -q 'quit-first (Cmd+Q) always implies --restart-mode app' "$DIR/common.sh"

@@ -2,11 +2,12 @@
 # Issue #38 live apply — 周衡 only. Do NOT run until merge gate + Hogan.
 # Quit-first flow (Knox/Jenny 2026-09-24):
 #   1) apply.sh --baseline-only   # Desktop UP; capture 9-seat pid baseline + snapshots
-#   2) peng Cmd+Q fully quits Buzz Desktop
+#   2) peng quits Buzz via osascript/Cmd+Q (never kill / kill -9)
 #   3) apply.sh --backup <dir>    # Desktop DOWN; write workflow+row+prompts; no seat-alive req
-#   4) peng reopens Desktop via the proxy-fix method peng approved; then MA read-back + verify
+#   4) peng reopens Desktop with REOPEN_CMD; then MA read-back + verify
 # Does NOT kill ACP processes. Desktop must be fully quit before mutate (no escape hatch).
 set -euo pipefail
+# Reopen command: X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=common.sh
@@ -122,10 +123,11 @@ print('saved workflow-live-before.yaml from live get')
 BACKUP=$BACKUP
 
 REQUIRED NEXT:
-  1) peng: Cmd+Q fully quit Buzz Desktop (all 9 ACP pids will go away)
+  1) peng: quit Buzz without killing: osascript -e 'quit app "Buzz"' (equivalent to Cmd+Q), or press Cmd+Q. Never kill / kill -9. If quit fails, stop and ask peng to Cmd+Q.
   2) operator: ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/apply.sh --backup $BACKUP
-  3) after apply: peng reopens Desktop using the proxy-fix method peng approved
-     (see RUNBOOK proxy row); then MA read-back + verify --restart-mode app
+  3) after apply, reopen from a terminal with:
+     $REOPEN_CMD
+     (no -n; see RUNBOOK A13); then MA read-back + verify --restart-mode app
 ===========================================================
 MSG
   exit 0
@@ -310,11 +312,12 @@ Rollback if needed (Desktop must stay quit):
   ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh --backup $BACKUP
 
 REQUIRED NEXT (peng + operator):
-  1) peng reopens Buzz Desktop using the method peng approved for the 2026-09-24
-     proxy fix (see RUNBOOK proxy assumption row). Do NOT assume Dock/Launchpad
-     is safe — Dock may still inject dead HTTP(S)_PROXY=127.0.0.1:6478.
-  2) GATE: confirm Desktop main process env HTTP(S)_PROXY points at the listening
-     system proxy (127.0.0.1:9567), and
+  1) peng reopens from a terminal with:
+     $REOPEN_CMD
+     (no -n; see RUNBOOK A13). Do not use kill / kill -9; if quitting had failed,
+     stop and ask peng to Cmd+Q.
+  2) GATE: confirm Desktop main + all 18 seat processes have all six proxy env
+     keys set to http://127.0.0.1:9567, and
      python -m buzz_team --instance /Users/xupeng/lab/buzz doctor
      is ok with NO proxy_contrast.
   3) GATE: read back managed-agents.json 周衡 row — must still be effort=medium
