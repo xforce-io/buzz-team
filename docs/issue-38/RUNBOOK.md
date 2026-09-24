@@ -66,7 +66,10 @@ Default live path is **whole-app quit → write → reopen**, not single-seat re
    ```
    Aborts unless Desktop is not running **and** no TEAM seat still matches the identity scan (A15 exact `BUZZ_RUNTIME_ID`; positive-control PASS required; no escape hatch), **and** relay `:3000` is listening (A14). Also rejects a backup whose `baseline_at` is missing or older than `BASELINE_MAX_AGE_S` (1800s), and re-asserts live workflow == `before/workflow.yaml` via `buzz workflows get` before any write. Does **not** require seats alive. Writes workflow + 周衡 row + prompt files; records `config_written_at`.
 
-4. **peng reopens** Buzz Desktop using the method peng approved for the **2026-09-24 proxy fix** (see A13). Do **not** assume Dock/Launchpad is safe.
+4. **peng reopens** Buzz Desktop from a terminal using the exact approved method (see A13; no `-n`):
+   ```bash
+   X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X
+   ```
 
 5. **Post-reopen gates (before verify):**
    - Desktop main **and all 18 seat processes** have all six proxy env keys (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`) set to `http://127.0.0.1:9567`.
