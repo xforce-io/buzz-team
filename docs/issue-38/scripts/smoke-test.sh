@@ -40,8 +40,8 @@ echo "no kill/respawn call paths OK"
 
 echo "== quit-first: baseline-only + desktop-not-running; escape hatch ABSENT =="
 grep -q -- '--baseline-only' "$DIR/apply.sh"
-grep -q "row['idle_timeout_seconds']=1500" "$DIR/apply.sh"
-if grep -q "row['idle_timeout_seconds']=180" "$DIR/apply.sh"; then
+grep -F -q "row['idle_timeout_seconds']=1500" "$DIR/apply.sh"
+if grep -F -q "row['idle_timeout_seconds']=180" "$DIR/apply.sh"; then
   echo "FAIL: apply.sh still writes idle 180" >&2
   exit 1
 fi
