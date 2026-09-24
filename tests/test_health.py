@@ -535,3 +535,30 @@ class InventoryDoctorTests(Fixture):
         self.assertEqual(self._fail_ids(restored), self._fail_ids(before))
         self.assertFalse(any(c["id"].startswith("inventory_duplicate:") for c in restored["checks"]))
         self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_pubkey_wrapper_launch_fails_outside_instance_override_alone_does_not(self):
+        original = self.desktop_file.read_bytes()
+        base = self._rows()
+        outside = {
+            "pubkey": "d" * 64,
+            "name": "fizz-old",
+            "relay_url": "ws://localhost:3000",
+            "agent_command": "/Users/xupeng/lab/buzz-team/bin/grok-acp-wrapper",
+        }
+        self._write(base + [outside])
+        result, wrapped = self._fails("inventory_deprecated_wrapper:")
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(wrapped), 1)
+        self.assertEqual(wrapped[0]["status"], "fail")
+        self.assertIn("grok-acp-wrapper", wrapped[0]["summary"])
+        reported = [c for c in result["checks"] if c["id"] == "inventory_non_instance"]
+        self.assertEqual(reported[0]["status"], "pass")
+        self.assertIn("0 inventory row", reported[0]["summary"])
+
+        override_only = json.loads(json.dumps(base))
+        override_only[0]["agent_command_override"] = "/Users/xupeng/lab/buzz-team/bin/grok-acp-wrapper"
+        self._write(override_only)
+        clean, still = self._fails("inventory_deprecated_wrapper:")
+        self.assertEqual(still, [])
+        self.assertFalse(any(c["id"].startswith("inventory_deprecated_wrapper:") for c in clean["checks"]))
+        self.desktop_file.write_bytes(original)

@@ -67,6 +67,16 @@ def _inventory_commands(row: dict) -> str:
     return "\n".join(parts)
 
 
+def _inventory_launch_commands(row: dict) -> str:
+    """Commands that actually start the row. Override text alone is not a launch."""
+    parts = []
+    for key in ("agent_command", "acp_command"):
+        value = row.get(key)
+        if isinstance(value, str):
+            parts.append(value)
+    return "\n".join(parts)
+
+
 def _inventory_runtime_id(row: dict) -> str:
     env = row.get("env_vars")
     if isinstance(env, dict):
@@ -80,9 +90,11 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
     """Classify a Desktop inventory against this instance. Does not mutate rows.
 
     An empty pubkey on a row that has a launch command is an instance anomaly.
-    Same display name is not treated as the same pubkey. Rows that are neither
-    an instance pubkey nor an empty launch row are reported and left in place.
-    Rows outside that set are reported and left in place.
+    A launch command that still points at grok-acp-wrapper fails even when the
+    row has a pubkey and that pubkey is not one of this instance's identities.
+    agent_command_override alone does not make a row a wrapper launch.
+    Same display name is not treated as the same pubkey. Other rows outside
+    this instance are reported and left in place.
     """
     if not isinstance(rows, list):
         return [check(
@@ -121,6 +133,11 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
                     f"inventory row {index} has {detail}"))
             else:
                 outside += 1
+            continue
+        if _DEPRECATED_WRAPPER in _inventory_launch_commands(row):
+            checks.append(check(
+                f"inventory_deprecated_wrapper:{index}", "fail", "buzz_runtime",
+                f"inventory row {index} launches through grok-acp-wrapper"))
             continue
         key = by_pubkey.get(pubkey)
         if key is None:

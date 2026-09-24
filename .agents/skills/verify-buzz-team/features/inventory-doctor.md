@@ -4,7 +4,7 @@
 
 ## S1 废弃入口
 
-公钥为空且带启动命令的行使 `inventory_empty_pubkey:*` 为 fail，包括指向 `grok-acp-wrapper` 的行。从库存移除这些行是运维动作；doctor 只判定，不改文件。本票未授权删除，S1 保持 fail。
+公钥为空且带启动命令的行使 `inventory_empty_pubkey:*` 为 fail，包括指向 `grok-acp-wrapper` 的行。`agent_command` 或 `acp_command` 指向 `grok-acp-wrapper` 的行，即使带有不属于本实例的公钥，也是 `inventory_deprecated_wrapper:*` fail，不计入 `inventory_non_instance`。只在 `agent_command_override` 里出现该字符串、实际启动命令不是 wrapper 的本实例行，不因此失败。doctor 只判定，不改文件。删除仍未授权。
 
 ## S2 四类失败与实例外行
 
