@@ -103,6 +103,7 @@ Same quit-first shape:
 - thin-bin still `046ac43`
 - Scout: no parallel dirty 周衡 edits
 - No Desktop-check escape hatch — mutate/rollback always require a full Cmd+Q quit (Desktop main + TEAM seats dead by identity scan — A15)
+- Test fixtures are smoke-only and are refused on live runs.
 - Relay `:3000` must be listening before mutate/rollback (`require_relay_3000_listening`; A14). After **logout/reboot**, confirm colima/`lsof -nP -iTCP:3000 -sTCP:LISTEN` before running anything (colima auto-start NOT verified)
 - Baseline freshness: `baseline_at` (epoch) recorded by `--baseline-only`; mutate rejects missing/older than `BASELINE_MAX_AGE_S=1800` (30 min). Documented in M15.
 

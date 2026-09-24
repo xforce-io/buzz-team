@@ -44,6 +44,7 @@ esac
 
 # shellcheck source=common.sh
 source "$(dirname "$0")/common.sh"
+reject_live_test_hooks
 
 if [[ "$EXPECT" == "after" ]]; then
   WANT_EFFORT=medium

@@ -29,6 +29,7 @@ if [[ -z "$MODE" ]]; then
 fi
 
 require_live_guard
+reject_live_test_hooks
 verify_thin_pin
 
 # ---------- baseline-only: Desktop UP, seats alive, write backup, stop ----------

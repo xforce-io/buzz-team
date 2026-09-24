@@ -20,6 +20,7 @@ fi
 source "$(dirname "$0")/common.sh"
 
 require_live_guard
+reject_live_test_hooks
 verify_thin_pin
 
 echo "== rollback: require Desktop NOT running (identity scan + positive-control gate) =="

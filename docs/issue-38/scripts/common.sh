@@ -29,6 +29,15 @@ require_live_guard() {
   fi
 }
 
+# Smoke fixtures must never influence a live run, even if a caller sets both
+# the live acknowledgement and the fixture override.
+reject_live_test_hooks() {
+  if [[ "${ISSUE38_I_UNDERSTAND_LIVE:-}" == "yes" && -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
+    echo "ABORT: ISSUE38_PS_FIXTURE is smoke-only; refusing on live run" >&2
+    return 2
+  fi
+}
+
 # Fail unless thin wrappers resolve to pin 046ac43 (full SHA).
 verify_thin_pin() {
   local f
@@ -232,6 +241,7 @@ desktop_main_pids() {
 # Fail-closed: any real ps non-zero exit or empty combined output ⇒ return 1.
 _collect_ps_pid_command_lines() {
   local out1 out2 rc1=0 rc2=0
+  reject_live_test_hooks || return $?
   if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
     if [[ ! -f "$ISSUE38_PS_FIXTURE" ]]; then
       echo "ABORT: ISSUE38_PS_FIXTURE not a file: $ISSUE38_PS_FIXTURE" >&2
@@ -275,6 +285,7 @@ _collect_ps_pid_command_lines() {
 # Fail-closed on live ps failure (fixture mode skips).
 _collect_ppid_map_lines() {
   local rc=0 out
+  reject_live_test_hooks || return $?
   if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
     return 0
   fi

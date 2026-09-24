@@ -164,6 +164,24 @@ echo "D1/P3 fixture: exact BUZZ_RUNTIME_ID matched; wrong-team/grep/bash/relay-o
 echo "== P2(a): scanner non-zero => abort (fail-closed) =="
 # shellcheck source=common.sh
 source "$DIR/common.sh"
+echo "== live run rejects smoke fixture =="
+GUARD_FIX=$(mktemp)
+: > "$GUARD_FIX"
+set +e
+GUARD_OUT=$( (
+  ISSUE38_I_UNDERSTAND_LIVE=yes
+  ISSUE38_PS_FIXTURE="$GUARD_FIX"
+  reject_live_test_hooks
+) 2>&1 )
+GUARD_RC=$?
+set -e
+rm -f "$GUARD_FIX"
+if [[ "$GUARD_RC" -eq 0 ]]; then
+  echo "FAIL: live guard accepted ISSUE38_PS_FIXTURE" >&2
+  exit 1
+fi
+echo "$GUARD_OUT" | grep -Fq 'ISSUE38_PS_FIXTURE is smoke-only; refusing on live run'
+echo "live fixture guard abort OK"
 CRASH_FIX=$(mktemp)
 # Valid-looking ps line so empty-ps check passes; scanner forced to exit 2 via bad --team-id handled below.
 # Instead: wrap by pointing scanner at a crashing helper via a temp copy? Simpler: call python with
