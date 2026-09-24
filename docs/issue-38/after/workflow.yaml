@@ -1,0 +1,10 @@
+name: 站会开窗唤醒
+description: 工作日 01:00 UTC（Asia/Shanghai 09:00）唤醒项目经理发开窗帖。不发摘要。
+trigger:
+  on: schedule
+  cron: "0 1 * * 1-5"
+steps:
+  - id: wake_pj
+    action: send_message
+    text: "@周衡 09:00 开窗。请发开窗帖：请已在场角色按格式报状态（今日重点 / 阻塞 / 需要谁）。不做无门五人齐 @。本帖不是摘要，不要当正式摘要。"
+    reply_in_thread: false

@@ -1,0 +1,30 @@
+--- before/managed-agent-zhouheng.compact.json
++++ after/managed-agent-zhouheng.compact.json
+@@ -14,22 +14,22 @@
+     "--always-approve",
+     "--no-leader",
+     "--reasoning-effort",
+-    "low",
++    "medium",
+     "stdio"
+   ],
+   "mcp_command": "",
+   "turn_timeout_seconds": 320,
+-  "idle_timeout_seconds": 1500,
++  "idle_timeout_seconds": 180,
+   "max_turn_duration_seconds": 7200,
+   "parallelism": 2,
+-  "system_prompt": "<str len=3105 dup=2>",
++  "system_prompt": "<str len=3002 dup=1>",
+   "model": "grok-4.7",
+   "provider": null,
+   "persona_source_version": "0993d4e70a803417a2590545c83d1bdfae5b6b1b5cc86b59f65f55ddb23ad9e9",
+   "env_vars": {
+     "BUZZ_ACP_CONFIG": "/Users/xupeng/.local/share/buzz/run/pj.acp.toml",
+-    "BUZZ_ACP_EFFORT_LEVEL": "low",
+-    "BUZZ_ACP_IDLE_TIMEOUT": "1500",
++    "BUZZ_ACP_EFFORT_LEVEL": "medium",
++    "BUZZ_ACP_IDLE_TIMEOUT": "180",
+     "BUZZ_ACP_MAX_TURN_DURATION": "7200",
+     "BUZZ_ACP_MULTIPLE_EVENT_HANDLING": "queue",
+     "BUZZ_ACP_SUBSCRIBE": "config",

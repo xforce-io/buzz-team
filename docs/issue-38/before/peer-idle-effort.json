@@ -1,0 +1,128 @@
+[
+  {
+    "name": "卫平",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": null,
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "low",
+      "stdio"
+    ]
+  },
+  {
+    "name": "周衡",
+    "idle": 1500,
+    "max_turn": 7200,
+    "effort": "low",
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "low",
+      "stdio"
+    ]
+  },
+  {
+    "name": "方维",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": "medium",
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "medium",
+      "stdio"
+    ]
+  },
+  {
+    "name": "沈予",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": "medium",
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "medium",
+      "stdio"
+    ]
+  },
+  {
+    "name": "秦牧",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": null,
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "low",
+      "stdio"
+    ]
+  },
+  {
+    "name": "苏晴",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": "low",
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "low",
+      "stdio"
+    ]
+  },
+  {
+    "name": "裴昭",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": null,
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "low",
+      "stdio"
+    ]
+  },
+  {
+    "name": "陆深",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": "medium",
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "medium",
+      "stdio"
+    ]
+  },
+  {
+    "name": "韩川",
+    "idle": 180,
+    "max_turn": 1800,
+    "effort": null,
+    "reasoning_args": [
+      "agent",
+      "--always-approve",
+      "--no-leader",
+      "--reasoning-effort",
+      "low",
+      "stdio"
+    ]
+  }
+]
