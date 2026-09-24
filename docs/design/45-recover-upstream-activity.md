@@ -30,7 +30,7 @@ owner 缺口用「测试身份退出直接成员、只走 NIP-OA 委托」规避
 
 ## 6 架构
 
-标记写在 `docs/activity-catalog.md`。idle 决策写在 `docs/issue-45/idle-decision.md`，并评论到 #38。主路径：静默时长低于 1500 秒的受控任务完成并只回一条。失败路径：idle 撕池或出现第二条回帖，则 S3 不通过。
+标记写在 `docs/activity-catalog.md`。idle 决策只写在 `docs/issue-38/IDLE-DECISION.md`。主路径：`sleep 1490` 在 ACP turn 内跑完并只回一条。失败路径：命令被送去后台、turn 先合上、idle 撕池，或出现第二条回帖，则 S3 不通过。
 
 ## 7 模块
 

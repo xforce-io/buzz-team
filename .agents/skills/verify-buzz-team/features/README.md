@@ -16,4 +16,4 @@
 | #29 S1–S2 | [长工具 turn gate](long-tool-turn.md) | executor ACP stdio；`long_tool` 超时/轮询 |
 | #33 S1 | [角色头衔绑定](title-bind.md) | wake resolve / decide（含 pubkey） |
 | #33 S2 | [提及确认 👀](mention-ack.md) | wake ack → `reactions add` |
-| #45 S1–S3 | [Activity 与 idle](activity-idle.md) | 频道收发；`docs/activity-catalog.md`；`docs/issue-45/idle-decision.md` |
+| #45 S1–S3 | [Activity 与 idle](activity-idle.md) | 频道收发；`docs/activity-catalog.md`；`docs/issue-38/IDLE-DECISION.md` |

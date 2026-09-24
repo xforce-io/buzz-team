@@ -7,7 +7,7 @@
 周衡「指令遵循差」主要来自三处冲突，而非模型能力：
 
 1. **站会开窗 workflow** 文案要求「点名五角色」，与 light-keel / 席位提示「禁止默认五人齐点」冲突 → 触发后只 👀。
-2. **席位 effort=low + idle=1500s** 相对工程/运维/测试席（medium / 180s）过偏；`find ~` 挂 ~1222s 后撞 idle 撕池。
+2. **席位 effort=low + idle=1500s** 相对工程/运维/测试席（medium / 180s）当时被看成过偏；`find ~` 挂 ~1222s 后撞 idle 撕池。现行决策见 `IDLE-DECISION.md`：不把周衡 idle 收到 180，只把 effort 调到 medium。
 3. **prompt 栈** managed `system_prompt` 内「长任务执行与恢复」整节重复两次；AGENTS「短答不要开工具」与被 @ 交付冲突；缺状态三栏契约。
 
 ## 东西在哪（S1/S2/S3 事实源）

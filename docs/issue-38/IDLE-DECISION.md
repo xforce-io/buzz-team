@@ -15,7 +15,7 @@
 
 原先采用 180 的理由是座位 idle 不负责长工具保活。1222 秒的静默已经证明，收到 180 会在这类工具结束前撕池。#45 要求在任何 1500→180 apply 之前先改决策。本文件就是那次修订。
 
-`docs/issue-38/scripts/apply.sh` 的 `--backup` 变异路径因此拒绝执行，避免把 idle 写成 180。
+`docs/issue-38/scripts/apply.sh` 的变异路径把 effort 调到 medium，idle 保持 1500，不写成 180。
 
 ## 观测（不算 S3 通过）
 

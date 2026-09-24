@@ -2,7 +2,7 @@
 # Read-only post-Desktop-restart verification for Issue #38.
 # Usage:
 #   verify-after-restart.sh <backup-dir> --expect after|before --restart-mode single|app
-#     after:  effort=medium idle=180 max_turn=7200
+#     after:  effort=medium idle=1500 max_turn=7200
 #     before: effort=low    idle=1500 max_turn=7200
 #     --restart-mode single: other 8 pids unchanged+alive; 周衡 new+alive
 #       (experiments without Cmd+Q ONLY; quit-first always implies app)
@@ -49,7 +49,7 @@ reject_live_test_hooks
 
 if [[ "$EXPECT" == "after" ]]; then
   WANT_EFFORT=medium
-  WANT_IDLE=180
+  WANT_IDLE=1500
 else
   WANT_EFFORT=low
   WANT_IDLE=1500

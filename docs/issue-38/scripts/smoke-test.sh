@@ -40,6 +40,11 @@ echo "no kill/respawn call paths OK"
 
 echo "== quit-first: baseline-only + desktop-not-running; escape hatch ABSENT =="
 grep -q -- '--baseline-only' "$DIR/apply.sh"
+grep -q "row['idle_timeout_seconds']=1500" "$DIR/apply.sh"
+if grep -q "row['idle_timeout_seconds']=180" "$DIR/apply.sh"; then
+  echo "FAIL: apply.sh still writes idle 180" >&2
+  exit 1
+fi
 grep -q 'require_desktop_not_running' "$DIR/apply.sh"
 grep -q 'require_desktop_not_running' "$DIR/rollback.sh"
 # Assert escape hatch gone from product scripts + RUNBOOK (not this smoke file's assertion text).
