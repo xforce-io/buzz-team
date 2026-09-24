@@ -120,9 +120,14 @@ def process_start_epoch(pid):
     """Parse ps -o lstart= ; never use etimes (macOS: 'etimes: keyword not found').
     Empty/unparseable lstart => FAIL (never treat as 0).
     """
+    # ps emits lstart as local wall-clock text; force stable English names without changing TZ.
+    locale_env = {**os.environ, 'LC_ALL': 'C', 'LANG': 'C'}
     try:
         lstart = subprocess.check_output(
-            ['ps', '-o', 'lstart=', '-p', str(pid)], text=True, stderr=subprocess.DEVNULL
+            ['ps', '-o', 'lstart=', '-p', str(pid)],
+            text=True,
+            stderr=subprocess.DEVNULL,
+            env=locale_env,
         ).strip()
     except Exception as e:
         print('FAIL: cannot read ps -o lstart= for pid', pid, e, file=sys.stderr)
@@ -137,6 +142,7 @@ def process_start_epoch(pid):
                 ['date', '-j', '-f', '%a %b %d %T %Y', lstart, '+%s'],
                 text=True,
                 stderr=subprocess.DEVNULL,
+                env=locale_env,
             ).strip()
         else:
             # GNU date (CI/Linux smoke)
@@ -144,6 +150,7 @@ def process_start_epoch(pid):
                 ['date', '-d', lstart, '+%s'],
                 text=True,
                 stderr=subprocess.DEVNULL,
+                env=locale_env,
             ).strip()
     except Exception as e:
         print('FAIL: cannot parse lstart', repr(lstart), e, file=sys.stderr)
@@ -198,7 +205,8 @@ else:
         print('FAIL: Mode B missing max_turn_duration (unchecked would be silent pass)', file=sys.stderr)
         sys.exit(1)
     got_max = int(max_raw)
-    # start time after config_written_at via lstart (not etimes; not MA mtime)
+    # config_written_at is stored as a UTC ISO-8601 string; compare its epoch to lstart's epoch.
+    # lstart is local wall-clock text, parsed by date in the same TZ that ps used; do not set TZ.
     try:
         cfg = datetime.strptime(config_at, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
         cfg_epoch = cfg.timestamp()

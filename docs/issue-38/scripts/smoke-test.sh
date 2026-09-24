@@ -79,6 +79,27 @@ if grep -nE "\['ps', '-o', 'etimes='\]" "$DIR/verify-after-restart.sh" "$DIR/com
 fi
 echo "lstart-only OK"
 
+echo "== lstart parsing under LANG=zh_CN.UTF-8 =="
+epoch=$(env -u LC_ALL LANG=zh_CN.UTF-8 python3 - <<'PY'
+import os
+import platform
+import subprocess
+
+lstart = 'Thu Sep 24 14:54:38 2026'
+env = {**os.environ, 'LC_ALL': 'C', 'LANG': 'C'}
+if platform.system() == 'Darwin':
+    cmd = ['date', '-j', '-f', '%a %b %d %T %Y', lstart, '+%s']
+else:
+    cmd = ['date', '-d', lstart, '+%s']
+print(subprocess.check_output(cmd, text=True, env=env).strip())
+PY
+)
+if [[ ! "$epoch" =~ ^-?[0-9]+$ ]]; then
+  echo "FAIL: zh_CN lstart parser did not return a numeric epoch: $epoch" >&2
+  exit 1
+fi
+echo "zh_CN lstart parser OK (epoch=$epoch)"
+
 echo "== --restart-mode single|app required (no auto-guess) =="
 grep -q -- '--restart-mode' "$DIR/verify-after-restart.sh"
 grep -q 'no auto-guess' "$DIR/verify-after-restart.sh"

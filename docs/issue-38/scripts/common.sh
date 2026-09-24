@@ -179,6 +179,7 @@ print('restored 周衡 row only from', row_path)
 }
 
 # Record when config was written so verify-after-restart can use start-time fallback.
+# The file stores UTC ISO-8601 text; verify converts it to epoch before comparing.
 # ONLY this stamp is authoritative for Mode B start-time checks.
 # Never use managed-agents.json mtime: Desktop rewrites that file on start
 # (last_started_at / updated_at), so its mtime is NOT config-write time (A6/A11).
