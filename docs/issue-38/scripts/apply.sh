@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Issue #38 live apply — 周衡 only. Do NOT run until merge gate + Hogan.
 # Workflow update FIRST (YAML CONTENT via $(cat)); local patches only if that succeeds.
+# Does NOT kill or wait for respawn — peng must restart ONLY 周衡 from Buzz Desktop.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -13,6 +14,9 @@ verify_thin_pin
 echo "== resolve 周衡 pid file (exact PUB__TEAM; abort on extras) =="
 ZH_PID_FILE=$(zhou_pid_file)
 echo "周衡 pid file: $ZH_PID_FILE"
+
+echo "== precondition: 周衡 ACP alive (doctor 9/9) =="
+ZHOU_PID_BEFORE=$(require_zhou_alive) || exit 1
 
 echo "== assert live workflow == staged before =="
 eval "$(grep -E '^PJ_PRIVATE_KEY=' /Users/xupeng/.local/share/buzz/config/agents.env | sed 's/^PJ_PRIVATE_KEY=/BUZZ_PRIVATE_KEY=/')"
@@ -37,7 +41,7 @@ print('live workflow matches staged before OK')
 
 echo "== preflight: active 周衡 row (idle=1500, effort=low) =="
 python3 -c "
-import json,sys
+import json
 from pathlib import Path
 agents=json.loads(Path(r'''$MA''').read_text())
 pub=r'''$PUB'''
@@ -61,8 +65,9 @@ print('preflight OK: 周衡 active row found')
 # ---- guards passed: create backup (read-only snapshots; no mutation yet) ----
 TS=$(date +%Y%m%d-%H%M%S)
 BACKUP=/Users/xupeng/lab/buzz/evidence/issue-38/backup-${TS}
-mkdir -p "$BACKUP/agent-pids/before" "$BACKUP/agent-pids/after"
+mkdir -p "$BACKUP/agent-pids/before"
 echo "BACKUP=$BACKUP"
+printf '%s\n' "$ZHOU_PID_BEFORE" > "$BACKUP/zhou-pid-before.txt"
 
 echo "== snapshot before =="
 cp -R "$PID_DIR"/. "$BACKUP/agent-pids/before/" || true
@@ -90,13 +95,12 @@ import json
 from pathlib import Path
 c=json.loads(Path(r'''$BACKUP/workflow-get.json''').read_text())['content']
 p=Path(r'''$BACKUP/workflow-live-before.yaml''')
-p.write_text(c if c.endswith('\n') else c+'\n')
+p.write_text(c if c.endswith(chr(10)) else c+chr(10))
 print('saved workflow-live-before.yaml from live get')
 "
 rm -f "$LIVE_GET"
 
 # ---- FIRST mutation: workflow body (YAML CONTENT, not path) ----
-# buzz workflows update --yaml <YAML> expects the definition string, not a file path.
 echo "== update workflow body FIRST (YAML content via cat; owner unchanged) =="
 AFTER_WF="$ROOT/after/workflow.yaml"
 test -f "$AFTER_WF"
@@ -111,8 +115,6 @@ def norm(s):
     return s.replace('\r\n','\n').strip()+'\n'
 if norm(live)!=norm(want):
     print('ABORT: post-update workflow != docs/issue-38/after/workflow.yaml — local files NOT patched', file=sys.stderr)
-    print('--- live ---', file=sys.stderr); print(norm(live)[:500], file=sys.stderr)
-    print('--- want ---', file=sys.stderr); print(norm(want)[:500], file=sys.stderr)
     sys.exit(1)
 print('workflow read-back matches after/workflow.yaml OK')
 " "$BACKUP/workflow-get-after.json" "$AFTER_WF"
@@ -145,7 +147,7 @@ row['env_vars']['BUZZ_ACP_EFFORT_LEVEL']='medium'
 row['env_vars']['BUZZ_ACP_IDLE_TIMEOUT']='180'
 args=list(row.get('agent_args') or [])
 for i,x in enumerate(args):
-    if x=='--reasoning-effort' and i+1 < len(args):
+    if x in ('--reasoning-effort','--reasoning_effort') and i+1 < len(args):
         args[i+1]='medium'
 row['agent_args']=args
 row['system_prompt']=after_prompt
@@ -159,12 +161,53 @@ cp "$ROOT/after/pj.md" "$PJ_MD"
 cp "$ROOT/after/AGENTS.md" "$ID_ROOT/AGENTS.md"
 cp "$ROOT/after/instructions-1.md" "$INSTR"
 
-echo "== restart 周衡 ACP only (safe kill) =="
-safe_kill_zhou
+echo "== read-back verify 周衡 row (medium/180) + prompt files =="
+python3 -c "
+import json
+from pathlib import Path
+agents=json.loads(Path(r'''$MA''').read_text())
+pub=r'''$PUB'''
+row=next(a for a in agents if a.get('pubkey')==pub or a.get('name')=='周衡')
+env=row.get('env_vars') or {}
+assert row.get('idle_timeout_seconds')==180, row.get('idle_timeout_seconds')
+assert env.get('BUZZ_ACP_EFFORT_LEVEL')=='medium', env.get('BUZZ_ACP_EFFORT_LEVEL')
+assert env.get('BUZZ_ACP_IDLE_TIMEOUT') in ('180', 180), env.get('BUZZ_ACP_IDLE_TIMEOUT')
+print('managed-agents 周衡 read-back OK: idle=180 effort=medium')
+for label, path, src in [
+    ('pj.md', r'''$PJ_MD''', r'''$ROOT/after/pj.md'''),
+    ('AGENTS.md', r'''$ID_ROOT'''+'/AGENTS.md', r'''$ROOT/after/AGENTS.md'''),
+    ('instructions-1.md', r'''$INSTR''', r'''$ROOT/after/instructions-1.md'''),
+]:
+    if Path(path).read_text()!=Path(src).read_text():
+        raise SystemExit(f'{label} read-back mismatch')
+    print(f'{label} read-back OK')
+"
 
-echo "== verify other seats untouched =="
+record_config_written_at "$BACKUP"
+
+echo "== verify other seats untouched (read-only; no kill) =="
 verify_other_pids_unchanged "$BACKUP/others-before.tsv"
-cp -R "$PID_DIR"/. "$BACKUP/agent-pids/after/" || true
 
-echo "BACKUP=$BACKUP"
-echo "apply complete — run doctor+bind per RUNBOOK.md"
+cat <<MSG
+
+========== APPLY CONFIG DONE — NO KILL / NO RESPAWN WAIT ==========
+BACKUP=$BACKUP
+
+Rollback if needed:
+  ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh $BACKUP
+
+REQUIRED NEXT STEP (peng must be present):
+  Ask peng to restart ONLY 周衡 from Buzz Desktop (NOT the whole app).
+  Live fact: Desktop does NOT auto-respawn after kill; this apply deliberately
+  does not kill — a restart is still required so ACP loads the new config.
+  Until 周衡 is restarted, the running process still has the OLD config while
+  on-disk files already have the NEW config (mixed window).
+
+After Desktop restart, verify:
+  docs/issue-38/scripts/verify-after-restart.sh $BACKUP --expect after
+
+Expected verify: doctor 9/9; 周衡 NEW alive pid; effort=medium idle=180;
+other 8 pids unchanged vs backup others-before.tsv.
+Then Hogan runs S1–S3.
+===================================================================
+MSG

@@ -16,7 +16,8 @@
 ## Script smoke (read-only)
 
 ```bash
-docs/issue-38/scripts/smoke-test.sh   # bash -n + guard refuse + pin/pid resolve; never mutates live
+docs/issue-38/scripts/smoke-test.sh
+docs/issue-38/scripts/verify-after-restart.sh  # post-Desktop-restart checks (--expect after|before)   # bash -n + guard refuse + pin/pid resolve; never mutates live
 docs/issue-38/scripts/smoke-real-workflow.sh  # live relay: temp workflow create/update($(cat))/delete; list before==after
 # artifacts: docs/issue-38/smoke/
 ```

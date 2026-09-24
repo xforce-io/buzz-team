@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Issue #38 rollback from a backup-* directory produced by apply.sh
+# Does NOT kill or wait for respawn. Tolerates a stale/dead 周衡 pid file.
 set -euo pipefail
 
 BACKUP=${1:?usage: rollback.sh /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts>}
@@ -16,11 +17,17 @@ test -f "$BACKUP/instructions-1.md"
 test -f "$BACKUP/workflow-live-before.yaml"
 test -f "$BACKUP/workflow-get.json"
 
-echo "== resolve 周衡 pid file =="
+echo "== resolve 周衡 pid file (exact; extras abort; dead pid OK) =="
 ZH_PID_FILE=$(zhou_pid_file)
 echo "周衡 pid file: $ZH_PID_FILE"
+ZHOU_PID_NOW=$(python3 -c "import json; print(json.load(open(r'''$ZH_PID_FILE'''))['pid'])")
+if kill -0 "$ZHOU_PID_NOW" 2>/dev/null; then
+  echo "周衡 pid $ZHOU_PID_NOW currently alive (will NOT kill)"
+else
+  echo "NOTE: 周衡 pid $ZHOU_PID_NOW is dead/stale — continuing rollback (no kill path)"
+fi
 
-echo "== snapshot other seats before rollback =="
+echo "== snapshot other seats before rollback (read-only) =="
 TMP_OTHERS=$(mktemp)
 snapshot_other_pids "$TMP_OTHERS"
 
@@ -28,7 +35,6 @@ eval "$(grep -E '^PJ_PRIVATE_KEY=' /Users/xupeng/.local/share/buzz/config/agents
 export PATH="/Users/xupeng/lab/buzz/bin:$PATH"
 export BUZZ_RELAY_URL="${BUZZ_RELAY_URL:-ws://127.0.0.1:3000}"
 
-# Workflow: compare live vs apply-time snapshot; equal -> skip; else update with YAML CONTENT.
 echo "== workflow restore: compare live vs workflow-live-before.yaml =="
 LIVE_GET=$(mktemp)
 buzz workflows get --workflow "$WF_ID" > "$LIVE_GET"
@@ -74,11 +80,47 @@ cp "$BACKUP/pj.md" "$PJ_MD"
 cp "$BACKUP/AGENTS.md" "$ID_ROOT/AGENTS.md"
 cp "$BACKUP/instructions-1.md" "$INSTR"
 
-echo "== restart 周衡 ACP only (safe kill) =="
-safe_kill_zhou
+echo "== read-back verify restored 周衡 row (low/1500) + prompt files =="
+python3 -c "
+import json
+from pathlib import Path
+agents=json.loads(Path(r'''$MA''').read_text())
+pub=r'''$PUB'''
+row=next(a for a in agents if a.get('pubkey')==pub or a.get('name')=='周衡')
+env=row.get('env_vars') or {}
+assert row.get('idle_timeout_seconds')==1500, row.get('idle_timeout_seconds')
+assert env.get('BUZZ_ACP_EFFORT_LEVEL')=='low', env.get('BUZZ_ACP_EFFORT_LEVEL')
+print('managed-agents 周衡 read-back OK: idle=1500 effort=low')
+for label, path, src in [
+    ('pj.md', r'''$PJ_MD''', r'''$BACKUP/pj.md'''),
+    ('AGENTS.md', r'''$ID_ROOT'''+'/AGENTS.md', r'''$BACKUP/AGENTS.md'''),
+    ('instructions-1.md', r'''$INSTR''', r'''$BACKUP/instructions-1.md'''),
+]:
+    if Path(path).read_text()!=Path(src).read_text():
+        raise SystemExit(f'{label} read-back mismatch')
+    print(f'{label} read-back OK')
+"
 
-echo "== verify other seats untouched =="
+record_config_written_at "$BACKUP"
+
+echo "== verify other seats untouched (read-only; no kill) =="
 verify_other_pids_unchanged "$TMP_OTHERS"
 rm -f "$TMP_OTHERS"
 
-echo "rollback complete from $BACKUP"
+cat <<MSG
+
+========== ROLLBACK CONFIG DONE — NO KILL / NO RESPAWN WAIT ==========
+Restored from: $BACKUP
+
+REQUIRED NEXT STEP (peng must be present):
+  If 周衡 was restarted earlier with the NEW (medium/180) config, ask peng to
+  restart ONLY 周衡 from Buzz Desktop AGAIN so ACP loads the restored
+  low/1500/7200 config. (Desktop does NOT auto-respawn; scripts do not kill.)
+
+After Desktop restart, verify:
+  docs/issue-38/scripts/verify-after-restart.sh $BACKUP --expect before
+
+Expected verify: doctor 9/9; 周衡 NEW alive pid; effort=low idle=1500;
+other 8 pids unchanged vs snapshot taken at rollback start.
+======================================================================
+MSG

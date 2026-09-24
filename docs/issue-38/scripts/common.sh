@@ -46,16 +46,15 @@ verify_thin_pin() {
 }
 
 # Resolve 周衡 pid file: exactly ${PUB}__${TEAM}.json; abort if any other ${PUB}__*.json.
+# Does NOT require the pid to be alive (rollback must tolerate a stale/dead pid).
 zhou_pid_file() {
-  local exact extras
+  local exact extras f
   exact="${PID_DIR}/${PUB}__${TEAM}.json"
   if [[ ! -f "$exact" ]]; then
     echo "周衡 pid file missing: $exact" >&2
     exit 1
   fi
-  # shopt nullglob
   extras=()
-  local f
   for f in "$PID_DIR"/${PUB}__*.json; do
     [[ -e "$f" ]] || continue
     if [[ "$(basename "$f")" != "$(basename "$exact")" ]]; then
@@ -71,6 +70,27 @@ zhou_pid_file() {
   printf '%s\n' "$exact"
 }
 
+# Apply precondition: 周衡 ACP must be alive (doctor 9/9). Abort if pid file points at a dead process.
+# Live fact: Desktop does NOT auto-respawn after kill — operator must restart 周衡 from Desktop first.
+require_zhou_alive() {
+  local zh_file old_pid blob
+  zh_file=$(zhou_pid_file)
+  old_pid=$(python3 -c "import json; print(json.load(open(r'''${zh_file}'''))['pid'])")
+  if ! kill -0 "$old_pid" 2>/dev/null; then
+    echo "ABORT: 周衡 pid $old_pid from $zh_file is NOT alive." >&2
+    echo "Precondition: doctor 9/9 (all seats up). Ask peng to restart ONLY 周衡 from Buzz Desktop, then re-run apply." >&2
+    return 1
+  fi
+  blob=$(ps eww -p "$old_pid" 2>/dev/null || true)
+  if [[ -z "$blob" || "$blob" != *"$PUB"* ]]; then
+    echo "ABORT: pid $old_pid is alive but env/cmdline does not contain 周衡 pubkey $PUB." >&2
+    echo "Ask peng to restart ONLY 周衡 from Desktop, then re-run apply." >&2
+    return 1
+  fi
+  echo "周衡 ACP alive OK: pid=$old_pid (pubkey confirmed)"
+  printf '%s\n' "$old_pid"
+}
+
 # Other seats on this TEAM, excluding 周衡's exact file. Prints "name\tpid" lines.
 list_other_team_pids() {
   local f base
@@ -82,40 +102,6 @@ list_other_team_pids() {
     fi
     python3 -c "import json,sys; print(sys.argv[1]+'\t'+str(json.load(open(sys.argv[2]))['pid']))" "$base" "$f"
   done
-}
-
-# Kill 周衡 ACP only if: (a) pid from exact file (b) kill -0 alive (c) env/cmdline contains full PUB.
-safe_kill_zhou() {
-  local zh_file old_pid blob
-  zh_file=$(zhou_pid_file)
-  old_pid=$(python3 -c "import json; print(json.load(open(r'''$zh_file'''))['pid'])")
-  if ! kill -0 "$old_pid" 2>/dev/null; then
-    echo "ABORT: pid $old_pid from $zh_file is not alive (kill -0 failed). Restart ONLY 周衡 from Desktop." >&2
-    exit 1
-  fi
-  blob=$(ps eww -p "$old_pid" 2>/dev/null || true)
-  if [[ -z "$blob" || "$blob" != *"$PUB"* ]]; then
-    echo "ABORT: pid $old_pid is alive but env/cmdline does not contain 周衡 pubkey $PUB." >&2
-    echo "Refusing to kill (stale pid reuse risk). Restart ONLY 周衡 from Desktop." >&2
-    exit 1
-  fi
-  echo "safe-kill 周衡 pid=$old_pid file=$(basename "$zh_file") (pubkey confirmed in process)"
-  kill "$old_pid"
-  # Wait for respawn with new pid in same exact file
-  local i new_pid
-  for i in $(seq 1 60); do
-    sleep 1
-    new_pid=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1])).get('pid',''))" "$zh_file" 2>/dev/null || true)
-    if [[ -n "$new_pid" && "$new_pid" != "$old_pid" ]] && kill -0 "$new_pid" 2>/dev/null; then
-      blob=$(ps eww -p "$new_pid" 2>/dev/null || true)
-      if [[ "$blob" == *"$PUB"* ]]; then
-        echo "周衡 respawned pid=$new_pid after ${i}s"
-        return 0
-      fi
-    fi
-  done
-  echo "TIMEOUT waiting for Desktop to respawn 周衡. Start ONLY 周衡 from Desktop UI (do not relaunch app)." >&2
-  exit 1
 }
 
 snapshot_other_pids() {
@@ -144,8 +130,6 @@ verify_other_pids_unchanged() {
 }
 
 # Patch only the 周衡 row (by full pubkey) inside managed-agents.json.
-# Usage: patch_zhou_row <python-snippet that receives `row` dict and mutates it>
-# Or restore from a saved row JSON file: restore_zhou_row <row.json>
 restore_zhou_row_from_file() {
   local row_file=$1
   python3 -c "
@@ -162,9 +146,17 @@ for i,a in enumerate(agents):
         idx=i; break
 if idx is None:
     raise SystemExit('周衡 row not found in live managed-agents.json — abort')
-# Replace only this index; do not touch other seats
 agents[idx]=saved
 ma_path.write_text(json.dumps(agents, ensure_ascii=False, indent=2)+chr(10))
 print('restored 周衡 row only from', row_path)
 " "$row_file"
+}
+
+# Record when config was written so verify-after-restart can use start-time fallback.
+record_config_written_at() {
+  local backup=$1
+  local stamp
+  stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+  printf '%s\n' "$stamp" > "$backup/config_written_at.txt"
+  echo "config_written_at=$stamp (UTC) -> $backup/config_written_at.txt"
 }

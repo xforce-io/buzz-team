@@ -2,60 +2,95 @@
 
 **现在不要执行。** 合入门禁 + Knox human:required 通过后，再跑。
 
-## 0. 前置
+## Environment assumptions
 
-- PR tip SHA 已合入 main（或明确按该 tip 的 `docs/issue-38/after/` 执行）。
-- thin-bin 仍为 `046ac43`（`lab/buzz/bin/agent-executor` / `agent-harness` 包装器指向
-  `…/releases/046ac4345647ea6bc9c57bbf91ddb556a91694cd/…`；`apply.sh`/`rollback.sh` 会校验）。
-- Scout：无并行未提交周衡实例脏改。
+Scripts rely on these live facts. Each needs evidence (or is marked PENDING):
 
-## 1. doctor + bind（before）
+| # | Assumption | Evidence |
+|---|---|---|
+| A1 | Buzz Desktop does **not** auto-respawn an agent ACP after `kill` | Confirmed live 2026-09-24: apply safe-kill of 周衡 pid 81513; 60s wait timed out; Desktop never rewrote a new pid. See `~/lab/buzz/evidence/issue-38-live-reverify/RESULT.md` |
+| A2 | `buzz workflows update --yaml` takes **YAML content**, not a file path | Confirmed: path form → relay 400 `expected struct WorkflowDef`; content form (`$(cat ...)`) succeeds. Help text in `docs/issue-38/smoke/buzz-workflows-update-help.txt` |
+| A3 | Exact 周衡 pid file is `${PUB}__${TEAM}.json`; other `${PUB}__*.json` are stale and must abort | Hogan live rule (pid-file format) |
+| A4 | After Desktop **Start 周衡**, Desktop rewrites the same pid file with a **new** pid | **PENDING live evidence** (Hogan observing peng's manual restart) |
+| A5 | New ACP process exposes effort/idle in cmdline and/or env (`BUZZ_ACP_EFFORT_LEVEL`, `BUZZ_ACP_IDLE_TIMEOUT`) | **PENDING live evidence** — `verify-after-restart.sh` prefers this; falls back to A6 |
+| A6 | If effort/idle are not visible on the process, `managed-agents.json` 周衡 row values + process start time **after** `backup/config_written_at.txt` are sufficient | Fallback implemented; **PENDING live confirmation** of start-time behavior |
+| A7 | Timing: Desktop click → pid file update → ACP ready for text reply | **PENDING live evidence** |
+| A8 | Other 8 TEAM seats' pids stay unchanged across apply/rollback/restart of 周衡 only | Confirmed on 2026-09-24 rollback (other 8 unchanged) |
+| A9 | Thin wrappers stay on pin `046ac43` (`PIN_FULL`) for this change | Confirmed pre/post 2026-09-24 |
+
+## 0. Arrange peng **before** apply
+
+**REQUIRED:** peng must be present at the keyboard **before** you run `apply.sh`, ready to restart **ONLY 周衡** from Buzz Desktop immediately after apply finishes (not the whole app).
+
+Why: apply writes new config to disk but **does not kill**. Until 周衡 is restarted, the running ACP still has the **old** config while files have the **new** config (mixed window). Same rule for rollback.
+
+## 1. Preflight
 
 ```bash
 cd /Users/xupeng/dev/github/buzz-team
-python -m buzz_team --instance /Users/xupeng/lab/buzz doctor | tee /Users/xupeng/lab/buzz/evidence/issue-38/doctor-before.json
-python -m buzz_team --instance /Users/xupeng/lab/buzz bind | tee /Users/xupeng/lab/buzz/evidence/issue-38/bind-before.txt
+python -m buzz_team --instance /Users/xupeng/lab/buzz doctor   # expect 9/9
+# 周衡 ACP must be alive; apply aborts if pid file points at a dead process
 ```
 
-记录 9 席 `agent-pids`：`~/Library/Application Support/xyz.block.buzz.app/agents/agent-pids/*.json`。
-周衡精确文件：`51fb6cd8…__a558771623f298980db444a8406459dff1cbd20f264a72d00ffaca270c0fa16f.json`。
+- thin-bin still `046ac43`
+- Scout: no parallel dirty 周衡 edits
 
-## 2. apply（只动周衡 + workflow body）
+## 2. apply (config only — no kill)
 
 ```bash
 cd /Users/xupeng/dev/github/buzz-team
 ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/apply.sh
 ```
 
-脚本行为摘要：
+Script behavior:
 
-1. 校验 `ISSUE38_I_UNDERSTAND_LIVE=yes`、thin-pin `046ac43`、周衡 pid 文件唯一（`${PUB}__${TEAM}.json`）
-2. 断言 live workflow content == `docs/issue-38/before/workflow.yaml`（不一致则 abort）
-3. **然后**才创建 `evidence/issue-38/backup-<ts>/`（含 live `workflow-get.json` → `workflow-live-before.yaml`、`zhouheng-row-before.json`）— 仅快照，尚未改 live
-4. **先** `workflows update --yaml "$(cat after/workflow.yaml)"`（**YAML CONTENT**，不是路径；见 `buzz workflows update --help`），再 `get` 读回校验 == `after/workflow.yaml`。此步失败则 **不** patch 本地文件
-5. 仅 workflow 成功后：只 patch managed-agents 的周衡行；更新 pj/AGENTS/instructions-1
-6. safe-kill：pid 来自精确文件 + `kill -0` 存活 + 进程 env/cmdline 含周衡全量 pubkey，否则 abort
-7. 校验其他 8 席（`*__${TEAM}.json` 减去周衡）pid 不变
+1. Guard + thin-pin + exact 周衡 pid file; **require 周衡 alive** (else abort: restart first)
+2. Assert live workflow == `before/workflow.yaml`
+3. Create `evidence/issue-38/backup-<ts>/` (snapshots only)
+4. **First** `workflows update --yaml "$(cat after/workflow.yaml)"` + get read-back
+5. Only then: patch 周衡 managed-agents row + pj/AGENTS/instructions-1; read-back verify
+6. Record `config_written_at.txt`; verify other 8 pids unchanged
+7. **STOP.** Print backup path, rollback command, and ask peng to restart ONLY 周衡
 
-实网 workflow 路径烟测：`docs/issue-38/scripts/smoke-real-workflow.sh`（只建/改/删临时 cron，不碰真实 workflow）；产物在 `docs/issue-38/smoke/`。
+## 3. peng restarts ONLY 周衡 (Desktop)
 
-## 3. doctor + bind（after）
+Immediately after apply prints the banner: peng → Buzz Desktop → restart **only** 周衡 (do not relaunch the app).
 
-同 before，tee 到 `doctor-after.json` / `bind-after.txt`。对比 pid 表：仅周衡变。
-
-## 4. 行为抽检（Hogan）
-
-- S1：`buzz workflows trigger --workflow f5cc62c0-3756-419e-8a3f-8e694df2e93e`（周衡密钥）；≤120s 开窗帖
-- S2：周衡进程 env `BUZZ_ACP_EFFORT_LEVEL=medium`、`BUZZ_ACP_IDLE_TIMEOUT=180`
-- S3：DM「完成了吗」→ 三栏
-
-## 5. 回滚
+## 4. verify-after-restart
 
 ```bash
-cd /Users/xupeng/dev/github/buzz-team
-ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh /Users/xupeng/lab/buzz/evidence/issue-38/backup-<timestamp>
+docs/issue-38/scripts/verify-after-restart.sh \
+  /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts> \
+  --expect after
 ```
 
-回滚：先 `workflows get` 与 `workflow-live-before.yaml` 比较——相同则跳过 update；不同则 `--yaml "$(cat workflow-live-before.yaml)"`（CONTENT）并读回校验。然后只写回周衡 managed-agents 行 + pj/AGENTS/instructions-1；同样 safe-kill + 校验其他 8 席 pid。不用 staged `before/workflow.yaml`。
+Checks: doctor 9/9; 周衡 **new** alive pid containing full pubkey; effort=medium idle=180 max=7200 (process env/cmdline if visible, else managed-agents row + start time after `config_written_at`); other 8 pids unchanged vs backup.
 
-再次 doctor+bind；确认仅周衡 pid 再变一次。
+## 5. Hogan S1–S3
+
+Only after verify-after-restart passes.
+
+## 6. Rollback (if needed)
+
+```bash
+ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh \
+  /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts>
+```
+
+Restores workflow (compare/skip) + 周衡 row + prompt files; **no kill**. Tolerates dead/stale 周衡 pid. Then:
+
+**REQUIRED:** if 周衡 was restarted with new config, peng restarts 周衡 again from Desktop.
+
+```bash
+docs/issue-38/scripts/verify-after-restart.sh \
+  /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts> \
+  --expect before
+```
+
+Expect effort=low idle=1500.
+
+## Script smoke (no live apply)
+
+```bash
+docs/issue-38/scripts/smoke-test.sh
+```
