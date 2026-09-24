@@ -28,6 +28,10 @@ if [[ -z "$MODE" ]]; then
   echo "Quit-first flow: baseline (Desktop up) → Cmd+Q → --backup (Desktop down) → reopen → verify." >&2
   exit 2
 fi
+if [[ "$MODE" == "mutate" ]]; then
+  echo "BLOCKED: docs/issue-38/IDLE-DECISION.md does not adopt idle 1500→180. Refusing --backup." >&2
+  exit 2
+fi
 
 require_live_guard
 reject_live_test_hooks

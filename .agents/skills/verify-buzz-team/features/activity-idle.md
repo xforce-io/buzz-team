@@ -10,7 +10,7 @@
 
 ## S3 长静默
 
-`docs/issue-45/idle-decision.md` 写明不 apply 1500→180，且绝对 turn 上限另计。通过条件是：一次覆盖该上限的受控任务在 ACP turn 内跑完，无 idle 取消，原线程只有一条完成回帖。harness 在 15 秒后把命令送去后台、turn 先合上的，不算通过。
+现行决策在 `docs/issue-38/IDLE-DECISION.md`：不 apply 1500→180。周衡 idle 保持 1500 秒。`BUZZ_ACP_MAX_TURN_DURATION=7200` 是另一项绝对 turn 上限，不是这次静默的标尺。通过条件是：一次 `sleep 1490`（低于 1500、高于已观测的 1222）在 ACP turn 内跑完，无 idle 取消，原线程只有一条完成回帖。harness 在 15 秒后把命令送去后台、turn 先合上的，不算通过。
 
 ## 入口
 
