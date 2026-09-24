@@ -116,7 +116,7 @@ def parser():
     report = context_sub.add_parser("report"); report.add_argument("--task", required=True)
     restore = context_sub.add_parser("restore"); restore.add_argument("--task", required=True)
     consume = context_sub.add_parser("consume"); consume.add_argument("--task", required=True)
-    wake = sub.add_parser("wake", help="频道点名门控判定与会话游标（只读）")
+    wake = sub.add_parser("wake", help="频道点名解析、判定与提及确认")
     wake_sub = wake.add_subparsers(dest="wake_command", required=True)
     decide = wake_sub.add_parser("decide", help="判定本帖是否允许该身份进入执行向长跑")
     decide.add_argument("--identity", required=True)
@@ -125,6 +125,15 @@ def parser():
     decide.add_argument("--body", required=True)
     decide.add_argument("--surface", default="stream")
     decide.add_argument("--mentions", help="非空则 fail-closed：尚无结构化 mention")
+    resolveWake = wake_sub.add_parser("resolve", help="解析正文 @token 到身份与 pubkey")
+    resolveWake.add_argument("--body", required=True)
+    resolveWake.add_argument("--channel")
+    resolveWake.add_argument("--mentions", help="非空则 fail-closed：尚无结构化 mention")
+    ack = wake_sub.add_parser("ack", help="对已持有的 event id 发送 👀 反应")
+    ack.add_argument("--identity", required=True)
+    ack.add_argument("--post-ref", required=True)
+    ack.add_argument("--body")
+    ack.add_argument("--channel")
     cursor = wake_sub.add_parser("cursor", help="读取频道会话游标")
     cursor.add_argument("--identity", required=True)
     cursor.add_argument("--scope", required=True)
@@ -205,7 +214,7 @@ def main():
                     else:
                         result = ledger.handoff(goal=args.goal, next_step=args.next_step, workspace_ref=args.workspace_ref, approval_state=args.approval_state, constraints=args.constraint, facts=args.fact, pending=args.pending, tool_results=args.tool_result, open_tool_calls=args.open_tool_calls)
             elif args.command == "wake":
-                from .wake import ChannelCursorStore, decideWake, publicCursor
+                from .wake import ChannelCursorStore, decideWake, mentionAck, publicCursor, resolveMentions
                 if args.wake_command == "decide":
                     mentions = None
                     if args.mentions is not None:
@@ -213,7 +222,16 @@ def main():
                     result = decideWake(config, identity=args.identity, channel=args.channel,
                                         postRef=args.post_ref, body=args.body,
                                         surface=args.surface, mentions=mentions)
-                else:
+                elif args.wake_command == "resolve":
+                    mentions = None
+                    if args.mentions is not None:
+                        mentions = json.loads(args.mentions)
+                    result = resolveMentions(config, body=args.body, channel=args.channel,
+                                            mentions=mentions)
+                elif args.wake_command == "ack":
+                    result = mentionAck(config, identity=args.identity, postRef=args.post_ref,
+                                        body=args.body, channel=args.channel)
+                elif args.wake_command == "cursor":
                     agent = config.agent(args.identity)
                     community = args.community or agent["relay_url"]
                     store = ChannelCursorStore(config.instance)
@@ -225,6 +243,8 @@ def main():
                         result = publicCursor(None)
                     else:
                         result = publicCursor(record)
+                else:
+                    raise ValueError("unknown wake command")
             elif args.command == "launch":
                 from .wake import ChannelWakeSilent
                 task_id = args.task or os.environ.get("BUZZ_TASK_ID")

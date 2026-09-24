@@ -949,6 +949,13 @@ class ReplyTests(unittest.TestCase):
             with patch("subprocess.check_output", return_value=raw), self.assertRaises(ValueError):
                 buzz_cli.rewrite("/fake", args)
 
+    def test_reactions_and_unknown_commands_pass_through(self):
+        event = "c" * 64
+        reactions = ["reactions", "add", "--event", event, "--emoji", "👀"]
+        self.assertEqual(buzz_cli.rewrite("/fake", reactions), reactions)
+        unknown = ["whatever", "cmd", "--reply-to", "root"]
+        self.assertEqual(buzz_cli.rewrite("/fake", unknown), unknown)
+
 
 @unittest.skipUnless(sys.platform == "darwin", "macOS kernel integration; run on migration host")
 class KernelTests(Fixture):

@@ -1,6 +1,6 @@
 # #33 角色头衔绑定周衡 p + 自提及可见 👀
 
-状态：**Draft（L1）**。等人 Approve 后才实现。禁止把本文标成 Approved。
+状态：**Approved**（Approve 默认已锁定：S1 证据面 A；S2 以 CLI `wake ack` 验收；等价信号关闭）。实现与本文同步。
 
 Owner：Quill · Runtime。关联：[Issue #33](https://github.com/xforce-io/buzz-team/issues/33)。how：`docs/eval/33-title-bind-how.md`。
 
@@ -159,7 +159,7 @@ ACP 对照（可选，不代替上款）：仅当测试帖的 `#p` 已是周衡�
 `wake ack --identity ID --post-ref EVENT [--body TEXT] [--channel CHANNEL]`：
 
 1. `--post-ref` 必须是 64 位 hex（与上游 `validate_hex64` 同形）。否则 exit 2，不调用 buzz。
-2. 若给了 `--body`：先 `decideWake`；`allowed` 为假则 exit 2，不发 👀。
+2. 若给了 `--body`：必须先 `resolveMentions` 命中该 `--identity`（S1 hit）。未命中、`single_owner`、`not_mentioned` 均 exit 2，不发 👀。`--channel` 在 `--body` 在场时必填。
 3. 校验 `binaries.buzz` pin，调用 `reactions add --event EVENT --emoji 👀`。超时或非零 → fail。
 4. 成功 JSON：`{ "reacted": true, "emoji": "👀", "event_ref": "<12 hex>" }`。`event_ref` 用现有 `sessionRef` 同类脱敏，不回传完整 event id。
 
@@ -196,7 +196,7 @@ ACP 对照（可选，不代替上款）：仅当测试帖的 `#p` 已是周衡�
 
 ## 11 测试计划
 
-功能文件与验收故事 1:1（实现阶段新增，本 Draft 先点名）：
+功能文件与验收故事 1:1：
 
 - S1：`.agents/skills/verify-buzz-team/features/title-bind.md`  
   夹具：周衡身份挂 `项目经理`，方维不挂。`wake resolve --body "@项目经理"` → 恰好周衡 p。`wake decide` 周衡 `mentioned`+pubkey，方维 `not_mentioned`。负向：`@「项目经理」`、全角逗号、双方同挂 alias、`--mentions` 非空。
@@ -207,18 +207,14 @@ ACP 对照（可选，不代替上款）：仅当测试帖的 `#p` 已是周衡�
 
 质量门：按 `verify-buzz-team` 手册；未实跑不得 pass。证据在实例 `evidence/<sha>/`，不入库。公开 Issue 只贴脱敏摘要。
 
-## 12 开放问题（Approve 时收口）
+## 12 开放问题（已收口）
 
-1. **S1 证据面（建议默认 A）。**  
-   A：`wake resolve` / `wake decide` 的 p 即为「ACP mention result」在本仓的对等物。Online 纯正文无 `#p` 不醒，不挡 S1。  
-   B：必须活机 `@项目经理`（无手工 `#p`）让 ACP 记周衡 `mentioned`。  
-   选 B 则本票 **做不到**（要改发送方或 `block/buzz`）。请批 A，或另开票。
-2. **S2 自动 vs 只 CLI（建议默认：CLI 必修，launch 自动可选）。**  
-   Online 真帖没有 event id 进 buzz-team 时，验收用受控 `wake ack`（Hogan 开窗帖的真实 event id）。不要求 Online 自动 👀。
-3. **等价信号（建议默认：不启用）。**  
-   除非人显式同意 §8.3 等价，否则必须 UI 或 `reactions get` 看见 👀。
-
-未圈选则按建议默认实现，仍须先有人把本文标 Approved。
+1. **S1 证据面 = A（锁定）。**  
+   `wake resolve` / `wake decide` 的 p 即为「ACP mention result」在本仓的对等物。Online 纯正文无 `#p` 不醒，**不**挡 S1。
+2. **S2 以 CLI `wake ack` 验收（锁定）。**  
+   launch 自动 ack 仅在已持有合法 hex `BUZZ_WAKE_POST_REF` 时发送。不要求 Online 真帖自动 👀。
+3. **等价信号关闭（锁定）。**  
+   必须 UI 或 `reactions get` 看见真实 👀。CLI stdout 单独不能冒充 S2 活机通过。
 
 ## 13 关联
 

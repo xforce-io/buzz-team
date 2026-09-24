@@ -6,7 +6,8 @@ from unittest.mock import patch
 from buzz_team.config import Config, identity
 from buzz_team.wake import (
     ChannelCursorStore, applyFuse, channelWakeConfigured, decideWake,
-    extractAliasTokens, formatFuseReply, isExecutionOriented, sessionRef,
+    extractAliasTokens, formatFuseReply, isExecutionOriented, mentionAck,
+    resetMentionAckMemory, resolveMentions, sendMentionAck, sessionRef,
 )
 from test_runtime import Fixture
 
@@ -49,7 +50,9 @@ class MentionGateTests(Fixture):
         self.enableWake()
         mentioned = decideWake(self.config, identity=self.key, channel="channel-fixture",
                                postRef="post-1", body="please @agent-one look")
-        self.assertEqual(mentioned, {"allowed": True, "reason": "mentioned"})
+        self.assertEqual(mentioned, {"allowed": True, "reason": "mentioned",
+                                    "identity": self.key, "pubkey": "a" * 64,
+                                    "tokens": ["agent-one"]})
         other = decideWake(self.config, identity=self.other, channel="channel-fixture",
                            postRef="post-1", body="please @agent-one look")
         self.assertEqual(other, {"allowed": False, "reason": "not_mentioned"})
@@ -373,6 +376,237 @@ class WakeCLITests(Fixture):
         payload = json.loads(denied.stderr)
         self.assertFalse(payload["allowed"])
         self.assertEqual(payload["exec_tool_calls"], 0)
+
+
+class TitleBindTests(Fixture):
+    def enableTitle(self):
+        other = identity("ws://localhost:3000", "b" * 64)
+        self.other = other
+        self.config.data["agents"][self.key]["mention_aliases"] = ["项目经理"]
+        self.config.data["agents"][other] = dict(self.config.agent(self.key), pubkey="b" * 64,
+                                                mention_aliases=["agent-two"])
+        self.config.data["channel_wake"] = {
+            "default": {"require_mention": True, "allow_short_ack": False},
+            "channels": {},
+        }
+        self.save()
+
+    def cli(self, *args, **extra_env):
+        import os
+        import subprocess
+        import sys
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"), **extra_env)
+        env.pop("BUZZ_RELAY_URL", None)
+        return subprocess.run([sys.executable, "-m", "buzz_team.cli", "--instance", str(self.instance), *args],
+                              cwd=self.root, env=env, capture_output=True, text=True, timeout=20)
+
+    def test_title_token_extracts_only_undecorated_form(self):
+        self.assertEqual(extractAliasTokens("请 @项目经理 开窗"), ["项目经理"])
+        self.assertEqual(extractAliasTokens("请 @「项目经理」 开窗"), ["「项目经理」"])
+        self.assertEqual(extractAliasTokens("@项目经理，开窗"), ["项目经理，开窗"])
+
+    def test_resolve_and_decide_bind_title_to_one_pubkey(self):
+        self.enableTitle()
+        hits = resolveMentions(self.config, body="请 @项目经理 开窗")
+        self.assertEqual(hits, {"resolved": [{"token": "项目经理", "identity": self.key,
+                                             "pubkey": "a" * 64}]})
+        empty = resolveMentions(self.config, body="请 @「项目经理」 开窗")
+        self.assertEqual(empty, {"resolved": []})
+        comma = resolveMentions(self.config, body="@项目经理，开窗")
+        self.assertEqual(comma, {"resolved": []})
+        mentioned = decideWake(self.config, identity=self.key, channel="channel-fixture",
+                               postRef="post-title", body="请 @项目经理 开窗")
+        self.assertEqual(mentioned, {"allowed": True, "reason": "mentioned",
+                                    "identity": self.key, "pubkey": "a" * 64,
+                                    "tokens": ["项目经理"]})
+        other = decideWake(self.config, identity=self.other, channel="channel-fixture",
+                           postRef="post-title", body="请 @项目经理 开窗")
+        self.assertEqual(other, {"allowed": False, "reason": "not_mentioned"})
+        self.assertNotIn("pubkey", other)
+        owner = decideWake(self.config, identity=self.key, channel="channel-fixture",
+                           postRef="post-title", body="plain discussion")
+        self.assertEqual(owner, {"allowed": False, "reason": "not_mentioned"})
+        self.assertNotIn("pubkey", owner)
+
+    def test_title_alias_conflict_fails_closed(self):
+        other = identity("ws://localhost:3000", "b" * 64)
+        self.config.data["agents"][self.key]["mention_aliases"] = ["项目经理"]
+        self.config.data["agents"][other] = dict(self.config.agent(self.key), pubkey="b" * 64,
+                                                mention_aliases=["项目经理"])
+        with self.assertRaisesRegex(ValueError, "mention alias conflict"):
+            self.save()
+
+    def test_wake_resolve_cli_outputs_pubkey(self):
+        self.enableTitle()
+        hit = self.cli("wake", "resolve", "--body", "请 @项目经理 开窗")
+        self.assertEqual(hit.returncode, 0, hit.stderr)
+        body = json.loads(hit.stdout)
+        self.assertEqual(body["resolved"], [{"token": "项目经理", "identity": self.key,
+                                            "pubkey": "a" * 64}])
+        miss = self.cli("wake", "resolve", "--body", "plain talk")
+        self.assertEqual(miss.returncode, 0, miss.stderr)
+        self.assertEqual(json.loads(miss.stdout)["resolved"], [])
+        structured = self.cli("wake", "resolve", "--body", "@项目经理", "--mentions", '["项目经理"]')
+        self.assertEqual(structured.returncode, 2)
+        self.assertIn("structured mentions unsupported", structured.stderr)
+        decide = self.cli("wake", "decide", "--identity", self.key, "--channel", "channel-fixture",
+                          "--post-ref", "post-cli", "--body", "请 @项目经理 开窗")
+        self.assertEqual(decide.returncode, 0, decide.stderr)
+        payload = json.loads(decide.stdout)
+        self.assertEqual(payload["reason"], "mentioned")
+        self.assertEqual(payload["pubkey"], "a" * 64)
+        self.assertEqual(payload["tokens"], ["项目经理"])
+        other = self.cli("wake", "decide", "--identity", self.other, "--channel", "channel-fixture",
+                         "--post-ref", "post-cli", "--body", "请 @项目经理 开窗")
+        self.assertEqual(other.returncode, 0, other.stderr)
+        self.assertEqual(json.loads(other.stdout), {"allowed": False, "reason": "not_mentioned"})
+
+
+class MentionAckTests(Fixture):
+    EVENT = "c" * 64
+
+    def enableTitle(self):
+        other = identity("ws://localhost:3000", "b" * 64)
+        self.other = other
+        self.config.data["agents"][self.key]["mention_aliases"] = ["项目经理"]
+        self.config.data["agents"][other] = dict(self.config.agent(self.key), pubkey="b" * 64,
+                                                mention_aliases=["agent-two"])
+        self.config.data["channel_wake"] = {
+            "default": {"require_mention": True, "allow_short_ack": False},
+            "channels": {},
+        }
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+        resetMentionAckMemory()
+
+    def cli(self, *args, **extra_env):
+        import os
+        import subprocess
+        import sys
+        env = dict(os.environ, PYTHONPATH=str(Path(__file__).resolve().parents[1] / "src"), **extra_env)
+        env.pop("BUZZ_RELAY_URL", None)
+        return subprocess.run([sys.executable, "-m", "buzz_team.cli", "--instance", str(self.instance), *args],
+                              cwd=self.root, env=env, capture_output=True, text=True, timeout=20)
+
+    def installRecorder(self):
+        import sys
+        from buzz_team.instance import digest, write_json
+        recorder = self.root / "buzz-recorder"
+        log = self.root / "buzz-argv.json"
+        recorder.write_text(
+            f"#!{sys.executable}\n"
+            "import json, sys\n"
+            f"from pathlib import Path\n"
+            f"Path({str(log)!r}).write_text(json.dumps(sys.argv[1:], ensure_ascii=False))\n"
+        )
+        recorder.chmod(0o700)
+        self.config.data["binaries"]["buzz"] = str(recorder)
+        self.config.data["compatibility"]["sha256"]["buzz"] = digest(recorder)
+        write_json(self.config.path, self.config.data)
+        self.config = Config(self.instance)
+        return log
+
+    def test_ack_calls_reactions_add_on_resolve_hit(self):
+        self.enableTitle()
+        log = self.installRecorder()
+        hit = self.cli("wake", "ack", "--identity", self.key, "--post-ref", self.EVENT,
+                       "--channel", "channel-fixture", "--body", "请 @项目经理 开窗")
+        self.assertEqual(hit.returncode, 0, hit.stderr)
+        payload = json.loads(hit.stdout)
+        self.assertEqual(payload["reacted"], True)
+        self.assertEqual(payload["emoji"], "👀")
+        self.assertEqual(payload["event_ref"], sessionRef(self.EVENT))
+        self.assertNotIn(self.EVENT, hit.stdout)
+        self.assertEqual(json.loads(log.read_text()),
+                         ["reactions", "add", "--event", self.EVENT, "--emoji", "👀"])
+
+    def test_ack_refuses_miss_non_hex_and_pin_mismatch(self):
+        self.enableTitle()
+        log = self.installRecorder()
+        miss = self.cli("wake", "ack", "--identity", self.key, "--post-ref", self.EVENT,
+                        "--channel", "channel-fixture", "--body", "plain talk")
+        self.assertEqual(miss.returncode, 2)
+        self.assertIn("mention not resolved", miss.stderr)
+        self.assertFalse(log.exists())
+        other = self.cli("wake", "ack", "--identity", self.other, "--post-ref", self.EVENT,
+                         "--channel", "channel-fixture", "--body", "请 @项目经理 开窗")
+        self.assertEqual(other.returncode, 2)
+        self.assertIn("mention not resolved", other.stderr)
+        self.assertFalse(log.exists())
+        badRef = self.cli("wake", "ack", "--identity", self.key, "--post-ref", "post-not-hex",
+                          "--body", "请 @项目经理 开窗", "--channel", "channel-fixture")
+        self.assertEqual(badRef.returncode, 2)
+        self.assertIn("invalid event id", badRef.stderr)
+        self.assertFalse(log.exists())
+        missingChannel = self.cli("wake", "ack", "--identity", self.key, "--post-ref", self.EVENT,
+                                  "--body", "请 @项目经理 开窗")
+        self.assertEqual(missingChannel.returncode, 2)
+        self.assertIn("channel is required", missingChannel.stderr)
+        self.config.data["compatibility"]["sha256"]["buzz"] = "0" * 64
+        self.save()
+        pin = self.cli("wake", "ack", "--identity", self.key, "--post-ref", self.EVENT)
+        self.assertEqual(pin.returncode, 2)
+        self.assertIn("pinned baseline", pin.stderr)
+        self.assertFalse(log.exists())
+
+    def test_send_mention_ack_rejects_unknown_emoji(self):
+        self.enableTitle()
+        with self.assertRaisesRegex(ValueError, "unsupported mention ack emoji"):
+            sendMentionAck(self.config, self.EVENT, emoji="👍")
+
+    def test_auto_ack_on_allowed_hex_post_ref_and_failure_does_not_deny(self):
+        import io
+        import os
+        from buzz_team.runtime import Runtime
+        from buzz_team.wake import ChannelWakeSilent, enforceChannelWake
+        self.enableTitle()
+        resetMentionAckMemory()
+        runtime = Runtime(self.config, self.key)
+        env = {
+            "BUZZ_WAKE_SURFACE": "stream",
+            "BUZZ_WAKE_CHANNEL": "channel-fixture",
+            "BUZZ_WAKE_POST_REF": self.EVENT,
+            "BUZZ_WAKE_BODY": "请 @项目经理 开窗",
+        }
+        with patch("buzz_team.wake.sendMentionAck") as ack, patch.dict(os.environ, env):
+            extra = enforceChannelWake(runtime, "executor", None)
+            ack.assert_called_once_with(self.config, self.EVENT)
+            self.assertIsInstance(extra, dict)
+            enforceChannelWake(runtime, "executor", None)
+            self.assertEqual(ack.call_count, 1)
+        resetMentionAckMemory()
+        stderr = io.StringIO()
+        with patch("buzz_team.wake.sendMentionAck", side_effect=ValueError("buzz executable differs from pinned baseline")):
+            with patch("buzz_team.wake.sys.stderr", stderr), patch.dict(os.environ, env):
+                extra = enforceChannelWake(runtime, "executor", None)
+        self.assertIsInstance(extra, dict)
+        failure = json.loads(stderr.getvalue())
+        self.assertFalse(failure["reacted"])
+        self.assertIn("pinned baseline", failure["error"])
+        skipped = io.StringIO()
+        with patch("buzz_team.wake.sendMentionAck") as ack, patch("buzz_team.wake.sys.stderr", skipped):
+            with patch.dict(os.environ, {**env, "BUZZ_WAKE_POST_REF": "post-not-hex"}):
+                extra = enforceChannelWake(runtime, "executor", None)
+        ack.assert_not_called()
+        self.assertEqual(skipped.getvalue(), "")
+        self.assertIsInstance(extra, dict)
+        with patch("buzz_team.wake.sendMentionAck") as ack, patch.dict(os.environ, {
+            **env, "BUZZ_WAKE_BODY": "plain talk",
+        }):
+            with self.assertRaises(ChannelWakeSilent):
+                enforceChannelWake(runtime, "executor", None)
+        ack.assert_not_called()
+
+    def test_mention_ack_without_body_still_requires_hex(self):
+        self.enableTitle()
+        with patch("buzz_team.wake.subprocess.run") as run:
+            payload = mentionAck(self.config, identity=self.key, postRef=self.EVENT)
+        run.assert_called_once()
+        args = run.call_args[0][0]
+        self.assertEqual(args[1:], ["reactions", "add", "--event", self.EVENT, "--emoji", "👀"])
+        self.assertEqual(payload["event_ref"], sessionRef(self.EVENT))
+        with self.assertRaisesRegex(ValueError, "invalid event id"):
+            mentionAck(self.config, identity=self.key, postRef="POST" + "c" * 60)
 
 
 if __name__ == "__main__":

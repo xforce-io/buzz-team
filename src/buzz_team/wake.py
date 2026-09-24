@@ -1,4 +1,4 @@
-"""Channel mention-gate, session cursor, and fuse reply. No credentials or prompts."""
+"""Channel mention-gate, session cursor, mention ack, and fuse reply. No credentials or prompts."""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 from typing import Iterator
 import uuid
@@ -18,6 +19,7 @@ from .config import Config
 
 
 _IDENTITY = re.compile(r"[0-9a-f]{16}/[0-9a-f]{64}\Z")
+_EVENT_HEX = re.compile(r"[0-9a-f]{64}\Z")
 _HUMAN = frozenset({"freeman", "human"})
 _FUSE_REASONS = frozenset({"turns", "usd", "input_tokens", "budget_exceeded"})
 _WAKE_STATES = frozenset({"active", "fused", "retired"})
@@ -25,6 +27,8 @@ _SHORT_READ_TOOLS = frozenset({"read_post", "read_thread_meta"})
 _START_BOUNDARY = frozenset("([{<,;:!?\"'`")
 _END_BOUNDARY = frozenset(")]}>.,;:!?\"'`")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9._:-]{0,199}\Z")
+_MENTION_ACK_EMOJI = "👀"
+_ackedEventKeys: set[tuple[str, str]] = set()
 
 
 def sessionRef(value: str) -> str:
@@ -67,6 +71,20 @@ def _postRef(value: object) -> str:
     if not isinstance(value, str) or not value or len(value) > 200 or "\0" in value:
         raise ValueError("invalid post ref")
     return value
+
+
+def isEventId(value: object) -> bool:
+    return isinstance(value, str) and bool(_EVENT_HEX.fullmatch(value))
+
+
+def eventId(value: object) -> str:
+    if not isEventId(value):
+        raise ValueError("invalid event id")
+    return value
+
+
+def resetMentionAckMemory() -> None:
+    _ackedEventKeys.clear()
 
 
 def _identity(value: object) -> str:
@@ -232,6 +250,42 @@ def channelPolicy(config: Config, channel: str) -> dict:
     return result
 
 
+def _aliasHits(config: Config, body: str) -> list[tuple[str, str]]:
+    aliases = aliasIndex(config)
+    hits: list[tuple[str, str]] = []
+    seen: set[tuple[str, str]] = set()
+    for token in extractAliasTokens(body):
+        if token.lower() in _HUMAN:
+            continue
+        target = aliases.get(token)
+        if target is None:
+            continue
+        item = (token, target)
+        if item in seen:
+            continue
+        seen.add(item)
+        hits.append(item)
+    return hits
+
+
+def resolveMentions(config: Config, *, body: str, channel: str | None = None,
+                    mentions: object = None) -> dict:
+    if channel is not None:
+        _channelId(channel)
+    if mentions not in (None, [], {}):
+        raise ValueError("structured mentions unsupported")
+    if not isinstance(body, str) or "\0" in body:
+        raise ValueError("invalid post body")
+    resolved = []
+    for token, identityKey in _aliasHits(config, body):
+        resolved.append({
+            "token": token,
+            "identity": identityKey,
+            "pubkey": config.agent(identityKey)["pubkey"],
+        })
+    return {"resolved": resolved}
+
+
 def decideWake(config: Config, *, identity: str, channel: str, postRef: str,
                body: str, surface: str = "stream", mentions: object = None) -> dict:
     identity = _identity(identity)
@@ -247,18 +301,13 @@ def decideWake(config: Config, *, identity: str, channel: str, postRef: str,
     if not isinstance(body, str) or "\0" in body:
         raise ValueError("invalid post body")
     policy = channelPolicy(config, channel)
-    aliases = aliasIndex(config)
-    agentMentions: set[str] = set()
-    for token in extractAliasTokens(body):
-        if token.lower() in _HUMAN:
-            continue
-        if token not in aliases:
-            continue
-        agentMentions.add(aliases[token])
-    if identity in agentMentions:
-        return {"allowed": True, "reason": "mentioned"}
+    hits = _aliasHits(config, body)
+    tokens = [token for token, target in hits if target == identity]
+    if tokens:
+        return {"allowed": True, "reason": "mentioned", "identity": identity,
+                "pubkey": config.agent(identity)["pubkey"], "tokens": tokens}
     owner = policy.get("single_owner_identity")
-    if not agentMentions and owner == identity:
+    if not hits and owner == identity:
         return {"allowed": True, "reason": "single_owner"}
     return {"allowed": False, "reason": "not_mentioned"}
 
@@ -285,6 +334,38 @@ def sendFuseReply(config: Config, channel: str, postRef: str, text: str) -> None
     if digest(Path(real)) != expected:
         raise ValueError("buzz executable differs from pinned baseline")
     subprocess.run([real, *forwarded], check=True, timeout=20, capture_output=True, text=True)
+
+
+def sendMentionAck(config: Config, postRef: str, *, emoji: str = _MENTION_ACK_EMOJI) -> dict:
+    eventRef = eventId(postRef)
+    if emoji != _MENTION_ACK_EMOJI:
+        raise ValueError("unsupported mention ack emoji")
+    from .buzz_cli import rewrite
+    from .instance import digest
+    real = config.data["binaries"]["buzz"]
+    expected = config.data["compatibility"]["sha256"].get("buzz")
+    if digest(Path(real)) != expected:
+        raise ValueError("buzz executable differs from pinned baseline")
+    args = ["reactions", "add", "--event", eventRef, "--emoji", emoji]
+    forwarded = rewrite(real, args)
+    if digest(Path(real)) != expected:
+        raise ValueError("buzz executable differs from pinned baseline")
+    subprocess.run([real, *forwarded], check=True, timeout=20, capture_output=True, text=True)
+    return {"reacted": True, "emoji": emoji, "event_ref": sessionRef(eventRef)}
+
+
+def mentionAck(config: Config, *, identity: str, postRef: str, body: str | None = None,
+               channel: str | None = None) -> dict:
+    identity = _identity(identity)
+    config.agent(identity)
+    eventRef = eventId(postRef)
+    if body is not None:
+        if channel is None:
+            raise ValueError("channel is required when body is present")
+        hits = resolveMentions(config, body=body, channel=channel)
+        if not any(item["identity"] == identity for item in hits["resolved"]):
+            raise ValueError("mention not resolved; refusing mention ack")
+    return sendMentionAck(config, eventRef)
 
 
 class ChannelCursorStore:
@@ -500,8 +581,25 @@ def enforceChannelWake(runtime, mode: str, taskId: str | None) -> dict[str, str]
                           body=body, surface=surface, mentions=mentions)
     if not decision["allowed"]:
         raise ChannelWakeSilent({**decision, "exec_tool_calls": 0})
+    _autoMentionAck(config, identity, postRef)
     _attachCursorEnv(store, identity, extra, scope=os.environ.get("BUZZ_WAKE_SCOPE") or channel)
     return extra
+
+
+def _autoMentionAck(config: Config, identity: str, postRef: str) -> None:
+    if not isEventId(postRef):
+        return
+    key = (identity, postRef)
+    if key in _ackedEventKeys:
+        return
+    _ackedEventKeys.add(key)
+    try:
+        sendMentionAck(config, postRef)
+    except Exception as exc:
+        error = str(exc) if isinstance(exc, ValueError) else (
+            type(exc).__name__ + ": mention ack failed")
+        print(json.dumps({"ok": False, "reacted": False, "error": error},
+                         ensure_ascii=False), file=sys.stderr)
 
 
 def _refuseRetired(store: ChannelCursorStore, identity: str) -> None:
