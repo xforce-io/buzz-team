@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -205,8 +206,10 @@ class HealthTaxonomyTests(Fixture):
         self.assertIn("checks", payload)
 
 
-    def _seed_agent_pids(self, pid: int = 424242):
+    def _seed_agent_pids(self, pid: int | None = None, *, suffix: str = "test"):
         from buzz_team import desktop
+        if pid is None:
+            pid = os.getpid()
         ma = Path(self.config.data["desktop"]["managed_agents"])
         rows = json.loads(ma.read_text())
         selected = desktop.selected_rows(self.config, rows)
@@ -214,21 +217,38 @@ class HealthTaxonomyTests(Fixture):
         pids_dir.mkdir(parents=True, exist_ok=True)
         for row in selected.values():
             pubkey = row["pubkey"]
-            (pids_dir / f"{pubkey}__test.json").write_text(json.dumps({
+            (pids_dir / f"{pubkey}__{suffix}.json").write_text(json.dumps({
                 "pid": pid, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
             row["runtime_pid"] = None
         ma.write_text(json.dumps(rows))
         return selected
 
+    def _reapedPid(self) -> int:
+        child = subprocess.Popen(
+            [sys.executable, "-c", "pass"],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        child.wait()
+        return child.pid
+
+    def _deadPidChecks(self, checks):
+        return [
+            c for c in checks
+            if c["id"].startswith("desktop_agent_pid:") and c["status"] == "fail"
+        ]
+
     def test_acp_process_proxy_mismatch_fails_contrast(self):
         """Live ACP process proxy differing from CLI is fail — not auth."""
         from buzz_team import health as health_mod
 
+        livePid = os.getpid()
+
         def fake_reader(pid):
-            self.assertEqual(pid, 424242)
+            self.assertEqual(pid, livePid)
             return {"HTTP_PROXY": "http://127.0.0.1:6478", "HTTPS_PROXY": "http://127.0.0.1:6478"}
 
-        self._seed_agent_pids(424242)
+        self._seed_agent_pids(livePid)
         cli_env = {"HTTP_PROXY": "http://127.0.0.1:9567", "HTTPS_PROXY": "http://127.0.0.1:9567"}
         contrast, checks = health_mod.contrast_proxies(
             self.config, process_env=cli_env, probe=False, process_reader=fake_reader)
@@ -242,11 +262,13 @@ class HealthTaxonomyTests(Fixture):
     def test_acp_process_proxy_aligns_with_cli(self):
         from buzz_team import health as health_mod
 
+        livePid = os.getpid()
+
         def fake_reader(pid):
-            self.assertEqual(pid, 424242)
+            self.assertEqual(pid, livePid)
             return {"HTTP_PROXY": "http://127.0.0.1:9567"}
 
-        self._seed_agent_pids(424242)
+        self._seed_agent_pids(livePid)
         cli_env = {"HTTP_PROXY": "http://127.0.0.1:9567"}
         contrast, checks = health_mod.contrast_proxies(
             self.config, process_env=cli_env, probe=False, process_reader=fake_reader)
@@ -256,7 +278,7 @@ class HealthTaxonomyTests(Fixture):
 
     def test_agent_pids_file_supplies_runtime_pid(self):
         from buzz_team import health as health_mod
-        import tempfile
+        livePid = os.getpid()
         ma = Path(self.config.data["desktop"]["managed_agents"])
         pids_dir = ma.parent / "agent-pids"
         pids_dir.mkdir(parents=True, exist_ok=True)
@@ -273,7 +295,7 @@ class HealthTaxonomyTests(Fixture):
             seen["pid"] = pid
             return {"HTTP_PROXY": "http://127.0.0.1:9567"}
         (pids_dir / f"{pubkey}__testdesktop.json").write_text(json.dumps({
-            "pid": 424242, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
+            "pid": livePid, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
         # clear runtime_pid on disk copy? selected_rows reads live file — patch row via rewriting managed agents temp is hard;
         # instead call _read_desktop_proxy_maps with process_reader after ensuring runtime_pid null in file
         for r in rows:
@@ -281,6 +303,126 @@ class HealthTaxonomyTests(Fixture):
                 r["runtime_pid"] = None
         ma.write_text(json.dumps(rows))
         maps, checks = health_mod._read_desktop_proxy_maps(self.config, process_reader=fake_reader)
-        self.assertEqual(seen.get("pid"), 424242)
+        self.assertEqual(seen.get("pid"), livePid)
         self.assertTrue(any(c["id"] == "desktop_agent_pids" and c["status"] == "pass" for c in checks))
+        self.assertFalse(self._deadPidChecks(checks))
         self.assertTrue(any(m.get("process_proxy_keys") for m in maps))
+
+    def test_pid_is_alive_uses_kill_zero(self):
+        from buzz_team import health as health_mod
+        self.assertTrue(health_mod._pidIsAlive(os.getpid()))
+        self.assertFalse(health_mod._pidIsAlive(self._reapedPid()))
+        self.assertFalse(health_mod._pidIsAlive(0))
+        self.assertFalse(health_mod._pidIsAlive(-1))
+        with patch.object(health_mod.os, "kill", side_effect=PermissionError):
+            self.assertTrue(health_mod._pidIsAlive(1))
+        with patch.object(health_mod.os, "kill", side_effect=ProcessLookupError):
+            self.assertFalse(health_mod._pidIsAlive(1))
+
+    def test_dead_agent_pid_fails_doctor(self):
+        """S1: dead pid file → fail mentioning identity/pid; not silent ok."""
+        from buzz_team import health as health_mod
+        deadPid = self._reapedPid()
+        selected = self._seed_agent_pids(deadPid, suffix="283dleftover")
+        key = next(iter(selected))
+        maps, checks = health_mod._read_desktop_proxy_maps(
+            self.config, process_reader=lambda pid: {})
+        deadChecks = self._deadPidChecks(checks)
+        self.assertEqual(len(deadChecks), 1)
+        self.assertIn(str(deadPid), deadChecks[0]["id"])
+        self.assertIn(key[:20], deadChecks[0]["id"])
+        self.assertIn(str(deadPid), deadChecks[0]["summary"])
+        self.assertIn(key[:20], deadChecks[0]["summary"])
+        self.assertIn("283dleftover", deadChecks[0]["summary"])
+        self.assertFalse(any(
+            c["id"] == "desktop_agent_pids" and c["status"] == "pass" for c in checks))
+        isolated = health_mod.summarize(checks)
+        self.assertFalse(isolated["ok"])
+        self.assertTrue(any(str(deadPid) in error for error in isolated["errors"]))
+        result = health_mod.run(self.config, depth="doctor")
+        self.assertFalse(result["ok"])
+        self.assertTrue(any(
+            c["status"] == "fail" and str(deadPid) in c["summary"] and key[:20] in c["summary"]
+            for c in result["checks"]))
+        self.assertTrue(any(str(deadPid) in error for error in result["errors"]))
+
+    def test_live_agent_pid_still_passes(self):
+        """S2: live pid file → desktop_agent_pids pass for that check."""
+        from buzz_team import health as health_mod
+        livePid = os.getpid()
+        selected = self._seed_agent_pids(livePid)
+        key = next(iter(selected))
+
+        def fake_reader(pid):
+            self.assertEqual(pid, livePid)
+            return {"HTTP_PROXY": "http://127.0.0.1:9567"}
+
+        maps, checks = health_mod._read_desktop_proxy_maps(
+            self.config, process_reader=fake_reader)
+        self.assertTrue(any(
+            c["id"] == "desktop_agent_pids" and c["status"] == "pass" for c in checks))
+        self.assertEqual(self._deadPidChecks(checks), [])
+        self.assertEqual(maps[0]["runtime_pid"], livePid)
+        isolated = health_mod.summarize([
+            c for c in checks if c["id"].startswith("desktop_agent_pid")
+        ])
+        self.assertTrue(isolated["ok"])
+        result = health_mod.run(self.config, depth="doctor")
+        self.assertTrue(any(
+            c["id"] == "desktop_agent_pids" and c["status"] == "pass" for c in result["checks"]))
+        self.assertFalse(any(
+            c["status"] == "fail" and "dead process" in c["summary"] for c in result["checks"]))
+        self.assertIn(key[:20], json.dumps(result["proxy_contrast"]))
+
+    def test_mixed_live_and_leftover_dead_agent_pids(self):
+        """Live file still supplies pid; leftover dead __283d* file still fails."""
+        from buzz_team import health as health_mod
+        livePid = os.getpid()
+        deadPid = self._reapedPid()
+        selected = self._seed_agent_pids(livePid, suffix="a558live")
+        key, row = next(iter(selected.items()))
+        pubkey = row["pubkey"]
+        ma = Path(self.config.data["desktop"]["managed_agents"])
+        leftover = ma.parent / "agent-pids" / f"{pubkey}__283dleftover.json"
+        leftover.write_text(json.dumps({
+            "pid": deadPid, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
+        seen = []
+
+        def fake_reader(pid):
+            seen.append(pid)
+            return {"HTTP_PROXY": "http://127.0.0.1:9567"}
+
+        maps, checks = health_mod._read_desktop_proxy_maps(
+            self.config, process_reader=fake_reader)
+        self.assertEqual(seen, [livePid])
+        self.assertTrue(any(
+            c["id"] == "desktop_agent_pids" and c["status"] == "pass" for c in checks))
+        deadChecks = self._deadPidChecks(checks)
+        self.assertEqual(len(deadChecks), 1)
+        self.assertIn(str(deadPid), deadChecks[0]["summary"])
+        self.assertIn("283dleftover", deadChecks[0]["summary"])
+        self.assertIn(key[:20], deadChecks[0]["summary"])
+        self.assertFalse(health_mod.summarize(checks)["ok"])
+
+    def test_load_agent_pid_index_fake_liveness_fixtures(self):
+        """Fake probe: pid>0 still dead unless the liveness hook says alive."""
+        from buzz_team import health as health_mod
+        livePid, deadPid = 7, 9
+        selected = self._seed_agent_pids(livePid, suffix="alive")
+        pubkey = next(iter(selected.values()))["pubkey"]
+        ma = Path(self.config.data["desktop"]["managed_agents"])
+        (ma.parent / "agent-pids" / f"{pubkey}__283ddead.json").write_text(json.dumps({
+            "pid": deadPid, "key": pubkey, "desktopInstanceId": "t", "startedAt": "x"}))
+
+        def fakeAlive(pid: int) -> bool:
+            return pid == livePid
+
+        live, dead = health_mod._load_agent_pid_index(ma, pidIsAlive=fakeAlive)
+        self.assertEqual(live, {pubkey: livePid})
+        self.assertEqual(len(dead), 1)
+        self.assertEqual(dead[0]["pid"], deadPid)
+        self.assertIn("283ddead", dead[0]["file"])
+        liveOnly, deadOnly = health_mod._load_agent_pid_index(
+            ma, pidIsAlive=lambda pid: False)
+        self.assertEqual(liveOnly, {})
+        self.assertEqual({entry["pid"] for entry in deadOnly}, {livePid, deadPid})

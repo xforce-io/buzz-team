@@ -81,3 +81,5 @@ buzz-team --instance /absolute/instance diagnose
 ## Desktop 代理对照
 
 `diagnose` 必须同时看 managed-agents **binding** `env_vars` 与 live ACP **进程**环境（`runtime_pid`）；仅 binding 键不能覆盖 Desktop 烘焙死代理事故。死代理不得只报成 auth 缺失。
+
+`desktop_agent_pids` 只计入 `os.kill(pid, 0)` 仍存活的 ACP pid。agent-pid 文件指向已退出进程时，对应 `desktop_agent_pid:*` 为 **fail**（顶层 `ok` 为 false），不得仅凭 `pid>0` 报 live / 假绿。活 pid 仍通过该检查。
