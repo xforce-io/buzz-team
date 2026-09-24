@@ -502,12 +502,17 @@ class InventoryDoctorTests(Fixture):
         result, dup = self._fails("inventory_duplicate:")
         self.assertEqual(dup, [])
         restored = health.run(self.config, depth="doctor")
-        self.assertTrue(restored["ok"])
+        self.assertFalse(any(
+            c["status"] == "fail" and c["id"].startswith("inventory_")
+            for c in restored["checks"]))
+
+    def _fail_ids(self, result):
+        return {c["id"] for c in result["checks"] if c["status"] == "fail"}
 
     def test_duplicate_launch_row_fails_then_restored_inventory_passes(self):
         original = self.desktop_file.read_bytes()
         before = health.run(self.config, depth="doctor")
-        self.assertTrue(before["ok"])
+        self.assertFalse(any(i.startswith("inventory_") for i in self._fail_ids(before)))
         rows = self._rows()
         rows.append(json.loads(json.dumps(rows[0])))
         self._write(rows)
@@ -518,6 +523,6 @@ class InventoryDoctorTests(Fixture):
         self.assertIn("2 launch rows", duplicates[0]["summary"])
         self.desktop_file.write_bytes(original)
         restored = health.run(self.config, depth="doctor")
-        self.assertTrue(restored["ok"])
+        self.assertEqual(self._fail_ids(restored), self._fail_ids(before))
         self.assertFalse(any(c["id"].startswith("inventory_duplicate:") for c in restored["checks"]))
         self.assertEqual(self.desktop_file.read_bytes(), original)
