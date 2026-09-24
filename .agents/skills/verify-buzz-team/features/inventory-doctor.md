@@ -4,7 +4,7 @@
 
 ## S1 废弃入口
 
-确认指向 `grok-acp-wrapper` 且公钥为空的启动行使 `inventory_empty_pubkey:*` 为 fail。从库存移除这些行是运维动作；doctor 只判定，不改文件。移除并经 Desktop 回写后，每个本机实例身份应只剩一行。
+公钥为空且带启动命令的行使 `inventory_empty_pubkey:*` 为 fail，包括指向 `grok-acp-wrapper` 的行。从库存移除这些行是运维动作；doctor 只判定，不改文件。本票未授权删除，S1 保持 fail。
 
 ## S2 四类失败与实例外行
 
@@ -19,7 +19,7 @@
 
 ## S3 重复行往返
 
-在隔离库存副本追加一条相同公钥与 relay 的启动行后，`health.run(..., depth="doctor")` 的 `ok` 为 false。写回原字节后 `ok` 为 true，且文件与追加前一致。
+在隔离库存副本追加一条相同公钥与 relay 的启动行后，`health.run(..., depth="doctor")` 的 `ok` 为 false，且出现一条 `inventory_duplicate:*`。写回原字节后，失败 id 集合与追加前相同，不再有 `inventory_duplicate:*`，文件字节与追加前一致。这里不要求整份 doctor 在每个平台都是 `ok=true`。
 
 ## 入口
 
