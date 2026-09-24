@@ -40,7 +40,9 @@ def channel_id(args):
 
 def rewrite(real: str, args: list[str]) -> list[str]:
     offset = command_offset(args)
-    if args[offset:offset + 2] != ["messages", "send"] or not any(
+    verb = args[offset:offset + 2]
+    # reactions add and unknown verbs pass through; only rewrite messages send.
+    if verb != ["messages", "send"] or not any(
             a == "--reply-to" or a.startswith("--reply-to=") for a in args):
         return args
     channel = channel_id(args)
