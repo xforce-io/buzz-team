@@ -8,7 +8,7 @@
 
 ## 2 名词解释
 
-[兼容清单](../glossary.md) 记下这次的目标 SHA 和 relay digest。[已知降级](../glossary.md) 与 #45 同一份 Activity 表。
+[兼容清单](../glossary.md) 的 `observed_baseline` 仍是正在跑的本地 fork。未应用的目标写在同一文件的 `upstream_pin`。[已知降级](../glossary.md) 只用于已经写明边界的项；未测不占用这个标记。
 
 ## 3 目标与非目标
 

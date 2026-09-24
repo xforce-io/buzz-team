@@ -1,6 +1,6 @@
 # 上游版本记录（未切换）
 
-本次 pin 的目标，不是当前正在跑的进程。
+本次 pin 的目标，不是当前正在跑的进程。机器可读字段是 `src/buzz_team/compatibility.json` 的 `upstream_pin`。`observed_baseline.harness_sha256` 仍是本地 fork，doctor 继续按它对照现网二进制。
 
 | 项 | 记录 |
 |---|---|

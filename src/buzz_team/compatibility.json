@@ -13,6 +13,14 @@
     "harness_source_note": "二进制来自本机定制构建；源码对应关系待验证，不用当前检出 SHA 冒充构建来源。",
     "client_verified": false
   },
+  "upstream_pin": {
+    "status": "recorded-not-applied",
+    "buzz_acp_sha256": "7c52822c5e450d99b421d4f9616ad573453b676cedc1a893720faeb2e7455a3c",
+    "relay_image": "ghcr.io/block/buzz:0.2.1",
+    "relay_index_digest": "sha256:4e31b7c7abb7d00b6f513dc559e58d2b980416f1dc400aa01bcf762cf2989cfc",
+    "git_tag": "relay-v0.2.1",
+    "note": "observed_baseline.harness_sha256 remains the running local fork until cutover. This pin is not applied."
+  },
   "candidate_verification": {
     "status": "requires-external-exact-sha-evidence",
     "record": "<instance>/evidence/<candidate_sha>/verification.json",

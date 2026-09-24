@@ -6,11 +6,11 @@
 
 ## S2 目标版本
 
-`docs/runbooks/44-upstream-pin.md` 写下 Desktop `buzz-acp` SHA、`ghcr.io/block/buzz:0.2.1` 和 index digest。未授权时不切换正在运行的 9 个进程和本地 relay。
+`compatibility.json` 的 `upstream_pin` 与 `docs/runbooks/44-upstream-pin.md` 写下 Desktop `buzz-acp` SHA、`ghcr.io/block/buzz:0.2.1` 和 index digest。`observed_baseline.harness_sha256` 仍是正在跑的本地 fork。未切换时 S2 为 fail。
 
 ## S3 收发与规则
 
-`AGENTS.md` 写明开源组件不 fork，规避只在配置层。`docs/activity-catalog.md` 给频道收发和 Activity 项标已规避或已知降级。typing 不是通过。
+`AGENTS.md` 只写「开源组件不 fork」。`docs/activity-catalog.md` 在切换前把频道收发和 Activity 面板标为未执行。S3 在 S2 完成前为 fail。typing 不是通过。
 
 ## 入口
 
