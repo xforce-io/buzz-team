@@ -1,0 +1,154 @@
+# #42 活激活清单（Hogan）
+
+**何时：** PR #43 合入 `main` **之后**；且 **仅当 PR #41 已合入 main**（提供 `docs/issue-38/scripts/common.sh` + `_seat_identity_scan.py`）并完成其活窗之后。#41 未合入 → **停**，不要手搓席位扫描。  
+**基线：** 2026-09-24 **16:13** proxy fix 全量重开已改写全部 **9** 席 pid；旧 baseline **全部作废**。激活前必须按 §0.1 用 **#41 `common.sh` 函数**（**不是** `apply.sh --baseline-only`）采新鲜 9-pid 基线。  
+**谁：** Hogan 操作；peng 配合退出/重开 Desktop。`auto_restart_on_config_change=false`。  
+**本清单不改** upstream / pin / workflow；managed 手工改；无改 `managed-agents.json` 的脚本。  
+**证据：** `~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/`；proxy fix `~/lab/buzz/evidence/proxy-fix-9567-20260924/`（16:13:53 重开）。
+
+## 0 前置硬门
+
+- [ ] **#41 已合入 main**（否则停）。
+- [ ] #41 活窗已结束；本窗不与 #38/#41 踩踏。
+- [ ] 本票（#43）已合入；记下 `main` SHA。
+- [ ] **事前声明**（禁止事后推断）：
+
+  ```text
+  restart-mode: app
+  ```
+
+  本流程会 **退出整个 Desktop**，故激活默认 **`app`**。`single` 仅用于**不** Cmd+Q / 不退整 app 的试验窗，不适用于本清单主路径。  
+  声明与实际不符 → **FAIL → 停 → 回滚**（§5）。
+
+- [ ] **colima `:3000` 在听**（A14）：退出前后均确认 LISTEN（样例：Desktop quit 不杀该 relay）。
+- [ ] 备份：`managed-agents.json.bak-42-<date>`；lab `team/prompts/{pm,qa,light-keel}.md` 旁路拷贝。
+- [ ] 只读核对合入后仓内三 prompt。
+
+### 0.1 新鲜 baseline（#38 无关；禁止 apply.sh）
+
+**禁止**运行 `apply.sh`、`assert_live_workflow_matches_before`、或任何周衡-row / idle=1500 / effort=low 检查——那些是 **#38 专用**；#43 激活时 #38 已 live，`apply.sh` 会 ABORT。
+
+在 **已合入 main 的 buzz-team 检出**内（**必须 source 仓库内原件**；扫描脚本路径相对 `common.sh` 所在目录解析；**禁止**拷贝 `common.sh` 到别处再 source）：
+
+```bash
+# <repo> = 含已合入 #41 的 main 检出根
+source <repo>/docs/issue-38/scripts/common.sh
+# #43 不设 ISSUE38_I_UNDERSTAND_LIVE=yes，#41 的 test-hook 守卫不会触发；
+# 残留的 ISSUE38_PS_FIXTURE 会让扫描读到假进程表。
+unset ISSUE38_PS_FIXTURE
+BASE=/Users/xupeng/lab/buzz/evidence/issue-42/baseline-$(date +%Y%m%d-%H%M%S)
+mkdir -p "$BASE"
+```
+
+**Desktop 仍在线、doctor 9/9 时：**
+
+```bash
+run_seat_scan_positive_control "$BASE" || { echo "STOP: run_seat_scan_positive_control failed"; exit 1; }
+snapshot_all_team_pids "$BASE/all-pids-before.tsv"
+# snapshot_all_team_pids 只 WARN 席位数；此处硬门：
+n=$(wc -l < "$BASE/all-pids-before.tsv" | tr -d ' ')
+[[ "$n" -eq 9 ]] || { echo "STOP: all-pids-before.tsv has $n lines, want 9"; exit 1; }
+record_baseline_at "$BASE"
+```
+
+记下墙钟。16:13 之后的旧 baseline 勿用。
+
+## 1 退出 → 确认已停 → 再编辑
+
+**危险（A11）：** Desktop relaunch 可能把**内存态**写回 `managed-agents.json`。Desktop **运行中**改苏晴/沈予 `system_prompt` 可能被覆盖。
+
+### 1.1 退出 Desktop（永不 kill）
+
+```bash
+osascript -e 'quit app "Buzz"'
+# 或 GUI Cmd+Q。禁止 kill / kill -9 / 强杀。
+```
+
+### 1.2 停席确认（同一 `source` 会话 / 同一 `$BASE`）
+
+```bash
+require_baseline_fresh "$BASE"          # 默认 1800s；过期 → 停，重做 §0.1
+require_desktop_not_running "$BASE"     # 校验 $BASE 内 PASS 的 positive-control 记录，再做基于身份的停席扫描
+```
+
+（`require_desktop_not_running` 为 #41 `common.sh` **确切函数名**。）
+
+扫描规则（#41 已实现，此处不重写）：仅当进程是 `buzz_team.cli` wrapper 或 `buzz-acp`，且环境带完整 token  
+`BUZZ_RUNTIME_ID=a558771623f29898/<seat pubkey>` 才算命中；排除扫描脚本自身。  
+Positive control（§0.1）：9 席各 ≥1 命中；扫描报错或 `ps` 空 → ABORT。  
+**禁止：** `kill -0` 旧 pid、`pgrep -P`、机器级裸 `buzz-acp` 扫描。
+
+仅当以上通过后，才进入 §1.3 编辑。
+
+### 1.3 编辑（仅 Desktop 已停）
+
+- lab ← 合入后 `team/prompts/{light-keel,pm,qa}.md`
+- managed 苏晴：`system_prompt` 角色前缀 ← 新 `pm.md`，**保留**「回复规则 / 对外表达 / 技能」尾段
+- managed 沈予：同上 ← 新 `qa.md`
+- 周衡/陆深/方维：**不改** SP 角色段
+
+记下**编辑完成墙钟**（CST）。**不要**用 `managed-agents.json` mtime 当写完时间。
+
+## 2 重开 Desktop（Hogan 16:13:53 实测）
+
+**禁止** Dock / Launchpad 重开（A13：Dock 会带陈旧代理 `6478`）。**禁止** `open -n`（会第二实例）。App：`/Applications/Buzz.app`（bundle `xyz.block.buzz.app`）。
+
+**退出后**执行（六键、带 `http://`、无 `-n`）——须与 **#41 已合入** `docs/issue-38/scripts/common.sh` 中的 **reopen-command 常量**逐字一致；若激活时发现不一致 → **STOP 并询问**（勿自造常量名）。Hogan 16:13:53 实测字面：
+
+```bash
+X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X
+```
+
+### 2.1 重开后门禁
+
+- [ ] Desktop 主进程与各席进程环境：上述 **六键** 均等于 `http://127.0.0.1:9567`
+- [ ] `doctor` → `ok:true`，**无** `proxy_contrast`
+- [ ] **9/9 alive**；按 `restart-mode: app` 校验 **9 席 pid 相对 `$BASE/all-pids-before.tsv` 全部变化**
+- [ ] 苏晴 SP 回读仍含「观感通过」相关句；沈予 SP 仍含 cache-param / 现网抽检相关句
+- [ ] `:3000` 仍在听（A14）
+
+任一门失败 → **FAIL**，§5 回滚，**不得**发探针。
+
+### 2.2 pid / 启动时刻
+
+- pid 文件多为 Python wrapper；buzz-acp 为其子进程（跟到子进程看代理/存活）。
+- 启动时刻（对照编辑墙钟）：
+
+```bash
+LC_ALL=C LANG=C ps -o etime=,lstart= -p <pid>
+```
+
+## 3 受控探针（规则现在就钉死）
+
+**规则（现在写入，激活时执行）：**
+
+1. 探针**发送方不得是被测席本身**（禁止目标席自 @ / 自测）。
+2. 若 Mac CLI **无私钥**（Hogan 16:14：`auth_error` / `BUZZ_PRIVATE_KEY is required`）：由 **peng 在 Desktop 手动发送**，或将该席探针显式标为 **「暂时无法测」**——二者择一记入记录；**不要**在文档里写死某一密钥来源。
+3. 具体用哪个非被测身份，激活时与 Hogan 确认即可。
+
+每相关席至多一条问句：
+
+| 席位 | 期望 |
+|---|---|
+| 苏晴 | 体现「观感通过」门（真机/Console；L2 不可代；合入前） |
+| 沈予 | 体现 cache-param + 生产抽检（#411/#416） |
+| 周衡 / 陆深 / 方维 | 知会新 light-keel「观感签收门」「测试门清单」 |
+
+合入前产品门禁：观感通过与测试门 **均须完成** 方可合入；二者相对顺序不固定（见 prompt / L1）。
+
+## 4 完成定义
+
+- [ ] #41 已合入；§0.1 新鲜 baseline（`run_seat_scan_positive_control` + `snapshot_all_team_pids`→9 行硬门 + `record_baseline_at`）；**未**跑 `apply.sh`  
+- [ ] `restart-mode: app` 声明与实际一致  
+- [ ] 退出 → `require_baseline_fresh` + `require_desktop_not_running` → 编辑 → 六键 `open -a Buzz` → 回读 SP  
+- [ ] doctor ok、无 proxy_contrast、9/9、九 pid 皆变、:3000 LISTEN  
+- [ ] 探针：非被测席发送；或 peng Desktop 手发；或标明「暂时无法测」  
+- [ ] 在 #41 活窗之后执行  
+
+## 5 回滚
+
+同序：**osascript quit（勿 kill）→ `require_desktop_not_running`（需仍持有含 PASS positive-control 的 `$BASE`）→** 恢复 managed/lab 备份 → **同一六键 `open -a Buzz` 命令** → 回读旧文案 → doctor/proxy/9 pid 按 `app` 校验。
+
+## 6 A8
+
+「prompt 何时读」**仍待证**（Knox：14:54 样例不能区分）。本票不做 A8 实验。保守策略即退出后编辑再重开。
