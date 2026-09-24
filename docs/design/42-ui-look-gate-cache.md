@@ -62,7 +62,7 @@ Owner：Scout · Product（instance/config/skills）。关联：[Issue #42](http
 | A5 | 合入本 PR 不自动改 Mac lab / managed；活激活另窗 | 流程约束 |
 | A6 | 本票活激活在 **#41 合入 + 其活窗之后**；16:13 proxy fix 后须用 #41 `common.sh` 函数采**新鲜** baseline（禁 `apply.sh`；旧 9-pid 基线作废） | 运维约定；Hogan 16:13 |
 | A7 | 不修改 `managed-agents.json` 的自动化脚本进入本 PR | 本票仅文档化手工步骤 |
-| **A8** | **「prompt 什么时候读」**（进程启动一次 vs 每会话/每工具重读文件） | **仍待活机证据**（与 [#41](https://github.com/xforce-io/buzz-team/issues/41) A8 共享）。Knox：2026-09-24 周衡全量重开样例**不能**区分启动读 vs 每会话重读；本票**不做 A8 实验**。激活保守策略：仅 Desktop **完全退出**时改 managed/lab，再 Dock/Launchpad 重开并回读 SP（见 ACTIVATION） |
+| **A8** | **「prompt 什么时候读」**（进程启动一次 vs 每会话/每工具重读文件） | **仍待活机证据**（与 [#41](https://github.com/xforce-io/buzz-team/issues/41) A8 共享）。Knox：2026-09-24 周衡全量重开样例**不能**区分启动读 vs 每会话重读；本票**不做 A8 实验**。激活保守策略：仅 Desktop **完全退出**时改 managed/lab，再以六键 `X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X` 重开并回读 SP（见 ACTIVATION；禁 Dock/Launchpad） |
 | **A11** | Desktop 可能在 relaunch 时把**内存态**写回 `managed-agents.json`（如 `last_started_at` / `updated_at`） | **待系统化活证**（Knox A11）；2026-09-24 样例见 managed 在 14:54:38 被重开改写。故 ACTIVATION **禁止**在 Desktop 运行中改 SP，并在重开后回读「观感通过」/cache 句是否仍在 |
 | **A13** | Dock/Launchpad 重开可能带入陈旧代理（样例 `6478`）；须用终端六键 `open -a Buzz --env …9567`（Hogan 16:13:53；须与 #41 已合入 common.sh 的 reopen-command 常量逐字一致，否则 STOP） | **CONFIRMED** 问题与 option-1 修复（peng 16:11 选定，Hogan 16:13 落地；证据 `proxy-fix-9567-20260924/`）。重开后六键=`http://127.0.0.1:9567` 且 doctor 无 `proxy_contrast` |
 | **A14** | colima（或等价）`:3000` relay 在 Desktop quit 后仍 LISTEN | **CONFIRMED** 同证据窗；激活前后均检查 |

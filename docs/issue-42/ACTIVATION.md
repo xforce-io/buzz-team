@@ -33,6 +33,9 @@
 ```bash
 # <repo> = 含已合入 #41 的 main 检出根
 source <repo>/docs/issue-38/scripts/common.sh
+# #43 不设 ISSUE38_I_UNDERSTAND_LIVE=yes，#41 的 test-hook 守卫不会触发；
+# 残留的 ISSUE38_PS_FIXTURE 会让扫描读到假进程表。
+unset ISSUE38_PS_FIXTURE
 BASE=/Users/xupeng/lab/buzz/evidence/issue-42/baseline-$(date +%Y%m%d-%H%M%S)
 mkdir -p "$BASE"
 ```
@@ -40,7 +43,7 @@ mkdir -p "$BASE"
 **Desktop 仍在线、doctor 9/9 时：**
 
 ```bash
-run_seat_scan_positive_control "$BASE"
+run_seat_scan_positive_control "$BASE" || { echo "STOP: run_seat_scan_positive_control failed"; exit 1; }
 snapshot_all_team_pids "$BASE/all-pids-before.tsv"
 # snapshot_all_team_pids 只 WARN 席位数；此处硬门：
 n=$(wc -l < "$BASE/all-pids-before.tsv" | tr -d ' ')
