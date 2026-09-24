@@ -509,9 +509,17 @@ class InventoryDoctorTests(Fixture):
     def _fail_ids(self, result):
         return {c["id"] for c in result["checks"] if c["status"] == "fail"}
 
+    def _writer_policy_so_doctor_can_pass(self):
+        """Restricted identities fail doctor where Seatbelt is absent. A writer
+        policy has no seatbelt check, so a clean inventory can be ok=true."""
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+
     def test_duplicate_launch_row_fails_then_restored_inventory_passes(self):
+        self._writer_policy_so_doctor_can_pass()
         original = self.desktop_file.read_bytes()
         before = health.run(self.config, depth="doctor")
+        self.assertTrue(before["ok"], self._fail_ids(before))
         self.assertFalse(any(i.startswith("inventory_") for i in self._fail_ids(before)))
         rows = self._rows()
         rows.append(json.loads(json.dumps(rows[0])))
@@ -523,6 +531,7 @@ class InventoryDoctorTests(Fixture):
         self.assertIn("2 launch rows", duplicates[0]["summary"])
         self.desktop_file.write_bytes(original)
         restored = health.run(self.config, depth="doctor")
+        self.assertTrue(restored["ok"], self._fail_ids(restored))
         self.assertEqual(self._fail_ids(restored), self._fail_ids(before))
         self.assertFalse(any(c["id"].startswith("inventory_duplicate:") for c in restored["checks"]))
         self.assertEqual(self.desktop_file.read_bytes(), original)

@@ -19,7 +19,7 @@
 
 ## S3 重复行往返
 
-在隔离库存副本追加一条相同公钥与 relay 的启动行后，`health.run(..., depth="doctor")` 的 `ok` 为 false，且出现一条 `inventory_duplicate:*`。写回原字节后，失败 id 集合与追加前相同，不再有 `inventory_duplicate:*`，文件字节与追加前一致。这里不要求整份 doctor 在每个平台都是 `ok=true`。
+在隔离库存副本追加一条相同公钥与 relay 的启动行后，`health.run(..., depth="doctor")` 的 `ok` 为 false，且出现一条 `inventory_duplicate:*`。写回原字节后 `ok` 为 true，文件字节与追加前一致。测试使用 writer 策略，这样没有 Seatbelt 的平台也不会因为座位沙箱把干净库存判失败。
 
 ## 入口
 
