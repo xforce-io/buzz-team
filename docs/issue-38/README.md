@@ -7,7 +7,7 @@
 | `HOW.md` | 事实源与机制（keel-how） |
 | `IDLE-DECISION.md` | idle 1500→180 理由（对照 #29/#32） |
 | `S1-S3-ACCEPTANCE.md` | pre-merge / post-merge 分工 |
-| `RUNBOOK.md` | 合入后与 Hogan：doctor+bind+只重启周衡 |
+| `RUNBOOK.md` | 合入后与 Hogan：quit-first baseline→Cmd+Q→apply→reopen(proxy gate)→verify --restart-mode app |
 | `scripts/apply.sh` / `rollback.sh` | 默认拒绝执行（需 `ISSUE38_I_UNDERSTAND_LIVE=yes`） |
 | `before/` `after/` `diffs/` | 实例侧变更冻结快照 |
 

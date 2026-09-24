@@ -6,107 +6,103 @@
 
 Scripts rely on these live facts. Each needs evidence (or is marked PENDING).
 
-**Renumber note (Knox interim 2026-09-24):** former **A8** (other 8 pids unchanged) → **A9**; former **A9** (thin-bin pin) → **A10**. New **A8** = prompt-read timing (announced publicly; Scout #42 refs #41 A8).
+**Renumber note (Knox interim 2026-09-24):** former **A8** (other 8 pids unchanged) → **A9**; former **A9** (thin-bin pin) → **A10**. New **A8** = prompt-read timing (announced publicly; Scout #42 refs #41 A8). **A11–A13** added after Hogan 2026-09-24 14:54 CST whole-app reopen sample (`~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/`).
 
 | # | Assumption | Evidence |
 |---|---|---|
-| A1 | Buzz Desktop does **not** auto-respawn an agent ACP after `kill` | Confirmed live 2026-09-24: apply safe-kill of 周衡 pid 81513; 60s wait timed out; Desktop never rewrote a new pid. See `~/lab/buzz/evidence/issue-38-live-reverify/RESULT.md` |
+| A1 | Buzz Desktop does **not** auto-respawn an agent ACP after `kill` | Confirmed live 2026-09-24: apply safe-kill of 周衡 pid 81513; 60s wait timed out; Desktop never rewrote a new pid. See `~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/` |
 | A2 | `buzz workflows update --yaml` takes **YAML content**, not a file path | Confirmed: path form → relay 400 `expected struct WorkflowDef`; content form (`$(cat ...)`) succeeds. Help text in `docs/issue-38/smoke/buzz-workflows-update-help.txt` |
 | A3 | Exact 周衡 pid file is `${PUB}__${TEAM}.json`; other `${PUB}__*.json` are stale and must abort | Hogan live rule (pid-file format) |
-| A4 | After Desktop **Start 周衡**, Desktop rewrites the **same** pid file with a **new** pid | **PENDING live evidence** (Hogan observing peng's manual restart) |
-| A5 | New ACP process exposes effort/idle in cmdline and/or env (`BUZZ_ACP_EFFORT_LEVEL`, `BUZZ_ACP_IDLE_TIMEOUT`) | **PENDING live evidence** — `verify-after-restart.sh` Mode A prefers this; falls back to A6 |
-| A6 | If effort/idle are not visible on the process, `managed-agents.json` 周衡 row values + process start time **after** `backup/config_written_at.txt` are sufficient (code uses `ps -o etimes=`) | Fallback implemented; **PENDING live confirmation**. Knox asked Hogan for raw `ps -o etimes= -p <newpid>` sample |
-| A7 | Timing: Desktop click → pid file update → ACP ready for text reply | **PENDING live evidence** |
-| A8 | Prompt read timing: Desktop/ACP reads managed `system_prompt`, `pj.md`, workspace `AGENTS.md`, and `instructions-1.md` **only at process start** (not per new session) — why a Desktop restart is required after config write | **PENDING live evidence** (publicly announced A8; Scout #42 refs #41 A8) |
-| A9 | Other 8 TEAM seats' pids stay unchanged across apply/rollback/restart of 周衡 only | Confirmed on 2026-09-24 rollback (other 8 unchanged). *(formerly A8)* |
+| A4 | After Desktop start, Desktop rewrites the **same** pid file (`${PUB}__${TEAM}.json`, name unchanged) with a **new** pid | **CONFIRMED** Hogan sample 2026-09-24 14:54 CST (`~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/`). Note: pid in the file is the Python **wrapper** (周衡 wrapper 836); real `buzz-acp` is its child (853). |
+| A5 | New ACP/wrapper process env exposes `BUZZ_ACP_EFFORT_LEVEL`, `BUZZ_ACP_IDLE_TIMEOUT`, `BUZZ_ACP_MAX_TURN_DURATION` matching managed-agents.json | **CONFIRMED** 14:54 sample (post-rollback values): `BUZZ_ACP_EFFORT_LEVEL=low`, `BUZZ_ACP_IDLE_TIMEOUT=1500`, `BUZZ_ACP_MAX_TURN_DURATION=7200`. Mode A requires **all three** visible; otherwise Mode B. |
+| A6 | Mode B start-time check: process start **after** apply's `config_written_at` (never managed-agents.json mtime) | **CONFIRMED with correction** (14:54 sample): macOS `ps -o etimes=` errors `etimes: keyword not found`; use `ps -o lstart=` (sample `Thu Sep 24 14:54:38 2026`) and parse with `date -j -f '%a %b %d %T %Y'`. Desktop rewrites `managed-agents.json` on start (`last_started_at`/`updated_at`), so its mtime must **NOT** be used as config-write time — only apply's `config_written_at`. |
+| A7 | Timing: Desktop reopen → pid files → ACP ready | **CONFIRMED (timing only)** 14:54 sample: whole-app reopen start 14:54:30, pid files written 14:54:38 (~8s). Agent pool is lazy — init only on first message (14:58:06→14:58:17, ~11s). Ability to reply text **NOT** yet measured (blocked by proxy issue). |
+| A8 | Prompt read timing: Desktop/ACP reads managed `system_prompt`, `pj.md`, workspace `AGENTS.md`, and `instructions-1.md` **only at process start** (not per new session) — why a Desktop restart is required after config write | **PENDING** — 14:54 sample cannot distinguish start-only vs per-session read (prompt files restored ~14:03 before 14:54 start). Needs a separate controlled live experiment with separate approval. **Conservative rule:** restart immediately after config write; minimize mixed window. |
+| A9 | Other 8 TEAM seats' pids stay unchanged across apply/rollback when using `--restart-mode single` (周衡-only restart) | Confirmed on 2026-09-24 rollback (other 8 unchanged). *(formerly A8)*. Default quit-first flow uses `--restart-mode app` instead (see A12). |
 | A10 | Thin wrappers stay on pin `046ac43` (`PIN_FULL`) for this change | Confirmed pre/post 2026-09-24. *(formerly A9)* |
+| A11 | On start, Desktop rewrites `managed-agents.json` — does it write back **file** values or **stale in-memory** values? | **PENDING evidence.** Mitigated by quitting Desktop **before** writing (flow below). Post-reopen read-back of 周衡 row is the check. **If overwritten:** STOP, report, do **not** re-apply; run rollback flow. |
+| A12 | Restart may be whole-app (Cmd+Q + reopen) rather than single-seat; then all 9 pids change | **CONFIRMED** observed 2026-09-24 14:54 (all 9 pid files rewritten 14:54:38). Default live flow uses `--restart-mode app`. |
+| A13 | Desktop process env must inherit a **listening** system proxy; otherwise doctor reports `proxy_contrast` and seats cannot reply | **CONFIRMED problem / fix PENDING peng.** 14:54 relaunch carried `HTTP(S)_PROXY=127.0.0.1:6478` (not listening) vs system `127.0.0.1:9567` → doctor `ok:false` `proxy_contrast`. Source most likely **Dock's stale env** (Dock started 9/9 with 6478): `launchctl getenv` already 9567 at 15:00 yet Desktop got 6478; LaunchAgent `com.user.proxy-env` loaded job still 6478 though plist on disk is 9567. Fix method PENDING peng (options: reload LaunchAgent; `open -a Buzz` with explicit `--env` from terminal; or logout). **Post-reopen gate:** Desktop main process env `HTTP(S)_PROXY` → listening proxy (9567) AND doctor ok with **no** `proxy_contrast`. Do **not** hard-code Dock/Launchpad as the reopen method. |
 | M1 | `buzz` CLI path `/Users/xupeng/lab/buzz/bin` and `PJ_PRIVATE_KEY` from `~/.local/share/buzz/config/agents.env` | In code: `apply.sh` / `rollback.sh` env bootstrap |
 | M2 | `BUZZ_RELAY_URL` default `ws://127.0.0.1:3000` | In code: `apply.sh` export default |
 | M3 | `buzz workflows get` returns JSON with `.content` string | In code: apply/rollback python read-back |
 | M4 | `ps eww -p` exposes env as `KEY=VAL` whitespace tokens (and contains full PUB) | In code: `common.sh` / `verify-after-restart.sh` |
-| M5 | `ps -o etimes=` available on macOS and returns integer seconds (Mode B; avoids `lstart` locale) | In code: `verify-after-restart.sh` Mode B |
+| M5 | `ps -o lstart=` available; parse with macOS `date -j -f '%a %b %d %T %Y'` (Linux CI: GNU `date -d`). Empty/unparseable ⇒ FAIL (never 0). `etimes` is **not** used | In code: `verify-after-restart.sh` Mode B |
 | M6 | `managed-agents.json` schema: array of objects with `pubkey`/`name`/`idle_timeout_seconds`/`env_vars`/`agent_args`/`system_prompt`/`max_turn_duration_seconds` | In code: apply row patch / verify Mode B |
-| M7 | Desktop loads managed-agents.json + prompt files at ACP **process start** (same family as A8) | Implied by no-kill restart requirement; see A8 PENDING |
-| M8 | doctor 9/9 ≡ nine `*__${TEAM}.json` pid files all `kill -0` / `os.kill(pid,0)` alive (apply enforces via `require_all_team_alive`; verify counts live TEAM pids — does not call `buzz_team doctor`) | In code: `common.sh` `require_all_team_alive`; `verify-after-restart.sh` |
-| M9 | `config_written_at` format UTC `%Y-%m-%dT%H:%M:%SZ` via `date -u` | In code: `common.sh` `record_config_written_at` |
+| M7 | Desktop loads managed-agents.json + prompt files at ACP **process start** (same family as A8/A11) | Implied by quit-first + restart requirement; see A8/A11 PENDING |
+| M8 | doctor 9/9 ≡ nine `*__${TEAM}.json` pid files all `kill -0` / `os.kill(pid,0)` alive (baseline enforces via `require_all_team_alive`; verify counts live TEAM pids — does not call `buzz_team doctor` for 9/9; proxy_contrast checked via doctor CLI as a RUNBOOK gate) | In code: `common.sh`; RUNBOOK post-reopen gate |
+| M9 | `config_written_at` format UTC `%Y-%m-%dT%H:%M:%SZ` via `date -u`. Never use managed-agents.json mtime | In code: `common.sh` `record_config_written_at` |
 | M10 | Hardcoded `WF_ID`/`CH_ID`/`PUB`/`TEAM`/paths under Application Support and `lab/buzz` | In code: `common.sh` constants |
-| M11 | Pid JSON shape `{"pid": <int>}` | In code: `common.sh` / verify pid reads |
+| M11 | Pid JSON shape `{"pid": <int>}` (pid = Python wrapper; buzz-acp is child) | In code: `common.sh` / verify pid reads |
+| M12 | Mode A only if effort **and** idle **and** max_turn all visible in process env; else Mode B (no partial Mode A) | In code: `verify-after-restart.sh` |
+| M13 | `--restart-mode single\|app` is **required** (no auto-guess). `single`: other 8 unchanged+alive, 周衡 new. `app`: all 9 changed+alive. Mismatch ⇒ FAIL | In code: `verify-after-restart.sh` / `common.sh` `verify_restart_pids` |
+| M14 | Mutate/rollback require Desktop **not** running (`require_desktop_not_running`; matcher: `Buzz.app/Contents/MacOS` or exact `Buzz`). Escape: `SKIP_DESKTOP_CHECK=1` | In code: `common.sh`; documented here |
 
-**PENDING for Hogan fill-in after peng's manual 周衡 restart:** A4–A8 (and A6 etimes sample).
+**PENDING after 14:54 sample:** A8 (prompt-read timing), A11 (MA file vs memory on Desktop rewrite), A13 fix method (peng).
 
-## 0. Arrange peng **before** apply
+## Operating flow (quit-first — Knox/Jenny 2026-09-24)
 
-**REQUIRED:** peng must be present at the keyboard **before** you run `apply.sh`, ready to restart **ONLY 周衡** from Buzz Desktop immediately after apply finishes (not the whole app).
+Default live path is **whole-app quit → write → reopen**, not single-seat restart.
 
-Why: apply writes new config to disk but **does not kill**. Until 周衡 is restarted, the running ACP still has the **old** config while files have the **new** config (mixed window). Same rule for rollback.
+### Apply
 
-## 1. Preflight
+1. **Baseline (Desktop UP, seats alive):**
+   ```bash
+   cd /Users/xupeng/dev/github/buzz-team
+   python -m buzz_team --instance /Users/xupeng/lab/buzz doctor   # expect 9/9
+   ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/apply.sh --baseline-only
+   ```
+   Captures `all-pids-before.tsv`, `zhou-pid-before.txt`, `others-before.tsv`, MA/prompts/workflow snapshots into `evidence/issue-38/backup-<ts>/`. Prints BACKUP path. Does **not** mutate.
 
-```bash
-cd /Users/xupeng/dev/github/buzz-team
-python -m buzz_team --instance /Users/xupeng/lab/buzz doctor   # expect 9/9
-# apply enforces doctor 9/9 (all *__TEAM.json pids alive) + 周衡 pubkey-confirmed
-```
+2. **peng: Cmd+Q** fully quit Buzz Desktop (all 9 ACP pids go away).
+
+3. **Mutate (Desktop DOWN):**
+   ```bash
+   ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/apply.sh --backup /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts>
+   ```
+   Aborts unless Desktop is not running (override: `SKIP_DESKTOP_CHECK=1`). Does **not** require seats alive. Writes workflow + 周衡 row + prompt files; records `config_written_at`.
+
+4. **peng reopens** Buzz Desktop using the method peng approved for the **2026-09-24 proxy fix** (see A13). Do **not** assume Dock/Launchpad is safe.
+
+5. **Post-reopen gates (before verify):**
+   - Desktop main process env `HTTP(S)_PROXY` points at listening system proxy (`127.0.0.1:9567`).
+   - `python -m buzz_team --instance /Users/xupeng/lab/buzz doctor` → ok, **no** `proxy_contrast`.
+   - Read back `managed-agents.json` 周衡 row → still `effort=medium` `idle=180` `max_turn=7200` (A11). If overwritten: **STOP**, report, do not re-apply; run rollback flow.
+
+6. **Verify:**
+   ```bash
+   docs/issue-38/scripts/verify-after-restart.sh \
+     /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts> \
+     --expect after --restart-mode app
+   ```
+
+7. Hogan S1–S3 only after verify passes.
+
+### Rollback
+
+Same quit-first shape:
+
+1. peng Cmd+Q (if Desktop up).
+2. `ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh --backup <backup-dir>` (requires Desktop down).
+3. peng reopens via approved proxy-fix method.
+4. Same proxy + doctor + MA read-back gates (expect `effort=low` `idle=1500` `max_turn=7200`).
+5. `verify-after-restart.sh <backup> --expect before --restart-mode app`.
+
+### Why quit-first
+
+- Avoids mixed window (old ACP + new files).
+- Mitigates A11 (Desktop cannot rewrite MA from stale in-memory values while quit).
+- Matches observed whole-app reopen (A12).
+
+## Preflight notes
 
 - thin-bin still `046ac43`
 - Scout: no parallel dirty 周衡 edits
-
-## 2. apply (config only — no kill)
-
-```bash
-cd /Users/xupeng/dev/github/buzz-team
-ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/apply.sh
-```
-
-Script behavior:
-
-1. Guard + thin-pin + exact 周衡 pid file; **require doctor 9/9** (all TEAM pids alive) + 周衡 pubkey-confirmed (else abort: restart first)
-2. Assert live workflow == `before/workflow.yaml`
-3. Create `evidence/issue-38/backup-<ts>/` (snapshots only)
-4. **First** `workflows update --yaml "$(cat after/workflow.yaml)"` + get read-back
-5. Only then: patch 周衡 managed-agents row + pj/AGENTS/instructions-1; read-back verify
-6. Record `config_written_at.txt` immediately after first successful workflow mutation (refresh after local writes); verify other 8 pids unchanged. ERR/EXIT trap prints BACKUP + rollback command
-7. **STOP.** Print backup path, rollback command, and ask peng to restart ONLY 周衡
-
-## 3. peng restarts ONLY 周衡 (Desktop)
-
-Immediately after apply prints the banner: peng → Buzz Desktop → restart **only** 周衡 (do not relaunch the app).
-
-## 4. verify-after-restart
-
-```bash
-docs/issue-38/scripts/verify-after-restart.sh \
-  /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts> \
-  --expect after
-```
-
-Checks: doctor 9/9; 周衡 **new** alive pid containing full pubkey; effort=medium idle=180 max=7200 (process env/cmdline if visible, else managed-agents row + start time after `config_written_at`); other 8 pids unchanged vs backup.
-
-## 5. Hogan S1–S3
-
-Only after verify-after-restart passes.
-
-## 6. Rollback (if needed)
-
-```bash
-ISSUE38_I_UNDERSTAND_LIVE=yes docs/issue-38/scripts/rollback.sh \
-  /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts>
-```
-
-Restores workflow (compare/skip) + 周衡 row + prompt files; **no kill**. Tolerates dead/stale 周衡 pid. Then:
-
-**REQUIRED:** if 周衡 was restarted with new config, peng restarts 周衡 again from Desktop.
-
-```bash
-docs/issue-38/scripts/verify-after-restart.sh \
-  /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts> \
-  --expect before
-```
-
-Expect effort=low idle=1500.
+- `SKIP_DESKTOP_CHECK=1` escapes the Desktop-not-running gate (documented escape only)
 
 ## Script smoke (no live apply)
 
 ```bash
 docs/issue-38/scripts/smoke-test.sh
+# Live Mac extras: SMOKE_LIVE=1 docs/issue-38/scripts/smoke-test.sh
 ```

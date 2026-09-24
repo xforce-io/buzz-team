@@ -179,10 +179,167 @@ print('restored 周衡 row only from', row_path)
 }
 
 # Record when config was written so verify-after-restart can use start-time fallback.
+# ONLY this stamp is authoritative for Mode B start-time checks.
+# Never use managed-agents.json mtime: Desktop rewrites that file on start
+# (last_started_at / updated_at), so its mtime is NOT config-write time (A6/A11).
 record_config_written_at() {
   local backup=$1
   local stamp
   stamp=$(date -u +%Y-%m-%dT%H:%M:%SZ)
   printf '%s\n' "$stamp" > "$backup/config_written_at.txt"
   echo "config_written_at=$stamp (UTC) -> $backup/config_written_at.txt"
+}
+
+# ---- Desktop process helpers (macOS Buzz.app) ----
+# Matcher: prefer Buzz.app MacOS binary path; fall back to exact process name "Buzz".
+# No prior matcher existed in these scripts; keep narrow to avoid ACP python wrappers.
+# Escape hatch: SKIP_DESKTOP_CHECK=1 (documented in RUNBOOK).
+
+desktop_main_pids() {
+  local pids=""
+  pids=$(pgrep -f '/Buzz\.app/Contents/MacOS/' 2>/dev/null || true)
+  if [[ -z "$pids" ]]; then
+    pids=$(pgrep -x 'Buzz' 2>/dev/null || true)
+  fi
+  printf '%s\n' "$pids" | awk 'NF' | sort -u
+}
+
+require_desktop_not_running() {
+  if [[ "${SKIP_DESKTOP_CHECK:-}" == "1" ]]; then
+    echo "WARN: SKIP_DESKTOP_CHECK=1 — skipping Desktop-not-running check" >&2
+    return 0
+  fi
+  local pids
+  pids=$(desktop_main_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+  if [[ -n "$pids" ]]; then
+    echo "ABORT: Buzz Desktop appears running (pids: $pids)." >&2
+    echo "Cmd+Q fully quit Desktop first, then re-run. Override: SKIP_DESKTOP_CHECK=1 (see RUNBOOK)." >&2
+    return 1
+  fi
+  echo "Desktop not running OK"
+}
+
+# Snapshot ALL TEAM seat pids (including 周衡) as name<TAB>pid lines.
+snapshot_all_team_pids() {
+  local out=$1
+  local f base
+  : > "$out"
+  for f in "$PID_DIR"/*__"${TEAM}".json; do
+    [[ -e "$f" ]] || continue
+    base=$(basename "$f")
+    python3 -c "import json,sys; print(sys.argv[1]+chr(9)+str(json.load(open(sys.argv[2]))['pid']))" "$base" "$f" >> "$out"
+  done
+  local n
+  n=$(wc -l < "$out" | tr -d ' ')
+  echo "all TEAM seats recorded: $n"
+  if [[ "$n" -ne 9 ]]; then
+    echo "WARN: expected 9 TEAM seats, got $n" >&2
+  fi
+}
+
+# Post-restart pid check for verify-after-restart.sh.
+# mode=single: other 8 pids unchanged+alive; 周衡 must be new (caller checks).
+# mode=app:    all 9 pids changed+alive.
+# Mismatch with declared mode => FAIL (no auto-guess).
+verify_restart_pids() {
+  local mode=$1
+  local all_before=$2
+  local zhou_old=$3
+  local zhou_new=$4
+  case "$mode" in
+    single|app) ;;
+    *) echo "ABORT: --restart-mode must be single|app, got: $mode" >&2; return 1 ;;
+  esac
+  python3 - "$mode" "$all_before" "${zhou_old:-}" "$zhou_new" "$PID_DIR" "$TEAM" "$PUB" <<'PY'
+import json, os, sys
+from pathlib import Path
+
+mode, before_path, zhou_old, zhou_new, pid_dir, team, pub = sys.argv[1:8]
+zhou_file = f"{pub}__{team}.json"
+
+before = {}
+for line in Path(before_path).read_text().splitlines():
+    line = line.strip()
+    if not line:
+        continue
+    name, pid = line.split("\t", 1)
+    before[name] = int(pid)
+
+if len(before) != 9:
+    print(f"FAIL: baseline all-pids-before has {len(before)} seats, want 9", file=sys.stderr)
+    sys.exit(1)
+
+live = {}
+for f in Path(pid_dir).glob(f"*__{team}.json"):
+    name = f.name
+    pid = json.loads(f.read_text())["pid"]
+    try:
+        os.kill(pid, 0)
+        alive = True
+    except OSError:
+        alive = False
+    live[name] = (pid, alive)
+
+if len(live) != 9:
+    print(f"FAIL: live TEAM seats={len(live)}, want 9", file=sys.stderr)
+    sys.exit(1)
+
+dead = [n for n, (_pid, alive) in live.items() if not alive]
+if dead:
+    print("FAIL: dead seat pid(s): " + ", ".join(f"{n}:{live[n][0]}" for n in dead), file=sys.stderr)
+    sys.exit(1)
+
+changed = []
+unchanged = []
+for name, old_pid in before.items():
+    if name not in live:
+        print(f"FAIL: missing live pid file for {name}", file=sys.stderr)
+        sys.exit(1)
+    new_pid = live[name][0]
+    if new_pid == old_pid:
+        unchanged.append(f"{name}:{old_pid}")
+    else:
+        changed.append(f"{name}:{old_pid}->{new_pid}")
+
+zhou_key = zhou_file
+if zhou_key not in before or zhou_key not in live:
+    print(f"FAIL: 周衡 pid file {zhou_key} missing from before/live", file=sys.stderr)
+    sys.exit(1)
+
+if zhou_old and str(live[zhou_key][0]) == str(zhou_old):
+    print(f"FAIL: 周衡 pid still equals pre-quit baseline {zhou_old}", file=sys.stderr)
+    sys.exit(1)
+if live[zhou_key][0] == before[zhou_key]:
+    print(f"FAIL: 周衡 pid unchanged vs all-pids-before ({before[zhou_key]})", file=sys.stderr)
+    sys.exit(1)
+
+others_changed = [c for c in changed if not c.startswith(zhou_key + ":")]
+others_unchanged = [u for u in unchanged if not u.startswith(zhou_key + ":")]
+
+if mode == "single":
+    if others_changed:
+        print("FAIL: --restart-mode single but other seat pid(s) changed:", file=sys.stderr)
+        print("  " + "\n  ".join(others_changed), file=sys.stderr)
+        sys.exit(1)
+    if len(others_unchanged) != 8:
+        print(
+            f"FAIL: --restart-mode single expected 8 other seats unchanged, got {len(others_unchanged)}",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+    print("restart_mode=single OK: other 8 pids unchanged+alive; 周衡 new+alive")
+elif mode == "app":
+    if others_unchanged:
+        print("FAIL: --restart-mode app but other seat pid(s) UNCHANGED:", file=sys.stderr)
+        print("  " + "\n  ".join(others_unchanged), file=sys.stderr)
+        sys.exit(1)
+    if len(changed) != 9:
+        print(
+            f"FAIL: --restart-mode app expected all 9 pids changed, got {len(changed)}",
+            file=sys.stderr,
+        )
+        print("  changed: " + ", ".join(changed), file=sys.stderr)
+        sys.exit(1)
+    print("restart_mode=app OK: all 9 pids changed+alive")
+PY
 }

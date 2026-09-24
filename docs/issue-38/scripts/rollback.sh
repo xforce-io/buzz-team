@@ -3,12 +3,28 @@
 # Does NOT kill or wait for respawn. Tolerates a stale/dead 周衡 pid file.
 set -euo pipefail
 
-BACKUP=${1:?usage: rollback.sh /Users/xupeng/lab/buzz/evidence/issue-38/backup-<ts>}
+BACKUP=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --backup) BACKUP=${2:?}; shift 2 ;;
+    --backup=*) BACKUP=${1#*=}; shift ;;
+    -*) echo "unknown arg: $1" >&2; exit 2 ;;
+    *) BACKUP=$1; shift ;;
+  esac
+done
+if [[ -z "$BACKUP" ]]; then
+  echo "usage: rollback.sh --backup <backup-dir>   # Desktop must be fully quit (Cmd+Q)" >&2
+  exit 2
+fi
 # shellcheck source=common.sh
 source "$(dirname "$0")/common.sh"
 
 require_live_guard
 verify_thin_pin
+
+echo "== rollback: require Desktop NOT running (quit-first flow) =="
+require_desktop_not_running || exit 1
+
 
 test -f "$BACKUP/zhouheng-row-before.json"
 test -f "$BACKUP/pj.md"
@@ -49,10 +65,8 @@ else
   echo "NOTE: 周衡 pid $ZHOU_PID_NOW is dead/stale — continuing rollback (no kill path)"
 fi
 
-RB_STEP="snapshot-others"
-echo "== snapshot other seats before rollback (read-only) =="
-TMP_OTHERS=$(mktemp)
-snapshot_other_pids "$TMP_OTHERS"
+# Other-seat pid snapshot skipped: Desktop is quit, ACP pids are gone.
+# Pid comparison happens in verify-after-restart.sh --restart-mode app|single.
 
 eval "$(grep -E '^PJ_PRIVATE_KEY=' /Users/xupeng/.local/share/buzz/config/agents.env | sed 's/^PJ_PRIVATE_KEY=/BUZZ_PRIVATE_KEY=/')"
 export PATH="/Users/xupeng/lab/buzz/bin:$PATH"
@@ -133,27 +147,26 @@ for label, path, src in [
 RB_STEP="record-config-written-at"
 record_config_written_at "$BACKUP"
 
-RB_STEP="verify-other-pids"
-echo "== verify other seats untouched (read-only; no kill) =="
-verify_other_pids_unchanged "$TMP_OTHERS"
-rm -f "$TMP_OTHERS"
+# No live other-seat pid check while Desktop is quit.
 
 RB_STEP="done"
 trap - ERR
 cat <<MSG
 
-========== ROLLBACK CONFIG DONE — NO KILL / NO RESPAWN WAIT ==========
+========== ROLLBACK CONFIG DONE — DESKTOP STILL QUIT ==========
 Restored from: $BACKUP
 
-REQUIRED NEXT STEP (peng must be present):
-  If 周衡 was restarted earlier with the NEW (medium/180) config, ask peng to
-  restart ONLY 周衡 from Buzz Desktop AGAIN so ACP loads the restored
-  low/1500/7200 config. (Desktop does NOT auto-respawn; scripts do not kill.)
-
-After Desktop restart, verify:
-  docs/issue-38/scripts/verify-after-restart.sh $BACKUP --expect before
-
-Expected verify: doctor 9/9; 周衡 NEW alive pid; effort=low idle=1500;
-other 8 pids unchanged vs snapshot taken at rollback start.
-======================================================================
+REQUIRED NEXT (peng + operator):
+  1) peng reopens Buzz Desktop using the method peng approved for the 2026-09-24
+     proxy fix (see RUNBOOK proxy assumption row). Do NOT assume Dock/Launchpad
+     is safe — Dock may still inject dead HTTP(S)_PROXY=127.0.0.1:6478.
+  2) GATE: confirm Desktop main process env HTTP(S)_PROXY points at the listening
+     system proxy (127.0.0.1:9567), and
+     python -m buzz_team --instance /Users/xupeng/lab/buzz doctor
+     is ok with NO proxy_contrast.
+  3) GATE: read back managed-agents.json 周衡 row — must still be effort=low
+     idle=1500 max_turn=7200 (not overwritten; see A11). If overwritten: STOP, report.
+  4) verify:
+       docs/issue-38/scripts/verify-after-restart.sh $BACKUP --expect before --restart-mode app
+==============================================================
 MSG
