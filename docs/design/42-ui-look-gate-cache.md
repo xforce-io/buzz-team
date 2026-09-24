@@ -60,20 +60,22 @@ Owner：Scout · Product（instance/config/skills）。关联：[Issue #42](http
 | A3 | `pm`/`qa` 活执行值在 managed `system_prompt` | 已核对 |
 | A4 | `auto_restart_on_config_change=false`；单席 kill 后 Desktop 不自动拉起；**全量 Cmd+Q+重开**可一次换齐 9 pid（~8s 拉起；池懒初始化，首消息 ~11s） | 已读 managed；2026-09-24 周衡重开样例（Hogan） |
 | A5 | 合入本 PR 不自动改 Mac lab / managed；活激活另窗 | 流程约束 |
-| A6 | #38 活复检与本票激活错开（先 #38 reverify，再本清单） | 运维约定 |
+| A6 | 本票活激活在 **#41 合入 + 其活窗之后**；16:13 proxy fix 后须**新鲜** `--baseline-only`（旧 9-pid 基线作废） | 运维约定；Hogan 16:13 |
 | A7 | 不修改 `managed-agents.json` 的自动化脚本进入本 PR | 本票仅文档化手工步骤 |
 | **A8** | **「prompt 什么时候读」**（进程启动一次 vs 每会话/每工具重读文件） | **仍待活机证据**（与 [#41](https://github.com/xforce-io/buzz-team/issues/41) A8 共享）。Knox：2026-09-24 周衡全量重开样例**不能**区分启动读 vs 每会话重读；本票**不做 A8 实验**。激活保守策略：仅 Desktop **完全退出**时改 managed/lab，再 Dock/Launchpad 重开并回读 SP（见 ACTIVATION） |
 | **A11** | Desktop 可能在 relaunch 时把**内存态**写回 `managed-agents.json`（如 `last_started_at` / `updated_at`） | **待系统化活证**（Knox A11）；2026-09-24 样例见 managed 在 14:54:38 被重开改写。故 ACTIVATION **禁止**在 Desktop 运行中改 SP，并在重开后回读「观感通过」/cache 句是否仍在 |
+| **A13** | Dock/Launchpad 重开可能带入陈旧代理（样例 `6478`）；须用终端六键 `open -a Buzz --env …9567`（Hogan 16:13:53；与 #41 `common.sh` 同字面） | **CONFIRMED** 问题与 option-1 修复（peng 16:11 选定，Hogan 16:13 落地；证据 `proxy-fix-9567-20260924/`）。重开后六键=`http://127.0.0.1:9567` 且 doctor 无 `proxy_contrast` |
+| **A14** | colima（或等价）`:3000` relay 在 Desktop quit 后仍 LISTEN | **CONFIRMED** 同证据窗；激活前后均检查 |
 
 ## 7 门禁顺序
 
 ```text
 （full + 用户可见 UI）
   实现门通过
-    → 苏晴或 owner：真机截图/本地 Console → 回复「观感通过」
+    → 「观感通过」（苏晴或 owner：真机截图/本地 Console）
+    → 测试门（若改 css/js：cache-bust + 生产抽检）
+    （观感与测试门相对顺序不固定；二者均须完成）
       → 合入门
-（UI 且改 css/js）
-  测试门：cache-bust 已更新 + 生产抽检新版本
 ```
 
 ## 8 边界
@@ -87,7 +89,7 @@ Owner：Scout · Product（instance/config/skills）。关联：[Issue #42](http
 本票无用户可摸产品界面；仓内无新 verify feature 文件（prompt 合同）。
 
 - 预合入：diff 审读 + dry-read 三文件含「观感通过」与 cache 条。
-- 合入后活证明：见 [`docs/issue-42/ACTIVATION.md`](../issue-42/ACTIVATION.md)（Hogan）：事前声明 `restart-mode`；Desktop 退出后改 SP/lab 再重开并回读；doctor/`proxy_contrast` 绿后，非周衡身份对各相关席一条受控消息（苏晴「观感通过」、沈予 cache/现网、其余席知会新 light-keel 节）。
+- 合入后活证明：见 [`docs/issue-42/ACTIVATION.md`](../issue-42/ACTIVATION.md)（Hogan）：依赖 #41 扫描；`restart-mode: app`；osascript 退出后编辑；六键 `open -a Buzz` 重开；doctor 无 proxy_contrast；探针发送方≠被测席（CLI 无钥则 peng Desktop 手发或标「暂时无法测」）。
 
 ## 10 开放问题
 

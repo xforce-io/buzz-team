@@ -1,111 +1,122 @@
 # #42 活激活清单（Hogan）
 
-**何时：** PR 合入 `main` 之后；**必须**在独立时间窗执行，且排在 **#38 / #41 活窗完成之后**（先 #38 reverify，再本清单；勿与 #38/#41 同窗踩踏）。  
-**前置活条件（硬）：** 仅当 **doctor `ok:true` 且 `proxy_contrast` 绿**、席位已能正常回复时，才开始本票活激活。今日（2026-09-24）全量重开样例曾全部 ACP 进程落到错误代理 `127.0.0.1:6478`——**proxy 未绿不得发受控消息**。  
-**谁：** Hogan 操作；**peng** 执行重启（见 §2；`auto_restart_on_config_change=false`；单席 kill 后 Desktop **不**自动拉起）。  
-**本清单不改** upstream / pin / workflow；默认 **手工**改 managed，不提供改 `managed-agents.json` 的脚本。  
-**证据参考（只读）：** `~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/`（全量重开样例；A8 仍未分清）。
+**何时：** PR #43 合入 `main` **之后**；且 **仅当 PR #41 已合入 main**（提供 `docs/issue-38/scripts/common.sh` + `_seat_identity_scan.py`）并完成其活窗之后。#41 未合入 → **停**，不要手搓席位扫描。  
+**基线：** 2026-09-24 **16:13** proxy fix 全量重开已改写全部 **9** 席 pid；旧 baseline **全部作废**。激活前必须重新跑 `#41` 的 `apply.sh --baseline-only`（或等价）拿到**新鲜** 9-pid 基线。  
+**谁：** Hogan 操作；peng 配合退出/重开 Desktop。`auto_restart_on_config_change=false`。  
+**本清单不改** upstream / pin / workflow；managed 手工改；无改 `managed-agents.json` 的脚本。  
+**证据：** `~/lab/buzz/evidence/issue-38-live-reverify/zhouheng-restart-20260924/`；proxy fix `~/lab/buzz/evidence/proxy-fix-9567-20260924/`（16:13:53 重开）。
 
-## 0 前置
+## 0 前置硬门
 
-- [ ] #38 活复检已通过或明确让路；#41 活窗已让路或不冲突。
-- [ ] 本票已合入；记下 `main` SHA 与计划编辑时刻（墙钟，CST）。
-- [ ] **先声明**本窗重启模式（**事前**填写，禁止事后推断）：
+- [ ] **#41 已合入 main**（否则停）。
+- [ ] #41 活窗已结束；本窗不与 #38/#41 踩踏。
+- [ ] 本票（#43）已合入；记下 `main` SHA。
+- [ ] **事前声明**（禁止事后推断）：
 
   ```text
-  restart-mode: single|app
+  restart-mode: app
   ```
 
-  | 声明 | 事后必须满足，否则 **FAIL → 停 → 回滚** |
-  |---|---|
-  | `single` | 仅目标席 pid 变；**其余 8 席 pid 不变** |
-  | `app` | **全部 9 席 pid 均变**且均存活（全量 Cmd+Q + 重开可一次覆盖五席 light-keel 引用方） |
+  本流程会 **退出整个 Desktop**，故激活默认 **`app`**。`single` 仅用于**不** Cmd+Q / 不退整 app 的试验窗，不适用于本清单主路径。  
+  声明与实际不符 → **FAIL → 停 → 回滚**（§5）。
 
-- [ ] 只读打开合入后的仓内：`team/prompts/{light-keel,pm,qa}.md`。
-- [ ] **备份（Desktop 仍可开着时先拷，随后必须退出再改）：**
-  - `managed-agents.json` → 同目录 `managed-agents.json.bak-42-<date>`
-  - lab 三文件 → `~/lab/buzz-team/team/prompts/*.bak-42-<date>`（或等价旁路拷贝）
-- [ ] 记录当前 **9 席 pid 基线**（见 §2.1），供声明校验。
+- [ ] **新鲜 baseline：** Desktop 仍在线、doctor 9/9 时执行 `#41` `apply.sh --baseline-only`（含席位扫描 **positive control**：9 席各至少一进程命中）。写完后立刻记下墙钟。16:13 之后的旧备份勿用。
+- [ ] **colima `:3000` 在听**（A14）：退出前后均确认 `lsof`/等价显示 LISTEN（样例：Desktop quit 不杀该 relay）。
+- [ ] 备份：`managed-agents.json.bak-42-<date>`；lab `team/prompts/{pm,qa,light-keel}.md` 旁路拷贝。
+- [ ] 只读核对合入后仓内三 prompt。
 
-## 1 编辑窗口（必须先退出 Desktop）
+## 1 退出 → 确认已停 → 再编辑
 
-**危险：** Buzz Desktop 在 **launch/relaunch 时会回写** `managed-agents.json`（样例：全量重开后各席 `last_started_at` / `updated_at` 被改写）。在 Desktop **仍在运行**时改苏晴/沈予 `system_prompt`，有被 Desktop **内存态覆盖**的风险。
+**危险（A11）：** Desktop relaunch 可能把**内存态**写回 `managed-agents.json`。Desktop **运行中**改苏晴/沈予 `system_prompt` 可能被覆盖。
 
-**顺序（强制）：**
+### 1.1 退出 Desktop（永不 kill）
 
-1. **完全退出 Desktop**：Cmd+Q；确认无 Desktop / buzz-acp 相关进程（`pgrep`/`ps`）。
-2. **再**改文件：
-   - lab：合入后三文件 → `~/lab/buzz-team/team/prompts/{light-keel,pm,qa}.md`
-   - managed：苏晴 `system_prompt` 角色前缀 ← 新 `pm.md`（保留「回复规则 / 对外表达 / 技能」尾段）
-   - managed：沈予同上 ← 新 `qa.md`
-   - 周衡 / 陆深 / 方维：**不改** SP 角色段（本票未改 `pj`/`eng`/`ops`）
-3. 记下**编辑完成墙钟**（CST）。**不要**用 `managed-agents.json` 的 mtime 当「配置写完时间」（Desktop 重开会改该文件）。
-4. **再开 Desktop**：从 **Dock / Launchpad** 打开（不要用终端冷启路径，除非运维另有钉死口径）。
-5. **回读存活证明（重开后立刻）：**
-   - 苏晴 `system_prompt` 仍含「观感通过」相关句（如 `grep` / 只读 JSON 抽头）
-   - 沈予 `system_prompt` 仍含 cache-param / 现网抽检相关句  
-   若回读失败 → **FAIL**：按 §5 回滚，勿继续。
+```bash
+osascript -e 'quit app "Buzz"'
+# 或 GUI Cmd+Q。禁止 kill / kill -9 / 强杀。
+```
 
-| 席位 | slug（若有） | 同步什么 |
-|---|---|---|
-| 苏晴 | `zhufeng-pm` | SP 角色段 = 新 `pm.md` + 保留尾段；lab `pm.md` |
-| 沈予 | `zhufeng-qa` | SP 角色段 = 新 `qa.md` + 保留尾段；lab `qa.md` |
-| 周衡 / 陆深 / 方维 | pj / eng / ops | 仅 lab `light-keel.md`（及与仓对齐的 pm/qa 文件树）；**不改**其 SP 角色段 |
-| 五席共同 | 炼丹房 | lab `light-keel.md` 与仓一致（路径引用） |
+### 1.2 停席确认（复用 #41，禁止手搓）
 
-## 2 重启与 pid
+在 `#41` 已合入的树里调用（路径以 main 为准）：
 
-### 2.1 pid 语义
+- `docs/issue-38/scripts/common.sh` 中的席位停机门（如 `require_desktop_stopped` / `require_team_seats_not_running`）
+- `docs/issue-38/scripts/_seat_identity_scan.py`
 
-- pid **文件**里通常是 **Python wrapper** pid；真正的 **buzz-acp** 是其子进程。核对存活时跟到子进程。
-- macOS `ps` **无** `etimes`；用：  
-  `ps -o etime=,lstart= -p <pid>`  
-  与「编辑完成墙钟」对照，确认进程晚于编辑时刻启动。
+扫描规则（#41 已实现，此处不重写逻辑）：仅当进程是 `buzz_team.cli` wrapper 或 `buzz-acp`，且环境带完整 token  
+`BUZZ_RUNTIME_ID=a558771623f29898/<seat pubkey>` 才算命中；排除扫描脚本自身。  
+**Positive control**（Desktop 在线、baseline 时）：9 席各 ≥1 命中；扫描报错或 `ps` 空输出 → **ABORT**。  
+停机门：在已有 PASS 的 positive-control 工件上，确认团队席匹配为空。  
+**禁止：** `kill -0` 旧 pid、`pgrep -P`、机器级裸 `buzz-acp` 扫描。
 
-### 2.2 执行声明的模式
+### 1.3 编辑（仅 Desktop 已停）
 
-- **`restart-mode: app`（推荐覆盖五席 light-keel）：** 已在 §1 用 Cmd+Q + Dock/Launchpad 全量重开即可；样例约 **~8s** 拉起席位池，agent pool **懒初始化**（首条消息约再 **~11s**）。重开后 **重采全部 9 席 pid** 作新基线。
-- **`restart-mode: single`：** 仅停/启声明目标席；其余 8 席 pid 必须与 §0 基线一致。
+- lab ← 合入后 `team/prompts/{light-keel,pm,qa}.md`
+- managed 苏晴：`system_prompt` 角色前缀 ← 新 `pm.md`，**保留**「回复规则 / 对外表达 / 技能」尾段
+- managed 沈予：同上 ← 新 `qa.md`
+- 周衡/陆深/方维：**不改** SP 角色段
 
-校验：实际结果与事前 `restart-mode` **不一致 → FAIL：停止并回滚**（§5）。记录实际模式与 9 pid 表。
+记下**编辑完成墙钟**（CST）。**不要**用 `managed-agents.json` mtime 当写完时间。
 
-### 2.3 doctor（发消息前）
+## 2 重开 Desktop（Hogan 16:13:53 实测；与 #41 `common.sh` 同字面）
 
-- [ ] `doctor ok:true`
-- [ ] **`proxy_contrast` 绿**（ACP 进程代理与 CLI 一致；错误样例勿放过）
-- [ ] **9/9 alive**（口径以当时 doctor 为准）
+**禁止** Dock / Launchpad 重开（A13：Dock 会带陈旧代理 `6478`）。**禁止** `open -n`（会第二实例）。App：`/Applications/Buzz.app`（bundle `xyz.block.buzz.app`）。
 
-未绿 / 未 9/9 → **不得**进入 §3。
+**退出后**执行（六键、带 `http://`、无 `-n`）——与 Hogan 16:13:53 及 #41 `docs/issue-38/scripts/common.sh` **逐字一致**：
 
-## 3 受控验证
+```bash
+X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X
+```
 
-**发送身份：** 必须用 **非周衡** 身份发探针；**不得**用目标席自己发（本机 CLI 默认身份常为周衡——Hogan 14:57 样例曾自提及）。从非周衡身份 @ 目标席。
+### 2.1 重开后门禁
 
-每个相关席 **一条**受控问句（勿刷屏）：
+- [ ] Desktop 主进程与各席进程环境：上述 **六键** 均等于 `http://127.0.0.1:9567`
+- [ ] `doctor` → `ok:true`，**无** `proxy_contrast`
+- [ ] **9/9 alive**；按 `restart-mode: app` 校验 **9 席 pid 相对 baseline 全部变化**
+- [ ] 苏晴 SP 回读仍含「观感通过」相关句；沈予 SP 仍含 cache-param / 现网抽检相关句
+- [ ] `:3000` 仍在听（A14）
+
+任一门失败 → **FAIL**，§5 回滚，**不得**发探针。
+
+### 2.2 pid / 启动时刻
+
+- pid 文件多为 Python wrapper；buzz-acp 为其子进程（跟到子进程看代理/存活）。
+- 启动时刻（对照编辑墙钟）：
+
+```bash
+LC_ALL=C LANG=C ps -o etime=,lstart= -p <pid>
+```
+
+## 3 受控探针（规则现在就钉死）
+
+**规则（现在写入，激活时执行）：**
+
+1. 探针**发送方不得是被测席本身**（禁止目标席自 @ / 自测）。
+2. 若 Mac CLI **无私钥**（Hogan 16:14：`auth_error` / `BUZZ_PRIVATE_KEY is required`）：由 **peng 在 Desktop 手动发送**，或将该席探针显式标为 **「暂时无法测」**——二者择一记入记录；**不要**在文档里写死某一密钥来源。
+3. 具体用哪个非被测身份，激活时与 Hogan 确认即可。
+
+每相关席至多一条问句：
 
 | 席位 | 期望 |
 |---|---|
-| **苏晴** | 回复体现 **「观感通过」门**（实现门后、合入门前；真机/Console；L2 不可代） |
-| **沈予** | 回复体现 **cache-param 更新 + 生产抽检**（#411/#416） |
-| 周衡 / 陆深 / 方维 | 能反映新 `light-keel`「观感签收门」与「测试门清单」（不必代签观感） |
+| 苏晴 | 体现「观感通过」门（真机/Console；L2 不可代；合入前） |
+| 沈予 | 体现 cache-param + 生产抽检（#411/#416） |
+| 周衡 / 陆深 / 方维 | 知会新 light-keel「观感签收门」「测试门清单」 |
 
-记录：`restart-mode`、编辑墙钟、9 pid 表、doctor/proxy、发送身份、消息 id、是否命中。未命中 → 不宣称完成；查 SP 回读 / 是否未按退出-编辑-重开（见 L1 **A8**，仍待分清）。
+合入前产品门禁：观感通过与测试门 **均须完成** 方可合入；二者相对顺序不固定（见 prompt / L1）。
 
 ## 4 完成定义
 
-- [ ] 事前已声明 `restart-mode`，且实际与声明一致  
-- [ ] 备份可回滚；§1 退出 Desktop → 编辑 → Dock/Launchpad 重开 → SP 回读通过  
-- [ ] lab 三文件与合入 SHA 一致；苏晴/沈予 SP 角色段已换且尾段保留  
-- [ ] doctor `ok:true` + `proxy_contrast` 绿 + 9/9；pid/`etime,lstart` 相对编辑墙钟合理  
-- [ ] 受控消息：非周衡发送；苏晴观感门、沈予缓存条、其余席知会新 light-keel 节  
-- [ ] 本窗在 #38/#41 活窗之后，未互相踩踏  
-
-**活证明 = 本清单**；仓内 keel-verify 对 prompt-only skip（见 PR 验收表）。
+- [ ] #41 已合入；新鲜 `--baseline-only`；`restart-mode: app` 声明与实际一致  
+- [ ] 退出（osascript/Cmd+Q）→ #41 停席扫描 PASS → 编辑 → 上节六键 `open -a Buzz` → 回读 SP  
+- [ ] doctor ok、无 proxy_contrast、9/9、九 pid 皆变、:3000 LISTEN  
+- [ ] 探针：非被测席发送；或 peng Desktop 手发；或标明「暂时无法测」  
+- [ ] 在 #41 活窗之后执行  
 
 ## 5 回滚
 
-与激活同序：**Cmd+Q 确认无 Desktop/buzz-acp →** 恢复 `managed-agents.json.bak-42-*` 与 lab 三文件备份 → **Dock/Launchpad 重开** → 回读确认旧文案恢复 → 按原声明模式校验 pid → doctor/proxy 再绿后再歇。
+同序：**osascript quit（勿 kill）→ #41 停席扫描确认已停 →** 恢复 managed/lab 备份 → **同一六键 `open -a Buzz` 命令** → 回读旧文案 → doctor/proxy/9 pid 按 `app` 校验。
 
 ## 6 A8
 
-「prompt 何时读」（启动一次 vs 每会话重读）**仍待活机证据**（Knox：2026-09-24 周衡重开样例**不能**区分）。本票 **不做 A8 实验**。保守策略即上文：**仅在 Desktop 完全退出时编辑，再重开**，避免半窗混读。
+「prompt 何时读」**仍待证**（Knox：14:54 样例不能区分）。本票不做 A8 实验。保守策略即退出后编辑再重开。
