@@ -52,7 +52,7 @@ echo "SKIP_DESKTOP_CHECK absent OK"
 grep -q 'snapshot_all_team_pids' "$DIR/apply.sh"
 grep -q 'all-pids-before.tsv' "$DIR/apply.sh"
 grep -q 'all-pids-before.tsv' "$DIR/verify-after-restart.sh"
-# D1: identity scan (pubkey from pid-file names + BUZZ_RELAY_URL); no pid-file kill -0 / pgrep -P
+# D1: identity scan (exact BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey>); no pid-file kill -0 / pgrep -P
 grep -q 'scan_team_seat_identity_matches' "$DIR/common.sh"
 grep -q 'team_seat_pubkeys_from_pid_files' "$DIR/common.sh"
 grep -q 'require_team_seats_not_running' "$DIR/common.sh"
@@ -105,16 +105,21 @@ if not (rel < ra < upd):
 print("A14 :3000 preflight in apply mutate (before re-assert) + rollback OK")
 PY
 
-# D1 fixture: yuanbao same-pubkey different relay → not matched; grep line → not matched; real seat → matched
-echo "== D1 identity-scan fixture (yuanbao/grep self-exclusion) =="
+# D1/P3 fixture: exact BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey>; wrong team prefix / grep / bash excluded
+echo "== D1/P3 identity-scan fixture (exact BUZZ_RUNTIME_ID token) =="
 FIX=$(mktemp)
 PUB=51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e
+ID_TEAM_FIX=a558771623f29898
+OTHER_TEAM=bbbbbbbbbbbbbbbb
 cat > "$FIX" <<FIXEOF
-99901 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /Users/xupeng/lab/buzz launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=a558771623f29898/${PUB} GROK_ACP_CWD=/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/${PUB}/workspace
-99902 /Users/xupeng/.local/share/buzz/binaries/4937-activity-recovery/buzz-acp BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=a558771623f29898/${PUB}
-99903 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /tmp/yuanbao launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3001 BUZZ_RUNTIME_ID=a558771623f29898/${PUB} GROK_ACP_CWD=/tmp/yuanbao/identities/a558771623f29898/${PUB}/workspace
+99901 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /Users/xupeng/lab/buzz launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=${ID_TEAM_FIX}/${PUB} GROK_ACP_CWD=/Users/xupeng/.local/share/buzz/agent-runtime/identities/${ID_TEAM_FIX}/${PUB}/workspace
+99902 /Users/xupeng/.local/share/buzz/binaries/4937-activity-recovery/buzz-acp BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=${ID_TEAM_FIX}/${PUB}
+99903 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /tmp/yuanbao launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=${OTHER_TEAM}/${PUB} GROK_ACP_CWD=/tmp/yuanbao/identities/${OTHER_TEAM}/${PUB}/workspace
+99906 /opt/homebrew/Cellar/python@3.14/3.14.0_1/Frameworks/Python.framework/Versions/3.14/Resources/Python.app/Contents/MacOS/Python -m buzz_team.cli --instance /tmp/other launch harness -- BUZZ_RELAY_URL=ws://127.0.0.1:3000 BUZZ_RUNTIME_ID=deadbeefcafebabe/${PUB}
 99904 grep ${PUB} /tmp/something
 99905 bash -c "echo ${PUB} and BUZZ_RELAY_URL=ws://127.0.0.1:3000"
+# pubkey present but NOT as exact BUZZ_RUNTIME_ID=ID_TEAM/pubkey (relay-only decoy)
+99907 /Users/xupeng/.local/share/buzz/binaries/x/buzz-acp BUZZ_RELAY_URL=ws://127.0.0.1:3000 GROK_ACP_CWD=/tmp/${PUB}/workspace
 # Self pipeline: scanner pid 88880 with a child whose cmdline contains the pubkey (must be excluded)
 88880 bash /tmp/fake-scan-script.sh
 88881 grep ${PUB} /proc/fake
@@ -123,27 +128,165 @@ PPIDMAP 99902 99901
 PPIDMAP 99903 100
 PPIDMAP 99904 100
 PPIDMAP 99905 100
+PPIDMAP 99906 100
+PPIDMAP 99907 100
 PPIDMAP 88880 100
 PPIDMAP 88881 88880
 FIXEOF
-SCAN_OUT=$(python3 "$DIR/_seat_identity_scan.py" --relay "ws://127.0.0.1:3000" --pubkey "$PUB" --self-pid 88880 < "$FIX" || true)
+set +e
+SCAN_OUT=$(python3 "$DIR/_seat_identity_scan.py" --team-id "$ID_TEAM_FIX" --pubkey "$PUB" --self-pid 88880 < "$FIX")
+SCAN_RC=$?
+set -e
 rm -f "$FIX"
 echo "$SCAN_OUT"
-# Expect only 99901 and 99902 (real team seats). 99903 yuanbao different relay; 99904 grep; 99905 bash — excluded.
+if [[ "$SCAN_RC" -ne 0 ]]; then
+  echo "FAIL: scanner exit=$SCAN_RC (want 0)" >&2
+  exit 1
+fi
+echo "$SCAN_OUT" | grep -qE '^SCAN_OK matches=2 ps_lines=[0-9]+$'
+# Expect only 99901 and 99902 (exact BUZZ_RUNTIME_ID=a558771623f29898/PUB).
+# 99903/99906 different team prefix; 99904 grep; 99905 bash; 99907 relay+pubkey without token — excluded.
 echo "$SCAN_OUT" | grep -q '^99901[[:space:]]'
 echo "$SCAN_OUT" | grep -q '^99902[[:space:]]'
-if echo "$SCAN_OUT" | grep -qE '^99903|^99904|^99905|^88880|^88881'; then
-  echo "FAIL: fixture matched yuanbao/grep/bash/self line" >&2
+if echo "$SCAN_OUT" | grep -qE '^99903|^99904|^99905|^99906|^99907|^88880|^88881'; then
+  echo "FAIL: fixture matched wrong-team/grep/bash/self/relay-only line" >&2
   echo "$SCAN_OUT" >&2
   exit 1
 fi
-# Count matches == 2
-n=$(echo "$SCAN_OUT" | awk 'NF' | wc -l | tr -d ' ')
+n=$(echo "$SCAN_OUT" | awk -F'\t' 'NF==3 && $1 ~ /^[0-9]+$/' | wc -l | tr -d ' ')
 if [[ "$n" != "2" ]]; then
   echo "FAIL: expected 2 fixture matches, got $n" >&2
   exit 1
 fi
-echo "D1 fixture: team seats matched; yuanbao/grep/bash excluded OK"
+echo "D1/P3 fixture: exact BUZZ_RUNTIME_ID matched; wrong-team/grep/bash/relay-only excluded OK"
+
+# P2(a): scanner crash / non-zero => shell abort path
+echo "== P2(a): scanner non-zero => abort (fail-closed) =="
+# shellcheck source=common.sh
+source "$DIR/common.sh"
+CRASH_FIX=$(mktemp)
+# Valid-looking ps line so empty-ps check passes; scanner forced to exit 2 via bad --team-id handled below.
+# Instead: wrap by pointing scanner at a crashing helper via a temp copy? Simpler: call python with
+# a broken pubkeys file path that does not exist — load_pubkeys raises → exit 2.
+set +e
+BAD_OUT=$(printf '1 init\n' | python3 "$DIR/_seat_identity_scan.py" --team-id "$ID_TEAM" --pubkeys-file /no/such/pubkeys.txt 2>/tmp/i38-scan-crash.err)
+BAD_RC=$?
+set -e
+if [[ "$BAD_RC" -eq 0 ]]; then
+  echo "FAIL: scanner should exit non-zero on missing pubkeys file" >&2
+  exit 1
+fi
+if [[ "$BAD_RC" -ne 2 ]]; then
+  echo "FAIL: scanner exit want 2 on error, got $BAD_RC" >&2
+  exit 1
+fi
+# Also exercise shell wrapper: ISSUE38_PS_FIXTURE with content, but break scanner by renaming briefly? 
+# Use a pubs file that exists empty → scan_team_seat_identity_matches aborts on empty pubs.
+EMPTY_PUBS=$(mktemp)
+: > "$EMPTY_PUBS"
+FIX_PS=$(mktemp)
+printf '1 /sbin/launchd\n2 bash smoke\n' > "$FIX_PS"
+set +e
+ISSUE38_PS_FIXTURE="$FIX_PS" scan_team_seat_identity_matches "$EMPTY_PUBS" >/tmp/i38-empty-pubs.out 2>/tmp/i38-empty-pubs.err
+WRAP_RC=$?
+set -e
+rm -f "$EMPTY_PUBS" "$FIX_PS" "$CRASH_FIX"
+if [[ "$WRAP_RC" -eq 0 ]]; then
+  echo "FAIL: scan_team_seat_identity_matches should abort on empty pubs / scanner error" >&2
+  cat /tmp/i38-empty-pubs.err >&2
+  exit 1
+fi
+grep -qiE 'ABORT|empty pubkeys|scanner exited' /tmp/i38-empty-pubs.err
+echo "P2(a) scanner non-zero / empty pubs => abort OK"
+
+# P2(b): empty ps => abort
+echo "== P2(b): empty ps => abort (fail-closed) =="
+EMPTY_PS=$(mktemp)
+: > "$EMPTY_PS"
+PUBS9=$(mktemp)
+echo "$PUB" > "$PUBS9"
+set +e
+ISSUE38_PS_FIXTURE="$EMPTY_PS" scan_team_seat_identity_matches "$PUBS9" >/tmp/i38-empty-ps.out 2>/tmp/i38-empty-ps.err
+EPS_RC=$?
+set -e
+rm -f "$EMPTY_PS" "$PUBS9"
+if [[ "$EPS_RC" -eq 0 ]]; then
+  echo "FAIL: empty ps should abort" >&2
+  exit 1
+fi
+grep -qi 'empty ps' /tmp/i38-empty-ps.err
+echo "P2(b) empty ps => abort OK"
+
+# P2(c): positive control fails when one seat missing
+echo "== P2(c): positive control fails when one of 9 seats missing =="
+PC_BACKUP=$(mktemp -d)
+# Fake PID_DIR with 9 TEAM pid files
+PC_PID_DIR=$(mktemp -d)
+PUBS_LIST=()
+for i in 1 2 3 4 5 6 7 8 9; do
+  # 64-hex-ish unique fake pubkeys (use PUB for seat 1; synthetic for others)
+  if [[ "$i" -eq 1 ]]; then
+    p="$PUB"
+  else
+    p=$(printf '%064d' "$i")
+  fi
+  PUBS_LIST+=("$p")
+  echo '{"pid": '$((90000+i))'}' > "$PC_PID_DIR/${p}__${TEAM}.json"
+done
+# Fixture: only 8 seats present in ps (missing seat index 9)
+PC_FIX=$(mktemp)
+{
+  echo "1 /sbin/launchd"
+  for i in 1 2 3 4 5 6 7 8; do
+    p=${PUBS_LIST[$((i-1))]}
+    echo "$((91000+i)) /Users/xupeng/.local/share/buzz/binaries/x/buzz-acp BUZZ_RUNTIME_ID=${ID_TEAM}/${p} BUZZ_RELAY_URL=ws://127.0.0.1:3000"
+  done
+} > "$PC_FIX"
+set +e
+PID_DIR="$PC_PID_DIR" ISSUE38_PS_FIXTURE="$PC_FIX" run_seat_scan_positive_control "$PC_BACKUP" >/tmp/i38-pc.out 2>/tmp/i38-pc.err
+PC_RC=$?
+set -e
+if [[ "$PC_RC" -eq 0 ]]; then
+  echo "FAIL: positive control should fail when one seat missing" >&2
+  cat /tmp/i38-pc.out /tmp/i38-pc.err >&2
+  exit 1
+fi
+PC_FILE="$PC_BACKUP/seat-scan-positive-control.txt"
+test -f "$PC_FILE"
+if grep -qE '^PASS([[:space:]]|$)' "$PC_FILE"; then
+  echo "FAIL: positive control artifact must not have PASS when a seat is missing" >&2
+  cat "$PC_FILE" >&2
+  exit 1
+fi
+grep -q 'RESULT=FAIL' "$PC_FILE"
+# Mutate-style gate must refuse this artifact
+set +e
+require_seat_scan_positive_control_artifact "$PC_BACKUP" >/tmp/i38-pc-gate.out 2>/tmp/i38-pc-gate.err
+GATE_RC=$?
+set -e
+if [[ "$GATE_RC" -eq 0 ]]; then
+  echo "FAIL: require_seat_scan_positive_control_artifact should reject non-PASS" >&2
+  exit 1
+fi
+rm -rf "$PC_BACKUP" "$PC_PID_DIR"
+rm -f "$PC_FIX"
+echo "P2(c) positive control missing-seat => FAIL / no PASS OK"
+
+# P3(d) already covered by fixture above; assert comments in common.sh / scanner
+grep -q 'BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey>' "$DIR/common.sh"
+grep -q -- '--team-id' "$DIR/_seat_identity_scan.py"
+grep -q 'SCAN_OK matches=' "$DIR/_seat_identity_scan.py"
+if grep -nE 'Required BUZZ_RELAY_URL value \(team distinguisher\)' "$DIR/_seat_identity_scan.py"; then
+  echo "FAIL: scanner still treats BUZZ_RELAY_URL as primary team distinguisher" >&2
+  exit 1
+fi
+grep -q 'run_seat_scan_positive_control' "$DIR/apply.sh"
+grep -q 'seat-scan-positive-control.txt' "$DIR/common.sh"
+grep -q 'require_desktop_not_running "$BACKUP"' "$DIR/apply.sh"
+grep -q 'require_desktop_not_running "$BACKUP"' "$DIR/rollback.sh"
+grep -q 'BUZZ_RUNTIME_ID=a558771623f29898' "$DIR/../RUNBOOK.md"
+grep -qi 'positive control' "$DIR/../RUNBOOK.md"
+echo "P3 exact-token rule + positive-control wiring OK"
 # D3: baseline_at + age check + mutate re-assert
 grep -q 'BASELINE_MAX_AGE_S=1800' "$DIR/common.sh"
 grep -q 'record_baseline_at' "$DIR/common.sh"

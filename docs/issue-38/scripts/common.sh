@@ -208,18 +208,87 @@ desktop_main_pids() {
 }
 
 # ---- TEAM seat identity scan (D1 / A15) ----
-# Why identity (pubkey + relay) instead of kill -0 on pid-file pids / pgrep -P:
+# Why identity (exact BUZZ_RUNTIME_ID=<ID_TEAM>/<pubkey>) instead of kill -0 on
+# pid-file pids / pgrep -P / pubkey+relay:
 #   - After Cmd+Q, orphaned ACP children reparent to pid 1 (launchd); pgrep -P
 #     on the old wrapper pid misses them.
 #   - Stale pid-file numbers can be reused by unrelated processes → false positives.
-#   - Scope is this TEAM only (pubkey from *__${TEAM}.json names + BUZZ_RELAY_URL);
-#     do NOT scan machine-wide for `buzz-acp` by name (yuanbao duplicates may share
-#     the same seat pubkeys but use a different relay — see A15).
+#   - Scope is this TEAM only via exact env token BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey>
+#     (pubkey list from *__${TEAM}.json names). Drop BUZZ_RELAY_URL as the primary
+#     distinguisher — yuanbao / other instances may share pubkeys+relay but use a
+#     different team id prefix (see A15). Do NOT scan machine-wide for `buzz-acp`
+#     by name alone.
 # Match rule (all required): seat executable (buzz_team.cli wrapper OR buzz-acp
-# argv0) AND seat pubkey AND BUZZ_RELAY_URL=${TEAM_RELAY_URL} AND not self/descendants.
+# argv0) AND exact BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey> AND not self/descendants.
+# Fail-closed: scanner crash / non-zero, ps non-zero, or empty ps ⇒ ABORT (never
+# treat as "no seats alive"). Scanner exit 0 = ok (prints matches + SCAN_OK);
+# exit 2 = error. Positive control (baseline, Desktop UP) must PASS before a
+# 0-match result is trusted in mutate/rollback.
 
-# Relay URL that identifies THIS Desktop TEAM's seats in process env (A14/A15).
-TEAM_RELAY_URL="${TEAM_RELAY_URL:-ws://127.0.0.1:3000}"
+# Emit ps pid/command lines for identity scan.
+# macOS: ps -axww (cmdline) AND ps -Eaxww (env visible for our own processes).
+# Linux/CI: ps -eww e; live Desktop checks are macOS-only.
+# ISSUE38_PS_FIXTURE=path → read fixture instead (smoke tests; no live ps).
+# Fail-closed: any real ps non-zero exit or empty combined output ⇒ return 1.
+_collect_ps_pid_command_lines() {
+  local out1 out2 rc1=0 rc2=0
+  if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
+    if [[ ! -f "$ISSUE38_PS_FIXTURE" ]]; then
+      echo "ABORT: ISSUE38_PS_FIXTURE not a file: $ISSUE38_PS_FIXTURE" >&2
+      return 1
+    fi
+    cat "$ISSUE38_PS_FIXTURE"
+    return 0
+  fi
+  case "$(uname -s)" in
+    Darwin)
+      out1=$(ps -axww -o pid=,command= 2>/dev/null) || rc1=$?
+      out2=$(ps -Eaxww -o pid=,command= 2>/dev/null) || rc2=$?
+      if [[ "$rc1" -ne 0 ]]; then
+        echo "ABORT: ps -axww failed (exit=$rc1) — refuse to treat as no seats alive" >&2
+        return 1
+      fi
+      if [[ "$rc2" -ne 0 ]]; then
+        echo "ABORT: ps -Eaxww failed (exit=$rc2) — refuse to treat as no seats alive" >&2
+        return 1
+      fi
+      printf '%s\n%s\n' "$out1" "$out2"
+      ;;
+    *)
+      out1=$(ps -eww -o pid=,args= 2>/dev/null) || rc1=$?
+      out2=$(ps -eww e -o pid=,args= 2>/dev/null) || rc2=$?
+      if [[ "$rc1" -ne 0 ]]; then
+        echo "ABORT: ps -eww failed (exit=$rc1) — refuse to treat as no seats alive" >&2
+        return 1
+      fi
+      if [[ "$rc2" -ne 0 ]]; then
+        echo "ABORT: ps -eww e failed (exit=$rc2) — refuse to treat as no seats alive" >&2
+        return 1
+      fi
+      printf '%s\n%s\n' "$out1" "$out2"
+      ;;
+  esac
+}
+
+
+# Emit PPIDMAP lines so the scanner can exclude $$ descendants (ps/python pipeline).
+# Fail-closed on live ps failure (fixture mode skips).
+_collect_ppid_map_lines() {
+  local rc=0 out
+  if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
+    return 0
+  fi
+  out=$(ps -axww -o pid=,ppid= 2>/dev/null) || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    echo "ABORT: ps pid/ppid map failed (exit=$rc)" >&2
+    return 1
+  fi
+  while read -r pid ppid; do
+    [[ -n "${pid:-}" && -n "${ppid:-}" ]] || continue
+    printf 'PPIDMAP %s %s\n' "$pid" "$ppid"
+  done <<< "$out"
+}
+
 
 # Extract seat pubkeys from the 9 TEAM pid file names ($PID_DIR/<pubkey>__<TEAM>.json).
 team_seat_pubkeys_from_pid_files() {
@@ -232,58 +301,184 @@ team_seat_pubkeys_from_pid_files() {
   shopt -u nullglob
 }
 
-# Emit ps pid/command lines for identity scan.
-# macOS: ps -axww (cmdline) AND ps -Eaxww (env visible for our own processes).
-# Linux/CI: ps -eww e; live Desktop checks are macOS-only.
-# ISSUE38_PS_FIXTURE=path → read fixture instead (smoke tests; no live ps).
-_collect_ps_pid_command_lines() {
-  if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
-    cat "$ISSUE38_PS_FIXTURE"
-    return 0
-  fi
-  case "$(uname -s)" in
-    Darwin)
-      ps -axww -o pid=,command= 2>/dev/null || true
-      ps -Eaxww -o pid=,command= 2>/dev/null || true
-      ;;
-    *)
-      ps -eww -o pid=,args= 2>/dev/null || true
-      ps -eww e -o pid=,args= 2>/dev/null || true
-      ;;
-  esac
-}
-
-# Emit PPIDMAP lines so the scanner can exclude $$ descendants (ps/python pipeline).
-_collect_ppid_map_lines() {
-  if [[ -n "${ISSUE38_PS_FIXTURE:-}" ]]; then
-    return 0
-  fi
-  ps -axww -o pid=,ppid= 2>/dev/null | while read -r pid ppid; do
-    [[ -n "${pid:-}" && -n "${ppid:-}" ]] || continue
-    printf 'PPIDMAP %s %s\n' "$pid" "$ppid"
-  done
-}
-
-# Run identity scan. Prints "pid<TAB>pubkey<TAB>via" matches to stdout.
-# $1 = path to pubkeys file (one per line). Excludes $$ and descendants.
+# Run identity scan. Prints match lines "pid<TAB>pubkey<TAB>via" to stdout
+# (SCAN_OK / COUNT lines go to the captured stream but are filtered for callers
+# that only want matches — full output including SCAN_OK is also validated).
+# $1 = path to pubkeys file (one per line).
+# Optional $2 = "counts" to also emit COUNT lines (positive control).
+# Excludes $$ and descendants. Fail-closed on scanner/ps failure or missing SCAN_OK.
 scan_team_seat_identity_matches() {
   local pubs_file=$1
+  local mode=${2:-}
   local self_pid=$$
-  local scanner
+  local scanner ps_blob scan_out rc=0 scan_ok_line ps_lines matches_n
+  local -a scan_args=()
   scanner="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/_seat_identity_scan.py"
+  if [[ ! -f "$scanner" ]]; then
+    echo "ABORT: missing scanner $scanner" >&2
+    return 1
+  fi
+  if [[ ! -s "$pubs_file" ]]; then
+    echo "ABORT: empty pubkeys file for identity scan: $pubs_file" >&2
+    return 1
+  fi
+  # Capture without toggling caller's set -e (assignment/if are set -e safe).
+  rc=0
+  ps_blob=$(
+    {
+      _collect_ps_pid_command_lines || exit 1
+      _collect_ppid_map_lines || exit 1
+    }
+  ) || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    echo "ABORT: failed to collect ps/ppid for identity scan (exit=$rc)" >&2
+    return 1
+  fi
+  # Empty ps is never OK live (must at least include the scanning process itself).
+  # Fixture mode may be empty only if the fixture file itself is empty — still abort.
+  if [[ -z "$(printf '%s\n' "$ps_blob" | awk 'NF && $0 !~ /^PPIDMAP / {print; exit}')" ]]; then
+    echo "ABORT: empty ps output for identity scan (fail-closed; refuse 'no seats alive')" >&2
+    return 1
+  fi
+  scan_args=(--team-id "$ID_TEAM" --pubkeys-file "$pubs_file" --self-pid "$self_pid" --exclude-pid "$self_pid")
+  if [[ "$mode" == "counts" ]]; then
+    scan_args+=(--report-counts)
+  fi
+  rc=0
+  scan_out=$(printf '%s\n' "$ps_blob" | python3 "$scanner" "${scan_args[@]}") || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    echo "ABORT: seat identity scanner exited $rc (fail-closed; refuse 'no seats alive')" >&2
+    printf '%s\n' "$scan_out" >&2
+    return 1
+  fi
+  scan_ok_line=$(printf '%s\n' "$scan_out" | grep -E '^SCAN_OK matches=[0-9]+ ps_lines=[0-9]+$' | tail -n1 || true)
+  if [[ -z "$scan_ok_line" ]]; then
+    echo "ABORT: scanner output missing SCAN_OK summary line (fail-closed)" >&2
+    printf '%s\n' "$scan_out" >&2
+    return 1
+  fi
+  matches_n=${scan_ok_line#*matches=}
+  matches_n=${matches_n%% *}
+  ps_lines=${scan_ok_line#*ps_lines=}
+  if [[ ! "$ps_lines" =~ ^[0-9]+$ ]] || [[ "$ps_lines" -le 0 ]]; then
+    echo "ABORT: scanner SCAN_OK ps_lines=$ps_lines (must be >0; fail-closed)" >&2
+    printf '%s\n' "$scan_out" >&2
+    return 1
+  fi
+  # Emit match (+ optional COUNT) lines; drop SCAN_OK from stdout for callers.
+  printf '%s\n' "$scan_out" | grep -vE '^SCAN_OK ' || true
+  return 0
+}
+
+
+# Positive-control artifact path inside a baseline backup.
+seat_scan_positive_control_path() {
+  local backup=$1
+  printf '%s\n' "$backup/seat-scan-positive-control.txt"
+}
+
+# Require the baseline positive-control artifact exists with a PASS marker.
+# Mutate/rollback must call this before trusting a 0-match identity scan.
+require_seat_scan_positive_control_artifact() {
+  local backup=$1
+  local f
+  f=$(seat_scan_positive_control_path "$backup")
+  if [[ ! -f "$f" ]]; then
+    echo "ABORT: missing seat-scan positive control $f" >&2
+    echo "Re-run apply.sh --baseline-only with Desktop UP (doctor 9/9) so each of the 9" >&2
+    echo "seat pubkeys gets >=1 BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey> match. Without PASS," >&2
+    echo "a 0-match scan is not trusted (fail-closed)." >&2
+    return 1
+  fi
+  if ! grep -qE '^PASS([[:space:]]|$)' "$f"; then
+    echo "ABORT: positive control $f lacks PASS marker — refuse to trust 0-match scan" >&2
+    return 1
+  fi
+  echo "seat-scan positive control artifact OK: $f"
+}
+
+# Baseline (Desktop UP): run identity scan with --report-counts; require EACH of
+# the 9 seat pubkeys has >=1 match. Write $BACKUP/seat-scan-positive-control.txt
+# with PASS, per-pid matches (token only), and per-seat counts. On failure do NOT
+# leave a usable PASS artifact (caller must not write baseline_at either).
+run_seat_scan_positive_control() {
+  local backup=$1
+  local pubs_file out_file scan_out rc=0
+  local -a missing=()
+  local pub n total pubs_n
+  pubs_file=$(mktemp)
+  out_file=$(seat_scan_positive_control_path "$backup")
+  team_seat_pubkeys_from_pid_files > "$pubs_file"
+  pubs_n=$(wc -l < "$pubs_file" | tr -d ' ')
+  if [[ "$pubs_n" -ne 9 ]]; then
+    rm -f "$pubs_file"
+    echo "ABORT: positive control expected 9 TEAM pubkeys, found $pubs_n under $PID_DIR" >&2
+    return 1
+  fi
+  rc=0
+  scan_out=$(scan_team_seat_identity_matches "$pubs_file" counts) || rc=$?
+  if [[ "$rc" -ne 0 ]]; then
+    rm -f "$pubs_file"
+    echo "ABORT: positive control identity scan failed (exit=$rc)" >&2
+    return 1
+  fi
+  # Build artifact (no secrets — only pid / pubkey / BUZZ_RUNTIME_ID token / counts).
   {
-    _collect_ps_pid_command_lines
-    _collect_ppid_map_lines
-  } | python3 "$scanner" \
-      --relay "$TEAM_RELAY_URL" \
-      --pubkeys-file "$pubs_file" \
-      --self-pid "$self_pid" \
-      --exclude-pid "$self_pid"
+    echo "# seat-scan positive control (Issue #38 A15)"
+    echo "# team_id=${ID_TEAM}"
+    echo "# rule: buzz_team.cli|buzz-acp argv0 AND exact BUZZ_RUNTIME_ID=\${ID_TEAM}/<pubkey>"
+    echo "# generated=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    echo "# --- matches (pid, pubkey, token) ---"
+    printf '%s\n' "$scan_out" | awk -F'\t' 'NF==3 && $1 ~ /^[0-9]+$/ {print}'
+    echo "# --- per-seat counts ---"
+    printf '%s\n' "$scan_out" | awk -F'\t' '$1=="COUNT" {print}'
+  } > "$out_file.tmp"
+
+  missing=()
+  total=0
+  while IFS= read -r pub; do
+    [[ -n "$pub" ]] || continue
+    n=$(printf '%s\n' "$scan_out" | awk -F'\t' -v p="$pub" '$1=="COUNT" && $2==p {print $3; found=1} END{if(!found) print 0}')
+    total=$((total + n))
+    if [[ "$n" -lt 1 ]]; then
+      missing+=("$pub")
+    fi
+  done < "$pubs_file"
+  rm -f "$pubs_file"
+
+  if ((${#missing[@]} > 0)); then
+    {
+      echo "RESULT=FAIL"
+      echo "missing_seats=${#missing[@]}"
+      printf 'missing_pubkey=%s\n' "${missing[@]}"
+    } >> "$out_file.tmp"
+    mv "$out_file.tmp" "$out_file"
+    echo "ABORT: positive control FAIL — ${#missing[@]} seat pubkey(s) have 0 identity matches:" >&2
+    printf '  %s\n' "${missing[@]}" >&2
+    echo "Desktop must be UP with doctor 9/9; refusing to write a usable baseline." >&2
+    return 1
+  fi
+  {
+    echo "PASS"
+    echo "seats_ok=9"
+    echo "total_matches=${total}"
+    echo "# total may exceed 18 (wrapper + buzz-acp + executor children like python -m buzz_team.cli)"
+  } >> "$out_file.tmp"
+  mv "$out_file.tmp" "$out_file"
+  echo "seat-scan positive control PASS: 9/9 seats matched (total_matches=${total}) -> $out_file"
 }
 
 # Abort if any TEAM seat identity is still live (wrapper or buzz-acp).
+# $1 = backup dir that must contain seat-scan-positive-control.txt with PASS
+#      before a 0-match result is trusted (mutate/rollback).
 require_team_seats_not_running() {
-  local pubs_file matches
+  local backup=${1:-}
+  local pubs_file matches rc=0
+  if [[ -z "$backup" ]]; then
+    echo "ABORT: require_team_seats_not_running needs backup dir (positive-control gate)" >&2
+    return 1
+  fi
+  require_seat_scan_positive_control_artifact "$backup" || return 1
   pubs_file=$(mktemp)
   team_seat_pubkeys_from_pid_files > "$pubs_file"
   if [[ ! -s "$pubs_file" ]]; then
@@ -291,8 +486,15 @@ require_team_seats_not_running() {
     echo "ABORT: no TEAM pid files matching *__${TEAM}.json under $PID_DIR" >&2
     return 1
   fi
-  matches=$(scan_team_seat_identity_matches "$pubs_file" || true)
+  rc=0
+  matches=$(scan_team_seat_identity_matches "$pubs_file") || rc=$?
   rm -f "$pubs_file"
+  if [[ "$rc" -ne 0 ]]; then
+    echo "ABORT: identity scan failed during seats-not-running check (exit=$rc)" >&2
+    return 1
+  fi
+  # Drop COUNT lines if any; keep pid\tpubkey\tvia
+  matches=$(printf '%s\n' "$matches" | awk -F'\t' 'NF==3 && $1 ~ /^[0-9]+$/')
   if [[ -n "$matches" ]]; then
     echo "ABORT: TEAM seat process(es) still alive (identity match; Desktop quit incomplete):" >&2
     while IFS=$'\t' read -r pid pub via; do
@@ -302,7 +504,7 @@ require_team_seats_not_running() {
     echo "Cmd+Q fully quit Desktop and wait for ACP teardown, then re-run." >&2
     return 1
   fi
-  echo "TEAM seat identity scan: no live seats OK"
+  echo "TEAM seat identity scan: no live seats OK (positive control trusted)"
 }
 
 # Abort unless something is listening on TCP :3000 (relay / colima forward — A14).
@@ -318,10 +520,12 @@ require_relay_3000_listening() {
 }
 
 # Abort if Desktop main process is up, OR any TEAM seat still matches the
-# identity scan (pubkey + BUZZ_RELAY_URL + wrapper/buzz-acp). Does NOT use
-# pid-file kill -0 or pgrep -P (see comment above). Does NOT scan machine-wide
-# for buzz-acp by name alone.
+# identity scan (exact BUZZ_RUNTIME_ID=${ID_TEAM}/<pubkey> + wrapper/buzz-acp).
+# $1 = backup dir for positive-control gate (required).
+# Does NOT use pid-file kill -0 or pgrep -P. Does NOT scan machine-wide for
+# buzz-acp by name alone.
 require_desktop_not_running() {
+  local backup=${1:-}
   local pids
   pids=$(desktop_main_pids | tr '\n' ' ' | sed 's/[[:space:]]*$//')
   if [[ -n "$pids" ]]; then
@@ -331,7 +535,7 @@ require_desktop_not_running() {
   fi
   echo "Desktop not running OK"
 
-  require_team_seats_not_running || return 1
+  require_team_seats_not_running "$backup" || return 1
 }
 
 # Record baseline capture time (epoch seconds) for mutate freshness gate.

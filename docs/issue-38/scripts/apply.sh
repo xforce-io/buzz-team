@@ -111,6 +111,8 @@ p.write_text(c if c.endswith(chr(10)) else c+chr(10))
 print('saved workflow-live-before.yaml from live get')
 "
   rm -f "$LIVE_GET"
+  echo "== positive control: identity scan requires 9/9 seats (BUZZ_RUNTIME_ID=\${ID_TEAM}/<pubkey>) =="
+  run_seat_scan_positive_control "$BACKUP" || exit 1
   record_baseline_at "$BACKUP"
 
   cat <<MSG
@@ -140,8 +142,8 @@ test -f "$BACKUP/pj.md"
 test -f "$BACKUP/AGENTS.md"
 test -f "$BACKUP/instructions-1.md"
 
-echo "== mutate phase: require Desktop NOT running =="
-require_desktop_not_running || exit 1
+echo "== mutate phase: require Desktop NOT running (identity scan + positive-control gate) =="
+require_desktop_not_running "$BACKUP" || exit 1
 
 echo "== mutate phase: require baseline freshness (max age ${BASELINE_MAX_AGE_S}s) =="
 require_baseline_fresh "$BACKUP" || exit 1
