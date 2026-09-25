@@ -98,8 +98,8 @@ def prepare(config: Config):
     """Only thin launchers; never rewrite credentials, instructions or adapter settings."""
     from .desktop import status
     current = status(config)
-    if current["bound"] and current["desktop_pids"]:
-        raise ValueError("bound instance is running; stop Desktop before preparing launchers")
+    if current["desktop_pids"]:
+        raise ValueError("Desktop is running; stop it before preparing launchers")
     executable = Path(sys.executable).absolute()
     q = shlex.quote
     prefix = f"exec {q(str(executable))} -m buzz_team.cli --instance {q(str(config.instance))} "

@@ -30,15 +30,15 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 6 架构
 
-补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/runbooks/44-upstream-pin.md`。规则在 `AGENTS.md`。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
+补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/runbooks/44-upstream-pin.md`。规则在 `AGENTS.md`。进程检查把 Desktop 的内置 `acp_command=buzz-acp` 解析为包内程序，`prepare` 在 Desktop 运行时拒绝改写薄入口。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
 
 ## 7 模块
 
-N/A。
+`desktop.live_processes` 识别 Desktop 内置 `buzz-acp`；`instance.prepare` 在 Desktop 有运行进程时拒绝改写薄入口。
 
 ## 8 API/CLI
 
-N/A。
+`buzz-team status` 接受 Desktop 库存中的内置 `buzz-acp` 命令；`buzz-team prepare` 在 Desktop 运行时返回明确错误。其他相对启动命令仍拒绝。
 
 ## 9 边界
 
@@ -51,7 +51,7 @@ N/A。
 ## 11 测试计划
 
 - E2E：`.agents/skills/verify-buzz-team/features/upstream-pin.md` 对 S1、S2、S3。
-- Integration：N/A。
+- Integration：进程检查与 `prepare` 的活动进程门禁。
 - Unit：N/A。归档是补丁文件，校验值写在 MANIFEST。
 
 ## 12 开放问题

@@ -113,6 +113,12 @@ class ConfigurationTests(Fixture):
         with patch("buzz_team.desktop.live_processes", return_value=[123]), self.assertRaises(ValueError):
             prepare(self.config)
 
+    def test_prepare_refuses_live_unbound_instance(self):
+        with patch("buzz_team.desktop.live_processes", return_value=[123]):
+            with self.assertRaisesRegex(ValueError, "Desktop is running"):
+                prepare(self.config)
+        self.assertFalse((self.instance / "bin/agent-harness").exists())
+
     def test_conversion_preserves_auth_and_state(self):
         self.assertEqual(self.config.state, self.root / "states")
         self.assertNotIn("credential_sources", self.config.data)
@@ -654,6 +660,21 @@ class CLITests(Fixture):
             self.assertEqual(desktop.live_processes(self.config), [123])
             self.assertEqual(ps.call_args_list[0].args[0][-1], "pid=,comm=")
             self.assertEqual(ps.call_args_list[1].args[0][-1], "pid=,args=")
+
+    def test_desktop_builtin_acp_command_is_resolved_for_process_guard(self):
+        rows = json.loads(self.desktop_file.read_text())
+        rows[0]["acp_command"] = "buzz-acp"
+        self.desktop_file.write_text(json.dumps(rows))
+        builtin = str(self.app / "Contents/MacOS/buzz-acp")
+        with patch("buzz_team.desktop.subprocess.check_output", side_effect=[
+                f"123 {builtin}\n", f"123 {builtin}\n", ""]):
+            self.assertEqual(desktop.live_processes(self.config), [123])
+
+        rows[0]["acp_command"] = "unknown-relative-command"
+        self.desktop_file.write_text(json.dumps(rows))
+        with patch("buzz_team.desktop.subprocess.check_output", return_value=""):
+            with self.assertRaisesRegex(ValueError, "absolute path"):
+                desktop.live_processes(self.config)
 
     def test_short_executor_title_scoped_to_identity_workspace(self):
         for cwd, expected in ((self.base / "workspace", [123]), (self.root, [])):
