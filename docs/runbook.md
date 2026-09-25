@@ -8,6 +8,8 @@ Buzz Desktop 启动自带 `buzz-acp`；`buzz-acp` 通过 Desktop 的 Agent harne
 
 将本仓库以普通 wheel 安装在仓库外目录，记录安装提交及上一个可用目录。Desktop 的自定义 Agent harness 选择安装后 `buzz-team-thin` 的绝对路径，Arguments 沿用原 `agent --always-approve --no-leader --reasoning-effort <值> stdio`。ACP command 保持 Desktop 自带 `buzz-acp`。不要把薄入口登记为 ACP command。
 
+先在 Desktop Settings 中登记自定义 Agent harness，再单独编辑身份。当前 Desktop 在身份编辑弹窗内直接“Add custom harness…”会同时保存该身份，预览中曾清空其环境变量；每次保存后须检查变更摘要及原环境变量仍在，异常时先恢复原值，不重启该身份。
+
 本机策略文件须在身份可写目录外，权限不允许 group/world 写。每个身份在 Desktop 环境变量中提供原 `GROK_HOME`、`GROK_ACP_CWD` 和 `BUZZ_TEAM_POLICY_PATH`。示例仅展示格式；实际路径在本机私有文件中填写：
 
 ```json
@@ -20,7 +22,7 @@ Buzz Desktop 启动自带 `buzz-acp`；`buzz-acp` 通过 Desktop 的 Agent harne
 }
 ```
 
-业务身份使用 `"mode": "business"` 并逐项列出批准的生产写路径。两种策略均允许本身份目录写入；开发身份不允许额外生产路径。策略文件、Grok 可执行文件和其他身份 home 不得位于允许写入的根下。缺 Seatbelt、路径不存在、home 不匹配或策略无效时拒启。读取和网络能力沿用当前系统与上游行为，策略只限定文件写入。
+业务身份使用 `"mode": "business"` 并逐项列出批准的生产写路径；无需生产写入时可留空。两种策略均允许本身份目录写入；开发身份不允许额外生产路径。策略文件、Grok 可执行文件和其他身份 home 不得位于允许写入的根下。缺 Seatbelt、路径不存在、home 不匹配或策略无效时拒启。读取和网络能力沿用当前系统与上游行为，策略只限定文件写入。
 
 ## 逐身份预览
 

@@ -56,6 +56,12 @@ class ThinLauncherTests(unittest.TestCase):
         self.assertIn(str(production), argv[2])
         self.assertIn("deny file-write*", argv[2])
 
+    def test_business_without_production_write_does_not_expand_boundary(self):
+        self.save("business")
+        argv, _, _ = self.command()
+        self.assertIn(str(self.identity.resolve()), argv[2])
+        self.assertNotIn(str((self.root / "production").resolve()), argv[2])
+
     def test_rejects_policy_in_writable_root(self):
         self.env["BUZZ_TEAM_POLICY_PATH"] = str(self.identity / "policy.json")
         self.policy = Path(self.env["BUZZ_TEAM_POLICY_PATH"])
