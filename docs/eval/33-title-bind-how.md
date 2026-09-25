@@ -1,5 +1,7 @@
 # #33 keel-how：角色头衔 → p 与自提及 👀
 
+> 历史记录：#53 已退役本文涉及的本地 ACP 代理、任务/会话状态或 Desktop 私有绑定入口。文中的旧模块、CLI 和操作步骤不再是现行契约；当前运行与回退见 [运行手册](../runbook.md)及 [#53 设计](../design/53-remove-acp-middle-layer.md)。
+
 状态：how（只读核树，2026-09-24）。不改产品代码。供粘贴 [Issue #33](https://github.com/xforce-io/buzz-team/issues/33)；L1 见 [docs/design/33-title-bind-zhouheng-eyes.md](../design/33-title-bind-zhouheng-eyes.md)。
 
 约束：不改 workflow owner（[#34](https://github.com/xforce-io/buzz-team/issues/34) 已关）；不改 `block/buzz`；不改 live pin `046ac43`；不把 Online 每帖改线到 `agent-executor`（[#24](https://github.com/xforce-io/buzz-team/issues/24) no-go）。

@@ -1,5 +1,7 @@
 # Issue #38 artifacts（周衡指令遵循）
 
+> 历史记录：#53 已退役本文涉及的本地 ACP 代理、任务/会话状态或 Desktop 私有绑定入口。文中的旧模块、CLI 和操作步骤不再是现行契约；当前运行与回退见 [运行手册](../runbook.md)及 [#53 设计](../design/53-remove-acp-middle-layer.md)。
+
 本目录冻结 S1/S2/S3 的 before/after、diff、live apply/rollback 脚本与 runbook，供 Knox 在**单一 tip SHA**上审查，无需读 live。
 
 | 文件 | 作用 |
