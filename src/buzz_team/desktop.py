@@ -25,7 +25,8 @@ WAKE_BINDING_KEYS = (
     "BUZZ_WAKE_SCOPE",
 )
 ALLOWED_BINDING_KEYS = {
-    "BUZZ_ACP_CONFIG", "BUZZ_TASK_ID", "BUZZ_TASK_SCOPE", *WAKE_BINDING_KEYS,
+    "BUZZ_ACP_CONFIG", "BUZZ_TASK_ID", "BUZZ_TASK_SCOPE",
+    "BUZZ_ACP_SESSION_POLICY", "BUZZ_ACP_MAX_TURNS_PER_SESSION", *WAKE_BINDING_KEYS,
 }
 _WAKE_PAYLOAD_FIELDS = {
     "surface": "BUZZ_WAKE_SURFACE",
@@ -167,7 +168,7 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
     for key, row in chosen.items():
         before = copy.deepcopy(row)
         runtime = Runtime(config, key)
-        row["acp_command"] = str(config.instance / "bin/agent-harness")
+        row["acp_command"] = "buzz-acp"
         row["agent_command"] = str(config.instance / "bin/agent-executor")
         env = row.setdefault("env_vars", {})
         env["BUZZ_RUNTIME_ID"] = key
@@ -177,6 +178,13 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
                 raise ValueError("unsupported binding environment override")
             if not isinstance(value, str) or not value or "\0" in value:
                 raise ValueError("invalid binding environment value")
+            if name == "BUZZ_ACP_SESSION_POLICY" and value not in {"channel", "thread"}:
+                raise ValueError("invalid ACP session policy")
+            if name == "BUZZ_ACP_MAX_TURNS_PER_SESSION" and (
+                not value.isascii() or not value.isdecimal() or
+                len(value) > 4 or str(int(value)) != value or int(value) > 1000
+            ):
+                raise ValueError("invalid ACP max turns per session")
             env[name] = value
         # The executor home, existing session settings and credentials remain untouched.
         for name, value in runtime.executor.binding_environment(runtime.base, runtime.cwd).items():

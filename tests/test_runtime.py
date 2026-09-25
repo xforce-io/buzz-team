@@ -444,6 +444,41 @@ class CLITests(Fixture):
         with self.assertRaisesRegex(ValueError, "unsupported binding environment"):
             desktop.binding_diff(self.config, copy.deepcopy(self.rows))
 
+    def test_desktop_binding_allows_upstream_session_settings(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_SESSION_POLICY": "thread",
+            "BUZZ_ACP_MAX_TURNS_PER_SESSION": "4",
+        }
+        original = copy.deepcopy(self.rows)
+        updated, changed = desktop.binding_diff(self.config, self.rows)
+        self.assertEqual(self.rows, original)
+        self.assertEqual(changed, 1)
+        self.assertEqual(updated[0]["acp_command"], "buzz-acp")
+        self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_SESSION_POLICY"], "thread")
+        self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_MAX_TURNS_PER_SESSION"], "4")
+
+    def test_desktop_binding_rejects_invalid_upstream_session_settings(self):
+        for name, values in (
+            ("BUZZ_ACP_SESSION_POLICY", ("", "post", "THREAD")),
+            ("BUZZ_ACP_MAX_TURNS_PER_SESSION", ("", "-1", "01", "1.5", "1001", "٤")),
+        ):
+            for value in values:
+                with self.subTest(name=name, value=value):
+                    self.config.data["agents"][self.key]["binding_environment"] = {name: value}
+                    original = copy.deepcopy(self.rows)
+                    with self.assertRaisesRegex(ValueError, "invalid"):
+                        desktop.binding_diff(self.config, self.rows)
+                    self.assertEqual(self.rows, original)
+
+    def test_desktop_binding_accepts_explicit_session_rollback(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_SESSION_POLICY": "channel",
+            "BUZZ_ACP_MAX_TURNS_PER_SESSION": "0",
+        }
+        updated, _ = desktop.binding_diff(self.config, self.rows)
+        self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_SESSION_POLICY"], "channel")
+        self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_MAX_TURNS_PER_SESSION"], "0")
+
     def test_apply_wake_payload_expands_allowlisted_fields(self):
         env = {
             "BUZZ_WAKE_PAYLOAD": json.dumps({
@@ -1056,8 +1091,9 @@ assert r.returncode != 0
         inner = (
             "from buzz_team.runtime import Runtime, underSeatbelt\n"
             "from buzz_team.config import Config\n"
+            "from pathlib import Path\n"
             "assert underSeatbelt()\n"
-            f"cmd = Runtime(Config({str(self.instance)!r}), {self.key!r}).command(['/usr/bin/true'])\n"
+            f"cmd = Runtime(Config(Path({str(self.instance)!r})), {self.key!r}).command(['/usr/bin/true'])\n"
             "assert cmd == ['/usr/bin/true'], cmd\n"
             "print('inherited')\n"
         )

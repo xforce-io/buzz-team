@@ -19,3 +19,4 @@
 | #44 S1–S3 | [上游 pin](upstream-pin.md) | `docs/archive/44-local-fork/`；`docs/runbooks/44-upstream-pin.md` |
 | #45 S1–S3 | [Activity 与 idle](activity-idle.md) | 频道收发；`docs/activity-catalog.md`；`docs/issue-38/IDLE-DECISION.md` |
 | #46 S1–S3 | [桌面库存检查](inventory-doctor.md) | `doctor` → `classify_desktop_inventory` |
+| #47 S1–S3 | [线程会话灰度](session-policy.md) | 沈予绑定环境 → Desktop 回复与用量记录 |
