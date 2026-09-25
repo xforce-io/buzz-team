@@ -5,15 +5,13 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "buzz-team"
 version = "0.1.0"
-description = "Buzz 多 coding-agent 本机运行与管理层"
+description = "Buzz Desktop 身份的本机 Seatbelt 薄入口与只读诊断"
 requires-python = ">=3.11"
 dependencies = []
 
 [project.scripts]
 buzz-team = "buzz_team.cli:main"
+buzz-team-thin = "buzz_team.thin:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
-
-[tool.setuptools.package-data]
-buzz_team = ["compatibility.json"]

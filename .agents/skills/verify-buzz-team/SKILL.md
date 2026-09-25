@@ -1,32 +1,22 @@
 ---
 name: verify-buzz-team
-description: 验证 buzz-team CLI、实例迁移与真实 Buzz Desktop 行为。
+description: 验证 Buzz Desktop 管理身份的 Seatbelt 薄入口与只读诊断。
 ---
 
 # 驾驶手册
 
 ## Launch
 
-以 Issue 当前候选 SHA 安装到仓库外独立虚拟环境，不使用 editable 安装。按 `docs/runbook.md` 创建实例，运行 prepare 和 doctor。原环境继续运行期间禁止 bind 或启动第二套同身份 harness。
-
-## Doctor / Diagnose
-
-运行 CLI `doctor`（静态预检）与必要时 `diagnose`（同内核 + 代理 TCP / `unverified_surfaces`）。输出含 `checks[]` 四类结果（pass/fail/unverified/na）与 `coverage`；`ok` 仅表示无 fail，存在 unverified **不**等于整体健康。对照 Desktop ACP 绑定代理与 CLI 进程代理；死代理不得只报成 auth.json 缺失。认证文件仅检查存在性，原地复用，不复制、不重新登录。确认目标 SHA 工作树干净，记录安装产物与源 SHA。使用临时配置先验证回退和冲突拒绝。
-
-CLI 频道/消息只读成功不能冒充 Desktop Activity/UI 通过；静态 doctor ≠ 角色对话验证。详见 `features/health.md`。
+冻结候选 SHA，确保工作树干净；构建普通 wheel 并装到仓库外独立虚拟环境。记录安装包和 SHA。现役身份由 Desktop 管理，预览时每次只调整一个身份；不得启动第二个同身份消费者。按 `docs/runbook.md` 记录该身份原 Agent harness、ACP command、Arguments、环境变量和回退值。先检查无活跃 turn。
 
 ## Drive
 
-读取 features/README.md 与本次 S1…Sn 对应文件。迁移预览使用同一真实 Desktop，必须先观察没有活跃任务；记录切换前状态，再按 runbook 执行。不能用修改数据库、伪造消息或 CLI 输出冒充客户端结果。
-
-实际客户端使用可用原生应用控制工具；若改用浏览器，先完整读取 ego-browser skill。切换前后分别记录 DM、频道消息、Activity、工具结果、受限操作拒绝、会话恢复和异常反馈。只发明确带验证标记的无业务副作用请求；不向外部客户发消息。若有在途任务，等待其结束，不杀任务。
+读取 `features/README.md` 及本次验收对应文件。优先使用 Desktop 原生界面修改配置，使用真实消息和实际 Seatbelt 正反例；CLI 静态输出不能代替客户端回复或 Activity。只发送带验证标记、无业务副作用的消息，不发给外部客户。异常时按身份回退，不杀在途任务、不复制认证。
 
 ## Evidence
 
-证据保存在实例 evidence/<候选 SHA>/，不进入 Git。记录时间、候选 SHA、命令与返回码、截图或 UI 摘录、测试消息标识、身份数量和认证文件路径/inode 是否一致；不得输出凭据内容或完整进程环境。每个 S* 对应 pass/fail/skip；未实际测试不得 pass。公开 Issue 只贴脱敏摘要，不贴私有对话。
-
-冻结SHA后写同目录verification.json，字段为candidate_sha、compatibility_sha256（实际安装包内清单摘要）、client_verified、acceptance、client_evidence。只有本SHA客户端验证完成才标true；将精确SHA与结果的脱敏索引更新到Issue。不要把当前SHA写回源码制造新的未验收候选，或把历史验证当当前通过。
+实例外证据目录记录候选 SHA、时间、安装产物、前后 Desktop 配置的脱敏摘要、身份 home 路径/inode、真实消息标识、进程链、允许/拒绝写入结果、Activity 已知边界和回退结果。每个 S* 标记 pass/fail/skip；未测试不标 pass。公开 Issue 只贴脱敏摘要，不贴凭据或私有对话。`doctor` 的 `ok` 只表示没有 fail；`unverified` 不表示健康。
 
 ## Cleanup
 
-关闭仅为测试启动的额外窗口，不删除测试证据、旧状态或认证。预览结束恢复原 Desktop 绑定；若预览采用保留新绑定，必须有明确用户授权和记录，不能当作发布。遇到回退冲突停止并报告，不强行覆盖新配置。
+关闭仅为测试启动的工具窗口。保留证据和旧状态。预览结束恢复原身份配置；生产切换须走已记录的发布与回退步骤。不要通过写 Desktop 私有库存修复 UI 不能完成的步骤。
