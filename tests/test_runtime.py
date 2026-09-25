@@ -112,8 +112,10 @@ class ConfigurationTests(Fixture):
         runtime = Runtime(self.config, self.key)
         allowed = self.prod / "allowed.txt"
         denied = self.root / "denied.txt"
+        alias = runtime.cwd / "outside"
+        alias.symlink_to(self.root, target_is_directory=True)
         script = "from pathlib import Path; import sys; Path(sys.argv[1]).write_text('test')"
-        for path, success in ((allowed, True), (denied, False)):
+        for path, success in ((allowed, True), (denied, False), (alias / "denied.txt", False)):
             result = subprocess.run(["/usr/bin/sandbox-exec", "-p", runtime.profile(),
                                      sys.executable, "-c", script, str(path)], capture_output=True)
             self.assertEqual(result.returncode == 0, success, result.stderr)
