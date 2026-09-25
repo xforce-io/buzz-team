@@ -189,17 +189,18 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
                 # definition at spawn. Keep the record fallback in sync too.
                 row["session_policy"] = value
                 persona = row.get("persona_id")
-                if persona:
-                    linked = [item for item in result if item.get("persona_id") == persona
-                              and item.get("pubkey")]
-                    definitions = [item for item in result if item.get("slug") == persona
-                                   and not item.get("pubkey")]
-                    if len(linked) != 1 or linked[0] is not row or len(definitions) != 1:
-                        raise ValueError("ACP session policy requires an exclusive Desktop definition")
-                    definition = definitions[0]
-                    if definition.get("session_policy") != value:
-                        definition["session_policy"] = value
-                        changed += 1
+                if not persona:
+                    raise ValueError("ACP session policy requires an exclusive Desktop definition")
+                linked = [item for item in result if item.get("persona_id") == persona
+                          and item.get("pubkey")]
+                definitions = [item for item in result if item.get("slug") == persona
+                               and not item.get("pubkey")]
+                if len(linked) != 1 or linked[0] is not row or len(definitions) != 1:
+                    raise ValueError("ACP session policy requires an exclusive Desktop definition")
+                definition = definitions[0]
+                if definition.get("session_policy") != value:
+                    definition["session_policy"] = value
+                    changed += 1
             env[name] = value
         # The executor home, existing session settings and credentials remain untouched.
         for name, value in runtime.executor.binding_environment(runtime.base, runtime.cwd).items():

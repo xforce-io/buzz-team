@@ -297,6 +297,11 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def link_session_definition(self):
+        self.rows[0]["persona_id"] = "agent-one"
+        self.rows[0]["session_policy"] = "channel"
+        self.rows.append({"pubkey": "", "slug": "agent-one", "session_policy": "channel"})
+
     def test_task_launch_consumes_mapping_and_handoff_contract(self):
         task = "launch-task"
         SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
@@ -445,6 +450,7 @@ class CLITests(Fixture):
             desktop.binding_diff(self.config, copy.deepcopy(self.rows))
 
     def test_desktop_binding_allows_upstream_session_settings(self):
+        self.link_session_definition()
         self.config.data["agents"][self.key]["binding_environment"] = {
             "BUZZ_ACP_SESSION_POLICY": "thread",
             "BUZZ_ACP_MAX_TURNS_PER_SESSION": "4",
@@ -452,8 +458,9 @@ class CLITests(Fixture):
         original = copy.deepcopy(self.rows)
         updated, changed = desktop.binding_diff(self.config, self.rows)
         self.assertEqual(self.rows, original)
-        self.assertEqual(changed, 1)
+        self.assertEqual(changed, 2)
         self.assertEqual(updated[0]["acp_command"], original[0]["acp_command"])
+        self.assertEqual(updated[1]["session_policy"], "thread")
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_SESSION_POLICY"], "thread")
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_MAX_TURNS_PER_SESSION"], "4")
 
@@ -471,6 +478,7 @@ class CLITests(Fixture):
                     self.assertEqual(self.rows, original)
 
     def test_desktop_binding_accepts_explicit_session_rollback(self):
+        self.link_session_definition()
         self.config.data["agents"][self.key]["binding_environment"] = {
             "BUZZ_ACP_SESSION_POLICY": "channel",
             "BUZZ_ACP_MAX_TURNS_PER_SESSION": "0",
@@ -478,6 +486,16 @@ class CLITests(Fixture):
         updated, _ = desktop.binding_diff(self.config, self.rows)
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_SESSION_POLICY"], "channel")
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_MAX_TURNS_PER_SESSION"], "0")
+        self.assertEqual(updated[1]["session_policy"], "channel")
+
+    def test_session_policy_without_definition_fails_closed(self):
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_SESSION_POLICY": "thread",
+        }
+        original = copy.deepcopy(self.rows)
+        with self.assertRaisesRegex(ValueError, "exclusive Desktop definition"):
+            desktop.binding_diff(self.config, self.rows)
+        self.assertEqual(self.rows, original)
 
     def test_linked_definition_controls_session_policy_and_receipt_rollback(self):
         self.rows[0]["persona_id"] = "agent-one"
