@@ -4,7 +4,7 @@
 
 ## S1 废弃入口
 
-公钥为空且带启动命令的行使 `inventory_empty_pubkey:*` 为 fail，包括指向 `grok-acp-wrapper` 的行。`agent_command` 或 `acp_command` 指向 `grok-acp-wrapper` 的行，即使带有不属于本实例的公钥，也是 `inventory_deprecated_wrapper:*` fail，不计入 `inventory_non_instance`。只在 `agent_command_override` 里出现该字符串、实际启动命令不是 wrapper 的本实例行，不因此失败。doctor 只判定，不改文件。删除仍未授权。
+公钥为空且带启动命令的行使 `inventory_empty_pubkey:*` 为 fail，包括指向 `grok-acp-wrapper` 的行。`agent_command` 或 `acp_command` 指向 `grok-acp-wrapper` 的行，即使带有不属于本实例的公钥，也是 `inventory_deprecated_wrapper:*` fail，不计入 `inventory_non_instance`。只在 `agent_command_override` 里出现该字符串、实际启动命令不是 wrapper 的本实例行，不因此失败。doctor 只判定，不改文件。实机清理的结果为：13 处旧 wrapper 启动入口清零、5 条废弃身份行删除、8 条必需 persona 定义保留且不含旧命令、9/9 本实例身份各 1 行。
 
 ## S2 四类失败与实例外行
 
