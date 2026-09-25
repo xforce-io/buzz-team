@@ -458,6 +458,17 @@ def _read_desktop_proxy_maps(
             f"No agent-pids index at {_agent_pids_dir(path)} and managed-agents runtime_pid empty"))
     process_reads = 0
     for key, row in selected.items():
+        agent = config.data["agents"][key]
+        if agent.get("respond_to_allowlist") is not None:
+            expected = str(config.instance / "bin/agent-executor")
+            bound = (row.get("acp_command") == "buzz-acp"
+                     and row.get("agent_command_override") == expected
+                     and row.get("respond_to") == "allowlist"
+                     and row.get("respond_to_allowlist") == agent["respond_to_allowlist"])
+            checks.append(check(
+                f"business_binding:{key[:20]}", "pass" if bound else "fail", "buzz_runtime",
+                "business author gate and effective executor override bound"
+                if bound else "business author gate or effective executor override not bound"))
         env = row.get("env_vars") or {}
         if not isinstance(env, dict):
             checks.append(check(

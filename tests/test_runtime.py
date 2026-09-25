@@ -359,6 +359,13 @@ class CLITests(Fixture):
         self.assertEqual(updated[0]["acp_command"], "buzz-acp")
         self.assertEqual(updated[0]["respond_to"], "allowlist")
         self.assertEqual(updated[0]["respond_to_allowlist"], ["b" * 64])
+        self.assertEqual(updated[0]["agent_command_override"], str(self.instance / "bin/agent-executor"))
+        from buzz_team.health import _read_desktop_proxy_maps
+        _, before = _read_desktop_proxy_maps(self.config)
+        self.assertIn("fail", [check["status"] for check in before if check["id"].startswith("business_binding:")])
+        write_json(self.desktop_file, updated)
+        _, after = _read_desktop_proxy_maps(self.config)
+        self.assertIn("pass", [check["status"] for check in after if check["id"].startswith("business_binding:")])
 
     def test_business_executor_applies_profile_from_unconfined_acp(self):
         self.config.data["policies"]["development"].update(production_write=True, data_mode="production",

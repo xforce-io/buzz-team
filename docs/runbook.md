@@ -60,7 +60,7 @@ buzz-team --instance /absolute/instance diagnose
 
 ## 已知限制
 
-受限身份的沙箱是身份级，不是任务级。业务身份在实例中同时配置 `respond_to_allowlist` 与策略 `write_paths` 后，绑定为上游 `respond_to=allowlist`；包内 `buzz-acp` 调用业务 executor 时套 Seatbelt，仅允许身份运行目录及核准生产目录写入；若父进程已有未知 Seatbelt，则拒绝启动，避免静默继承更宽的约束。未配置的旧实例维持原行为，不能据此宣称权限收紧已验收。Grok 设置 `GROK_SANDBOX=off`，避免二次 `sandbox_apply` EPERM。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
+受限身份的沙箱是身份级，不是任务级。业务身份在实例中同时配置 `respond_to_allowlist` 与策略 `write_paths` 后，绑定为上游 `respond_to=allowlist`，并写入 Desktop 实际消费的 `agent_command_override`；仅设置旧 `agent_command` 不会使 executor 生效。包内 `buzz-acp` 调用业务 executor 时套 Seatbelt，仅允许身份运行目录及核准生产目录写入；若父进程已有未知 Seatbelt，则拒绝启动，避免静默继承更宽的约束。未配置的旧实例维持原行为，不能据此宣称权限收紧已验收。Grok 设置 `GROK_SANDBOX=off`，避免二次 `sandbox_apply` EPERM。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
 
 
 ## Desktop ACP 任务账本（#16）

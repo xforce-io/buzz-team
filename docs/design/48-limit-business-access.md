@@ -30,7 +30,7 @@ N/A。没有新页面。操作者从 Desktop 启动摘要、频道提及结果�
 
 ## 6 架构
 
-主路径：实例身份名单与业务策略写路径 → 配置校验 → `bind` 在 Desktop 行写 `respond_to=allowlist` 和公钥列表、保持包内 `buzz-acp` 入口 → 上游 ACP 检查消息作者；未受约束的业务 executor 启动时应用本策略 Seatbelt profile。写入身份运行目录或核准生产目录成功，其余路径被拒。
+主路径：实例身份名单与业务策略写路径 → 配置校验 → `bind` 在 Desktop 行写 `respond_to=allowlist`、公钥列表和实际生效的 `agent_command_override`，保持包内 `buzz-acp` 入口 → 上游 ACP 检查消息作者；其启动的业务 executor 应用本策略 Seatbelt profile。写入身份运行目录或核准生产目录成功，其余路径被拒。
 
 失败路径：名单格式、空名单、写路径越界、控制文件重叠在准备或启动前拒绝；缺 Seatbelt 或父进程已有未知 Seatbelt 时拒绝启动，避免静默继承较宽的约束；绑定冲突不覆盖库存；合法业务写入失败则按 receipt 回退绑定和实例配置。
 
@@ -43,7 +43,7 @@ N/A。没有新页面。操作者从 Desktop 启动摘要、频道提及结果�
 
 ## 8 API/CLI
 
-实例 `agents.<identity>.respond_to_allowlist` 为非空、去重的 64 位小写十六进制公钥数组。仅业务身份使用。`policies.<business>.write_paths` 为绝对路径数组，限定在 `production.data_root` 或人工列出的 `production.protected_paths` 下，不得覆盖控制文件、整个 home 或实例目录。字段同时存在时启用新边界；单独存在为错误。`bind` 在目标 Desktop 行写 `respond_to=allowlist` 与 `respond_to_allowlist`。回退使用 bind receipt；原库存作者策略一并恢复。
+实例 `agents.<identity>.respond_to_allowlist` 为非空、去重的 64 位小写十六进制公钥数组。仅业务身份使用。`policies.<business>.write_paths` 为绝对路径数组，限定在 `production.data_root` 或人工列出的 `production.protected_paths` 下，不得覆盖控制文件、整个 home 或实例目录。字段同时存在时启用新边界；单独存在为错误。`bind` 在目标 Desktop 行写 `respond_to=allowlist`、`respond_to_allowlist` 与 `agent_command_override=<instance>/bin/agent-executor`；仅旧 `agent_command` 字段不足以改变实际启动命令。回退使用 bind receipt；原库存作者策略一并恢复。
 
 ## 9 边界
 
@@ -57,7 +57,7 @@ owner 的隐含允许行为由上游 ACP 决定；是否纳入 workflow 发布�
 
 - E2E S1：七个启动摘要均为 allowlist，名单内和名单外成员各一次实际提及，后者无触发；见 `.agents/skills/verify-buzz-team/features/business-access.md`。
 - E2E S2：七个业务身份均被 Seatbelt 约束；一次核准生产写入成功、一次范围外写入拒绝。
-- Integration：隔离 Desktop 库存只改七个目标行，回退恢复原行；真实 `sandbox-exec` 执行正反向写入。
+- Integration：隔离 Desktop 库存只改七个目标行，doctor 检出缺少有效 executor override，回退恢复原行；真实 `sandbox-exec` 执行正反向写入。
 - Unit：名单、公钥、路径与控制文件重叠校验；缺 Seatbelt 拒绝启动。
 
 ## 12 开放问题
