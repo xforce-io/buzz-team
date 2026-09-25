@@ -716,7 +716,7 @@ class LongToolConfigTests(unittest.TestCase):
         import plistlib
         (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({
             "CFBundleExecutable": "Buzz", "CFBundleIdentifier": "xyz.block.buzz.app",
-            "CFBundleShortVersionString": "0.5.23"}))
+            "CFBundleShortVersionString": "0.5.25"}))
         (self.app / "Contents/MacOS/Buzz").write_text("")
         desktop = self.root / "managed-agents.json"
         write_json(desktop, [{"pubkey": "a" * 64, "relay_url": "ws://localhost:3000"}])

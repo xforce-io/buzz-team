@@ -1,0 +1,25 @@
+diff --git a/crates/buzz-acp/src/delivery.rs b/crates/buzz-acp/src/delivery.rs
+new file mode 100644
+index 000000000..5f64d3c3a
+--- /dev/null
++++ b/crates/buzz-acp/src/delivery.rs
+@@ -0,0 +1,19 @@
++//! Conservative per-turn evidence that a prompt may have reached the agent.
++use std::sync::{
++    atomic::{AtomicBool, Ordering},
++    Arc,
++};
++
++/// Shared with panic recovery; cleanup must never erase an attempted delivery.
++#[derive(Clone, Default)]
++pub(crate) struct PromptDelivery(Arc<AtomicBool>);
++
++impl PromptDelivery {
++    pub(crate) fn mark_attempted(&self) {
++        self.0.store(true, Ordering::Release);
++    }
++
++    pub(crate) fn may_have_executed(&self) -> bool {
++        self.0.load(Ordering::Acquire)
++    }
++}
