@@ -7,7 +7,7 @@
     "desktop": "0.5.25",
     "desktop_bundle_id": "xyz.block.buzz.app",
     "grok": "1.0.34 (3736acbc8658)",
-    "buzz_cli_sha256": "6034d9bcf04ee765b057bb8f374825c2107a4d0e53d28e9a1c36ba502b70bc57",
+    "buzz_cli_sha256": "bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba",
     "harness_sha256": "c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64",
     "harness_source_commit": null,
     "harness_source_note": "SHA-256 是 Desktop 0.5.25 自带 buzz-acp。不用当前检出 SHA 冒充构建来源。",

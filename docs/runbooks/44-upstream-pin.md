@@ -6,12 +6,13 @@
 |---|---|
 | Desktop 自带 `buzz-acp` | `/Applications/Buzz.app/Contents/MacOS/buzz-acp` |
 | Desktop SHA256 | `c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64`（0.5.25；早先的 `7c52822c…` 已过时） |
+| Desktop 自带 `buzz` CLI SHA256 | `bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba`（0.5.25；实例配置已同步） |
 | 官方 relay 镜像 | `ghcr.io/block/buzz:sha-c507a4d` |
 | 官方 relay index digest | `sha256:1cf32474cb798ab2dec07b60835424c5895c4edf49b38f24ef052860c447d19f` |
 | 对应提交 | `c507a4d488ca27796e78d876b9c24ee38442cc1b`（2026-09-16） |
 | 补丁部署数 | 0 |
 
-`sha-c507a4d` 是上游 CI 推到 `ghcr.io/block/buzz` 的不可变标签，index 含 `linux/arm64` 与 `linux/amd64`。origin 上没有比 `relay-v0.2.1` 更新的 `relay-v*` 标签，所以不能用更新的 semver 代替它。
+`sha-c507a4d` 是上游 CI 推到 `ghcr.io/block/buzz` 的提交标签，本次记录 index digest 作精确核对；index 含 `linux/arm64` 与 `linux/amd64`。origin 上没有比 `relay-v0.2.1` 更新的 `relay-v*` 标签，所以不能用更新的 semver 代替它。
 
 ## 拒绝 0.2.1
 
@@ -29,6 +30,6 @@
 
 Desktop 现为 0.5.25。包内 `buzz-acp` 的 SHA256 是 `c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64`，不再是早先记下的 `7c52822c…`。9 个本实例身份的日志在切换后都出现 `presence set to online`，进程二进制是这个 Desktop 文件。回退镜像仍是备份里的 `buzz-local:4937-activity-recovery`。库存备份在 `/Users/xupeng/lab/buzz/backups/20260925-cutover/`。
 
-炼丹房 `9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3` 在新 relay 上收发了一条「上游 relay 收发核对」，event `f1b965d45451b62b`。Activity 面板没有单独取证。合入默认分支没有做。
+炼丹房 `9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3` 在新 relay 上收发了一条「上游 relay 收发核对」，event `f1b965d45451b62b`。Activity 面板已另行实拍，见 PR #50 的验收记录。合入默认分支没有做。
 
 Desktop 以后如果更新，上面的 SHA 不会自动跟着变。9/9 对齐指的是对齐这次记下的 SHA。
