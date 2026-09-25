@@ -10,7 +10,7 @@
     "buzz_cli_sha256": "6034d9bcf04ee765b057bb8f374825c2107a4d0e53d28e9a1c36ba502b70bc57",
     "harness_sha256": "c114569d8f79accbfc44671366f46dd7cb8f91ffc0c0aec7698e3af06c763b64",
     "harness_source_commit": null,
-    "harness_source_note": "二进制来自本机定制构建；源码对应关系待验证，不用当前检出 SHA 冒充构建来源。",
+    "harness_source_note": "SHA-256 是 Desktop 0.5.25 自带 buzz-acp。不用当前检出 SHA 冒充构建来源。",
     "client_verified": false
   },
   "upstream_pin": {

@@ -44,7 +44,7 @@ class Fixture(unittest.TestCase):
         self.app = self.root / "Buzz.app"
         (self.app / "Contents/MacOS").mkdir(parents=True)
         (self.app / "Contents/Info.plist").write_bytes(plistlib.dumps({"CFBundleExecutable": "Buzz",
-            "CFBundleIdentifier": "xyz.block.buzz.app", "CFBundleShortVersionString": "0.5.23"}))
+            "CFBundleIdentifier": "xyz.block.buzz.app", "CFBundleShortVersionString": "0.5.25"}))
         (self.app / "Contents/MacOS/Buzz").symlink_to(self.fake)
         self.rows = [{"pubkey": "a" * 64, "relay_url": "ws://localhost:3000", "system_prompt": "private prompt",
                       "private_key": "test-only-secret", "acp_command": "/old/harness", "agent_command": "/old/executor",

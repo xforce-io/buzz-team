@@ -1,6 +1,6 @@
-# 上游版本记录（未切换）
+# 上游版本记录
 
-本次 pin 的目标，不是当前正在跑的进程。机器可读字段是 `src/buzz_team/compatibility.json` 的 `upstream_pin`。`observed_baseline.harness_sha256` 仍是本地 fork，doctor 继续按它对照现网二进制。
+机器可读字段是 `src/buzz_team/compatibility.json` 的 `upstream_pin`，`status` 为 `applied`。`observed_baseline.harness_sha256` 是正在跑的 Desktop 0.5.25 `buzz-acp`。
 
 | 项 | 记录 |
 |---|---|
@@ -17,13 +17,11 @@
 
 `ghcr.io/block/buzz:0.2.1`（index `sha256:4e31b7c7abb7d00b6f513dc559e58d2b980416f1dc400aa01bcf762cf2989cfc`，git `relay-v0.2.1` = `6e5c462`，2026-08-08）不再是切换目标。该提交的迁移停在 `0028_long_reaction_payloads.sql`。`c507a4d` 在它之后，多出 `0029`–`0045`。`:latest` 目前与 `0.2.1` 同一个 index，同样不能用。`:main` 是滚动标签，指向 2026-09-23 的 `d01e5f8`（index `sha256:295bf4f5fa93fb253c6f40cbdb7d5d391895240314469d0b49d8105d78126a83`），迁移已到 `0049`，这次不选。
 
-## 迁移与回退核对（2026-09-25，未切换）
+## 迁移与回退核对（切换前）
 
 生产库 `buzz-prod-postgres` 的 `_sqlx_migrations`：成功 45 条，最高 version 45，description 为 `retain push revocation tombstones`。version 29–45 与 `c507a4d` 上 `0029`–`0045` 的文件名一致。该提交的 `migrations/` 共 45 个文件，没有 `0046` 及以后。本地 fork 归档补丁不改迁移文件。
 
-因此把运行中的镜像换成 `sha-c507a4d` 时，schema 集合与现库相同，不需要再执行迁移，也不需要把库从 0045 往回迁。没有在生产库或副本上启动这只镜像。schema 回退到 `0.2.1` 没有执行，也不作为回退路径。
-
-镜像回退目标仍是当前生产镜像 `buzz-local:4937-activity-recovery`（`sha256:df31bcb1b77426e7688376a57e12d86c49879b9b66f0cfe542c3575df7c6af3d`）。切换还没有做。
+因此把运行中的镜像换成 `sha-c507a4d` 时，schema 集合与现库相同，不需要再执行迁移，也不需要把库从 0045 往回迁。schema 回退到 `0.2.1` 没有执行，也不作为回退路径。镜像回退目标是切换前的 `buzz-local:4937-activity-recovery`（`sha256:df31bcb1b77426e7688376a57e12d86c49879b9b66f0cfe542c3575df7c6af3d`）。切换结果见下一节。
 
 ## 2026-09-25 已切换
 
