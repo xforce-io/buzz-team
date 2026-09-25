@@ -27,12 +27,12 @@ def inspect_inventory(path: Path | None) -> list[dict[str, str]]:
         if not isinstance(row, dict):
             checks.append(_check(f"row_{index}", "unverified", "inventory row structure unknown"))
             continue
-        if not {"acp_command", "agent_command"}.intersection(row):
+        if not {"acp_command", "agent_command", "agent_command_override"}.intersection(row):
             checks.append(_check(f"row_{index}", "unverified", "inventory row structure unknown"))
             continue
         # Desktop definitions can name an ACP transport before a concrete
         # executor or identity exists; they are not competing consumers.
-        launches = bool(row.get("agent_command"))
+        launches = bool(row.get("agent_command_override") or row.get("agent_command"))
         if not launches:
             continue
         pubkey = row.get("pubkey")

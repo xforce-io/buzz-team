@@ -25,6 +25,11 @@ class InventoryTests(unittest.TestCase):
         checks = self.read([self.row, dict(self.row)])
         self.assertTrue(any(c["name"] == "duplicate_identity" and c["status"] == "fail" for c in checks))
 
+    def test_duplicate_override_launch_identity_fails(self):
+        row = dict(self.row, agent_command="", agent_command_override="/path/to/thin")
+        checks = self.read([row, dict(row)])
+        self.assertTrue(any(c["name"] == "duplicate_identity" and c["status"] == "fail" for c in checks))
+
     def test_empty_pubkey_fails(self):
         row = dict(self.row, pubkey="")
         self.assertEqual(self.read([row])[0]["status"], "fail")

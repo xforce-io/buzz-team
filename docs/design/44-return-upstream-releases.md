@@ -4,7 +4,7 @@
 
 ## 1 背景
 
-[Issue #44](https://github.com/xforce-io/buzz-team/issues/44)。切换前生产 relay 是 `buzz-local:4937-activity-recovery`，运行中的 `buzz-acp` 与 Desktop 自带二进制 SHA 不同；2026-09-25 已按 `docs/runbooks/44-upstream-pin.md` 切换。
+[Issue #44](https://github.com/xforce-io/buzz-team/issues/44)。切换前生产 relay 是 `buzz-local:4937-activity-recovery`，运行中的 `buzz-acp` 与 Desktop 自带二进制 SHA 不同；2026-09-25 已按 `docs/archive/issue-44/upstream-cutover.md` 切换。
 
 ## 2 名词解释
 
@@ -30,7 +30,7 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 6 架构
 
-补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/runbooks/44-upstream-pin.md`。规则在 `AGENTS.md`。进程检查把 Desktop 的内置 `acp_command=buzz-acp` 解析为包内程序，`prepare` 在 Desktop 运行时拒绝改写薄入口。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
+补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/archive/issue-44/upstream-cutover.md`。规则在 `AGENTS.md`。进程检查把 Desktop 的内置 `acp_command=buzz-acp` 解析为包内程序，`prepare` 在 Desktop 运行时拒绝改写薄入口。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
 
 ## 7 模块
 
@@ -46,7 +46,7 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 10 迁移/兼容/回滚
 
-2026-09-25 已切换。生产 relay 旧镜像与库存备份、迁移检查及回退目标见 `docs/runbooks/44-upstream-pin.md`；不得把 `0.2.1` 用作现库回退目标。buzz-team 自身 release 尚未切换。
+2026-09-25 已切换。生产 relay 旧镜像与库存备份、迁移检查及回退目标见 `docs/archive/issue-44/upstream-cutover.md`；不得把 `0.2.1` 用作现库回退目标。buzz-team 自身 release 尚未切换。
 
 ## 11 测试计划
 
