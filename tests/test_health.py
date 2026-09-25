@@ -473,6 +473,19 @@ class InventoryDoctorTests(Fixture):
         self.assertEqual(len(empty_plain), 1)
         self.assertIn("launch row", empty_plain[0]["summary"])
 
+        definition = {
+            "pubkey": "", "relay_url": "", "slug": "persona-definition",
+            "acp_command": "buzz-acp", "agent_command": "",
+            "start_on_app_launch": False, "runtime_pid": None,
+            "last_started_at": None,
+        }
+        self._write(base + [definition])
+        result, definition_empty = self._fails("inventory_empty_pubkey:")
+        self.assertEqual(definition_empty, [])
+        self.assertFalse(any(
+            c["status"] == "fail" and c["id"].startswith("inventory_")
+            for c in result["checks"]))
+
         outside = {
             "pubkey": "c" * 64,
             "relay_url": "ws://localhost:3000",
@@ -508,6 +521,19 @@ class InventoryDoctorTests(Fixture):
 
     def _fail_ids(self, result):
         return {c["id"] for c in result["checks"] if c["status"] == "fail"}
+
+    def test_same_pubkey_on_two_relays_is_two_distinct_identities(self):
+        pubkey = "a" * 64
+        agents = {
+            "relay-one": {"pubkey": pubkey, "relay_url": "wss://one.example"},
+            "relay-two": {"pubkey": pubkey, "relay_url": "wss://two.example"},
+        }
+        rows = [
+            {"pubkey": pubkey, "relay_url": "wss://one.example", "agent_command": "/one"},
+            {"pubkey": pubkey, "relay_url": "wss://two.example", "agent_command": "/two"},
+        ]
+        checks = health.classify_desktop_inventory(agents, rows)
+        self.assertFalse(any(c["status"] == "fail" for c in checks), checks)
 
     def _writer_policy_so_doctor_can_pass(self):
         """Restricted identities fail doctor where Seatbelt is absent. A writer

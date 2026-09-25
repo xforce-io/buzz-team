@@ -86,6 +86,19 @@ def _inventory_runtime_id(row: dict) -> str:
     return ""
 
 
+def _inventory_definition_only(row: dict) -> bool:
+    """Desktop persona definitions have no identity or launch history."""
+    return bool(
+        row.get("slug")
+        and not row.get("relay_url")
+        and not row.get("agent_command")
+        and not _inventory_runtime_id(row)
+        and row.get("start_on_app_launch") is False
+        and row.get("runtime_pid") is None
+        and row.get("last_started_at") is None
+    )
+
+
 def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]:
     """Classify a Desktop inventory against this instance. Does not mutate rows.
 
@@ -100,7 +113,7 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
         return [check(
             "inventory_shape", "fail", "buzz_runtime",
             "Desktop inventory is not a list")]
-    by_pubkey: dict[str, str] = {}
+    by_pubkey: dict[str, list[str]] = {}
     relays: dict[str, str] = {}
     for key, agent in agents.items():
         if not isinstance(agent, dict):
@@ -108,7 +121,7 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
         pubkey = agent.get("pubkey")
         relay = agent.get("relay_url")
         if isinstance(pubkey, str) and pubkey:
-            by_pubkey[pubkey] = key
+            by_pubkey.setdefault(pubkey, []).append(key)
         if isinstance(relay, str):
             relays[key] = relay
     seen: dict[str, list[int]] = {key: [] for key in agents}
@@ -124,7 +137,9 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
         commands = _inventory_commands(row)
         runtime_id = _inventory_runtime_id(row)
         if not pubkey:
-            if commands.strip() or runtime_id in seen:
+            if _inventory_definition_only(row):
+                outside += 1
+            elif commands.strip() or runtime_id in seen:
                 detail = "empty pubkey on a launch row"
                 if _DEPRECATED_WRAPPER in commands:
                     detail += " pointing at grok-acp-wrapper"
@@ -139,13 +154,14 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
                 f"inventory_deprecated_wrapper:{index}", "fail", "buzz_runtime",
                 f"inventory row {index} launches through grok-acp-wrapper"))
             continue
-        key = by_pubkey.get(pubkey)
-        if key is None:
+        candidates = by_pubkey.get(pubkey, [])
+        if not candidates:
             outside += 1
             continue
+        relay = row.get("relay_url")
+        key = next((candidate for candidate in candidates if relays.get(candidate) == relay), candidates[0])
         seen[key].append(index)
         reasons = []
-        relay = row.get("relay_url")
         expected = relays.get(key)
         if isinstance(expected, str) and relay != expected:
             reasons.append("relay_url")
