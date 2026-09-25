@@ -3,7 +3,7 @@
 ## S1 沈予灰度与用量对比
 
 1. 记录候选 SHA、Desktop 停止前的沈予启动摘要、实例配置、可回退备份和灰度前至少一个完整自然日的 token、turn、任务量。
-2. 停稳 Desktop 后，只给沈予绑定 `BUZZ_ACP_SESSION_POLICY=thread` 与 `BUZZ_ACP_MAX_TURNS_PER_SESSION=4`。重启，确认实际 `buzz-acp` 启动摘要为 `thread`/`4`，其他八个身份没有改变。
+2. 停稳 Desktop 后，确认沈予角色定义独占，再绑定 `BUZZ_ACP_SESSION_POLICY=thread` 与 `BUZZ_ACP_MAX_TURNS_PER_SESSION=4`。核对身份行和角色定义均为 `thread`；重启，确认实际 `buzz-acp` 启动摘要为 `thread`/`4`，其他八个身份没有改变。
 3. 灰度运行 1–2 个完整自然日，记录每日 token、turn、任务量、缺失记录和异常。只报告观察到的差异，不把流量变化解释为配置节省。
 4. 用停止 Desktop 后显式绑定 `channel`/`0` 的预案验证可回退；若最终保留灰度，则只记录回退预案和备份，不实际撤销。
 

@@ -184,6 +184,22 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
                 len(value) > 4 or str(int(value)) != value or int(value) > 1000
             ):
                 raise ValueError("invalid ACP max turns per session")
+            if name == "BUZZ_ACP_SESSION_POLICY":
+                # Desktop overwrites this reserved env key from its linked
+                # definition at spawn. Keep the record fallback in sync too.
+                row["session_policy"] = value
+                persona = row.get("persona_id")
+                if persona:
+                    linked = [item for item in result if item.get("persona_id") == persona
+                              and item.get("pubkey")]
+                    definitions = [item for item in result if item.get("slug") == persona
+                                   and not item.get("pubkey")]
+                    if len(linked) != 1 or linked[0] is not row or len(definitions) != 1:
+                        raise ValueError("ACP session policy requires an exclusive Desktop definition")
+                    definition = definitions[0]
+                    if definition.get("session_policy") != value:
+                        definition["session_policy"] = value
+                        changed += 1
             env[name] = value
         # The executor home, existing session settings and credentials remain untouched.
         for name, value in runtime.executor.binding_environment(runtime.base, runtime.cwd).items():
@@ -264,6 +280,23 @@ def rollback(config: Config, receipt: Path):
         restore_fields(row.setdefault("env_vars", {}), old.get("env_vars", {}), new.get("env_vars", {}))
         if "env_vars" not in old and not row["env_vars"]:
             row.pop("env_vars")
+    def definitions(items):
+        found = {}
+        for item in items:
+            slug = item.get("slug")
+            if slug and not item.get("pubkey"):
+                if slug in found:
+                    raise ValueError("duplicate Desktop definition")
+                found[slug] = item
+        return found
+    old_defs = definitions(json.loads(before.read_text()))
+    new_defs = definitions(json.loads(after.read_text()))
+    current_defs = definitions(rows)
+    for slug in old_defs.keys() & new_defs.keys():
+        if old_defs[slug] != new_defs[slug]:
+            if slug not in current_defs:
+                raise ValueError("Desktop definition missing during rollback")
+            restore_fields(current_defs[slug], old_defs[slug], new_defs[slug])
     require_stopped(config)
     if path.read_text() != current_text:
         raise ValueError("Desktop configuration changed during rollback")

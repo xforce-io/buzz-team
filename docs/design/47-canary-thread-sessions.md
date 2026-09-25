@@ -18,7 +18,7 @@
 
 ## 4 能力
 
-本机实例的单身份 `binding_environment` 可声明 `BUZZ_ACP_SESSION_POLICY` 与 `BUZZ_ACP_MAX_TURNS_PER_SESSION`。灰度值为 `thread` 和 `4`；回退值为 `channel` 和 `0`。写入 Desktop 身份行后，以实际 `buzz-acp` 启动摘要核对，不以配置文件存在代替运行态生效。
+本机实例的单身份 `binding_environment` 可声明 `BUZZ_ACP_SESSION_POLICY` 与 `BUZZ_ACP_MAX_TURNS_PER_SESSION`。灰度值为 `thread` 和 `4`；回退值为 `channel` 和 `0`。Desktop 会以角色定义的会话策略覆盖同名环境变量，因此绑定须同时设置该身份的 `session_policy` 回退字段、独占的角色定义 `session_policy` 以及轮数环境变量。以实际 `buzz-acp` 启动摘要核对，不以配置文件存在代替运行态生效。
 
 ### 4.1 UI/UX
 
@@ -30,13 +30,13 @@ N/A。没有新页面。操作者通过实例记录、doctor 与 Desktop 线程�
 
 ## 6 架构
 
-主路径：本机实例配置 → `bind` 校验并写沈予 Desktop 绑定环境，保留原有 ACP 入口（现役为 Desktop 包内 `buzz-acp`）→ Desktop 重启 → 包内 `buzz-acp` 解析上游变量 → 以线程根帖选择会话并在第 4 个完成 turn 后使该范围会话失效 → 下一帖建立新会话。
+主路径：本机实例配置 → `bind` 校验并写沈予身份行与其独占角色定义的会话策略、轮数环境变量，保留原有 ACP 入口（现役为 Desktop 包内 `buzz-acp`）→ Desktop 重启 → 包内 `buzz-acp` 接收 Desktop 最终策略 → 以线程根帖选择会话并在第 4 个完成 turn 后使该范围会话失效 → 下一帖建立新会话。
 
-失败路径：非法策略或轮数在绑定前拒绝；绑定冲突不改库存；启动摘要不匹配、跨线程引用或回复失败时按备份回退沈予的两项值。其余身份继续原配置。
+失败路径：非法策略或轮数、缺失角色定义、或该定义被多个身份共享时在绑定前拒绝；绑定冲突不改库存；启动摘要不匹配、跨线程引用或回复失败时按 receipt 回退身份行与角色定义。其余身份继续原配置。
 
 ## 7 模块
 
-- 实例配置与 Desktop 绑定：现有 `binding_environment` 的允许键和取值校验仅扩展这两项，保持其他环境及认证不变。
+- 实例配置与 Desktop 绑定：现有 `binding_environment` 扩展这两项，且为 Desktop 保留键同步独占角色定义；保持其他环境及认证不变。
 - `buzz-acp`：仅使用 Desktop 包内实现，不改代码或二进制。
 - 灰度记录：本机实例的脱敏 evidence 记录每日汇总与运行态，不加入仓库或 issue 正文。
 
@@ -49,7 +49,7 @@ N/A。没有新页面。操作者通过实例记录、doctor 与 Desktop 线程�
 | `BUZZ_ACP_SESSION_POLICY` | `channel`、`thread` | `thread` | `channel` |
 | `BUZZ_ACP_MAX_TURNS_PER_SESSION` | 十进制整数 `0`–`1000` | `4` | `0` |
 
-`bind` 仍需 Desktop 停止。回退时显式写 `channel`/`0`，因为现有绑定会保留其他未知环境键，不能仅删除实例配置中的键就声称恢复默认。
+`bind` 仍需 Desktop 停止。receipt 回退覆盖身份行和角色定义。后续需再次部署 `channel`/`0` 时须显式写入，因为现有绑定会保留其他未知环境键，不能仅删除实例配置中的键就声称恢复默认。
 
 ## 9 边界
 
@@ -64,7 +64,7 @@ DM 仍是 conversation 范围。轮数上限按完成 turn 计数，不会限制
 - E2E S1：沈予启动摘要为 `thread`/`4`；灰度前后各至少 1 个完整自然日的 token、turn、任务量和缺失量记录。路径见 `.agents/skills/verify-buzz-team/features/session-policy.md`。
 - E2E S2：两个线程各一条互斥上下文与回复；同一线程完成 4 个 turn 后下一帖仍可回复且发生轮换。
 - E2E S3：9/9 身份各有“推广”或“保留及理由”，运行态与决定一致。
-- Integration：隔离 Desktop 库存中绑定仅修改目标身份；错误值拒绝且库存原字节不变；显式回退值生效。
+- Integration：隔离 Desktop 库存中绑定仅修改目标身份及其独占角色定义；共享定义拒绝；错误值拒绝且库存原字节不变；receipt 与显式回退值生效。
 - Unit：两项环境变量取值边界、默认行为与非目标身份保持。
 
 ## 12 开放问题

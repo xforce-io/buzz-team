@@ -479,6 +479,39 @@ class CLITests(Fixture):
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_SESSION_POLICY"], "channel")
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_MAX_TURNS_PER_SESSION"], "0")
 
+    def test_linked_definition_controls_session_policy_and_receipt_rollback(self):
+        self.rows[0]["persona_id"] = "agent-one"
+        self.rows[0]["session_policy"] = "channel"
+        self.rows.append({"pubkey": "", "slug": "agent-one", "session_policy": "channel"})
+        write_json(self.desktop_file, self.rows)
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_SESSION_POLICY": "thread", "BUZZ_ACP_MAX_TURNS_PER_SESSION": "4",
+        }
+        self.save()
+        with patch("buzz_team.desktop.live_processes", return_value=[]):
+            prepare(self.config)
+            receipt = Path(desktop.bind(self.config)["receipt"])
+            bound = json.loads(self.desktop_file.read_text())
+            self.assertEqual(bound[0]["session_policy"], "thread")
+            self.assertEqual(bound[1]["session_policy"], "thread")
+            desktop.rollback(self.config, receipt)
+        restored = json.loads(self.desktop_file.read_text())
+        self.assertEqual(restored[0]["session_policy"], "channel")
+        self.assertEqual(restored[1]["session_policy"], "channel")
+
+    def test_shared_definition_rejects_session_canary(self):
+        self.rows[0]["persona_id"] = "shared"
+        self.rows.append({"pubkey": "", "slug": "shared", "session_policy": "channel"})
+        self.rows.append({"pubkey": "b" * 64, "relay_url": "ws://localhost:3000",
+                          "persona_id": "shared", "session_policy": "channel"})
+        self.config.data["agents"][self.key]["binding_environment"] = {
+            "BUZZ_ACP_SESSION_POLICY": "thread",
+        }
+        original = copy.deepcopy(self.rows)
+        with self.assertRaisesRegex(ValueError, "exclusive Desktop definition"):
+            desktop.binding_diff(self.config, self.rows)
+        self.assertEqual(self.rows, original)
+
     def test_apply_wake_payload_expands_allowlisted_fields(self):
         env = {
             "BUZZ_WAKE_PAYLOAD": json.dumps({
