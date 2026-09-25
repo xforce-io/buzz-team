@@ -40,6 +40,25 @@ echo "no kill/respawn call paths OK"
 
 echo "== quit-first: baseline-only + desktop-not-running; escape hatch ABSENT =="
 grep -q -- '--baseline-only' "$DIR/apply.sh"
+grep -F -q "row['idle_timeout_seconds']=1500" "$DIR/apply.sh"
+if grep -F -q "row['idle_timeout_seconds']=180" "$DIR/apply.sh"; then
+  echo "FAIL: apply.sh still writes idle 180" >&2
+  exit 1
+fi
+python3 - "$DIR/.." << 'PY'
+import json, sys
+from pathlib import Path
+root = Path(sys.argv[1])
+after = json.loads((root / "after/managed-agent-zhouheng.json").read_text())
+if after.get("idle_timeout_seconds") != 1500:
+    raise SystemExit(f"FAIL: after idle is {after.get('idle_timeout_seconds')}")
+if after.get("env_vars", {}).get("BUZZ_ACP_IDLE_TIMEOUT") != "1500":
+    raise SystemExit("FAIL: after BUZZ_ACP_IDLE_TIMEOUT is not 1500")
+diff = (root / "diffs/managed-agent.compact.diff").read_text()
+if "idle_timeout_seconds\": 180" in diff or "BUZZ_ACP_IDLE_TIMEOUT\": \"180\"" in diff:
+    raise SystemExit("FAIL: compact diff still records idle 180")
+print("idle snapshot lock OK: after and compact diff stay at 1500")
+PY
 grep -q 'require_desktop_not_running' "$DIR/apply.sh"
 grep -q 'require_desktop_not_running' "$DIR/rollback.sh"
 # Assert escape hatch gone from product scripts + RUNBOOK (not this smoke file's assertion text).

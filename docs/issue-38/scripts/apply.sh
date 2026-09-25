@@ -29,6 +29,7 @@ if [[ -z "$MODE" ]]; then
   exit 2
 fi
 
+
 require_live_guard
 reject_live_test_hooks
 verify_thin_pin
@@ -252,10 +253,10 @@ if idx is None:
 if idx is None:
     raise SystemExit('active 周衡 row disappeared — abort, no write')
 row=agents[idx]
-row['idle_timeout_seconds']=180
+row['idle_timeout_seconds']=1500
 row.setdefault('env_vars',{})
 row['env_vars']['BUZZ_ACP_EFFORT_LEVEL']='medium'
-row['env_vars']['BUZZ_ACP_IDLE_TIMEOUT']='180'
+row['env_vars']['BUZZ_ACP_IDLE_TIMEOUT']='1500'
 args=list(row.get('agent_args') or [])
 for i,x in enumerate(args):
     if x in ('--reasoning-effort','--reasoning_effort') and i+1 < len(args):
@@ -264,7 +265,7 @@ row['agent_args']=args
 row['system_prompt']=after_prompt
 agents[idx]=row
 ma_path.write_text(json.dumps(agents, ensure_ascii=False, indent=2)+chr(10))
-print('patched 周衡 row only idle=180 effort=medium prompt_len', len(after_prompt))
+print('patched 周衡 row only idle=1500 effort=medium prompt_len', len(after_prompt))
 "
 
 APPLY_STEP="patch-prompt-files"
@@ -274,7 +275,7 @@ cp "$ROOT/after/AGENTS.md" "$ID_ROOT/AGENTS.md"
 cp "$ROOT/after/instructions-1.md" "$INSTR"
 
 APPLY_STEP="read-back-verify"
-echo "== read-back verify 周衡 row (medium/180) + prompt files =="
+echo "== read-back verify 周衡 row (medium/1500) + prompt files =="
 python3 -c "
 import json
 from pathlib import Path
@@ -282,10 +283,10 @@ agents=json.loads(Path(r'''$MA''').read_text())
 pub=r'''$PUB'''
 row=next(a for a in agents if a.get('pubkey')==pub or a.get('name')=='周衡')
 env=row.get('env_vars') or {}
-assert row.get('idle_timeout_seconds')==180, row.get('idle_timeout_seconds')
+assert row.get('idle_timeout_seconds')==1500, row.get('idle_timeout_seconds')
 assert env.get('BUZZ_ACP_EFFORT_LEVEL')=='medium', env.get('BUZZ_ACP_EFFORT_LEVEL')
-assert env.get('BUZZ_ACP_IDLE_TIMEOUT') in ('180', 180), env.get('BUZZ_ACP_IDLE_TIMEOUT')
-print('managed-agents 周衡 read-back OK: idle=180 effort=medium')
+assert env.get('BUZZ_ACP_IDLE_TIMEOUT') in ('1500', 1500), env.get('BUZZ_ACP_IDLE_TIMEOUT')
+print('managed-agents 周衡 read-back OK: idle=1500 effort=medium')
 for label, path, src in [
     ('pj.md', r'''$PJ_MD''', r'''$ROOT/after/pj.md'''),
     ('AGENTS.md', r'''$ID_ROOT'''+'/AGENTS.md', r'''$ROOT/after/AGENTS.md'''),
@@ -321,7 +322,7 @@ REQUIRED NEXT (peng + operator):
      python -m buzz_team --instance /Users/xupeng/lab/buzz doctor
      is ok with NO proxy_contrast.
   3) GATE: read back managed-agents.json 周衡 row — must still be effort=medium
-     idle=180 max_turn=7200 (not overwritten by stale in-memory values; see A11).
+     idle=1500 max_turn=7200 (not overwritten by stale in-memory values; see A11).
      If overwritten: STOP, report, do not re-apply; run rollback flow.
   4) verify:
        docs/issue-38/scripts/verify-after-restart.sh $BACKUP --expect after --restart-mode app

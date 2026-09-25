@@ -74,7 +74,7 @@ Default live path is **whole-app quit → write → reopen**, not single-seat re
 5. **Post-reopen gates (before verify):**
    - Desktop main **and all 18 seat processes** have all six proxy env keys (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, `http_proxy`, `https_proxy`, `all_proxy`) set to `http://127.0.0.1:9567`.
    - `python -m buzz_team --instance /Users/xupeng/lab/buzz doctor` → ok, **no** `proxy_contrast`.
-   - Read back `managed-agents.json` 周衡 row → still `effort=medium` `idle=180` `max_turn=7200` (A11). If overwritten: **STOP**, report, do not re-apply; run rollback flow.
+   - Read back `managed-agents.json` 周衡 row → still `effort=medium` `idle=1500` `max_turn=7200` (A11). Idle stays 1500; do not write 180. If overwritten: **STOP**, report, do not re-apply; run rollback flow.
 
 6. **Verify:**
    ```bash

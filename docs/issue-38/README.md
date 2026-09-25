@@ -5,7 +5,7 @@
 | 文件 | 作用 |
 |---|---|
 | `HOW.md` | 事实源与机制（keel-how） |
-| `IDLE-DECISION.md` | idle 1500→180 理由（对照 #29/#32） |
+| `IDLE-DECISION.md` | 现行决策：不采用 1500→180；周衡 idle 保持 1500 |
 | `S1-S3-ACCEPTANCE.md` | pre-merge / post-merge 分工 |
 | `RUNBOOK.md` | 合入后与 Hogan：quit-first baseline→Cmd+Q→apply→reopen(proxy gate)→verify --restart-mode app |
 | `scripts/apply.sh` / `rollback.sh` | 默认拒绝执行（需 `ISSUE38_I_UNDERSTAND_LIVE=yes`） |
