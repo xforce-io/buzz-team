@@ -58,7 +58,7 @@ def _load_policy(env: dict[str, str]) -> tuple[Path, Path, Path, list[Path]]:
 
 def _profile(roots: list[Path]) -> str:
     # Seatbelt predicates resolve path traversal and symlinks before matching.
-    exceptions = " ".join(f"(require-not (subpath {json.dumps(str(root))}))" for root in roots)
+    exceptions = " ".join(f"(require-not (subpath {json.dumps(str(root), ensure_ascii=False)}))" for root in roots)
     return ("(version 1)\n(allow default)\n"
             f'(deny file-write* (require-all {exceptions} (require-not (literal "/dev/null"))))\n')
 

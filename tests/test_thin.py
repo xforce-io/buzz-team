@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+import subprocess
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -88,6 +89,27 @@ class ThinLauncherTests(unittest.TestCase):
         self.save()
         with self.assertRaisesRegex(ValueError, "invalid Grok argument"):
             self.command(["auth"])
+
+    @unittest.skipUnless(thin.SEATBELT.is_file(), "requires macOS Seatbelt")
+    def test_unicode_write_path_in_real_seatbelt(self):
+        project = self.root / "项目"
+        project.mkdir()
+        self.save("business", [str(project)])
+        argv, _, _ = thin.command(self.env, ["agent", "stdio"])
+        allowed = project / "allowed.txt"
+        result = subprocess.run(
+            [str(thin.SEATBELT), "-p", argv[2], "/bin/sh", "-c", 'printf ok > "$1"', "--", str(allowed)],
+            capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(allowed.read_text(), "ok")
+        denied = self.root / "denied.txt"
+        result = subprocess.run(
+            [str(thin.SEATBELT), "-p", argv[2], "/bin/sh", "-c", 'printf no > "$1"', "--", str(denied)],
+            capture_output=True, text=True,
+        )
+        self.assertNotEqual(result.returncode, 0)
+        self.assertFalse(denied.exists())
 
 
 if __name__ == "__main__":
