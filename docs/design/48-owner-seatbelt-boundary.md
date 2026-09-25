@@ -2,7 +2,7 @@
 
 ## 1 背景
 
-七个业务身份当前允许任意作者触发，且原业务策略直接跳过 Seatbelt。目标与验收见 [Issue #48](https://github.com/xforce-io/buzz-team/issues/48)。此前以七份固定 allowlist 和 buzz-team Desktop 绑定扩展为前提的设计已撤销。
+变更前七个业务身份允许任意作者触发，且原业务策略直接跳过 Seatbelt。目标与验收见 [Issue #48](https://github.com/xforce-io/buzz-team/issues/48)。此前以七份固定 allowlist 和 buzz-team Desktop 绑定扩展为前提的设计已撤销。
 
 ## 2 名词解释
 
