@@ -1,6 +1,8 @@
 # 停用本地 fork，记下上游 pin
 
-状态：Approved（2026-09-25，用户确认）
+状态：Approved（2026-09-25，用户确认）；#53 后仅作历史设计归档。
+
+本设计记录 #44 切换当时的模块、CLI 与验收路径。#53 已删除下文提到的 `instance.prepare`、`desktop.live_processes`、`buzz-team status/prepare` 和 `features/upstream-pin.md`；它们不再是可执行的现行操作。当前运行和回退边界见[运行手册](../runbook.md)及[#53 设计](53-remove-acp-middle-layer.md)。本文件中的版本、指纹与回退目标只适用于 2026-09-25 那次切换。
 
 ## 1 背景
 
