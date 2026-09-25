@@ -8,11 +8,11 @@
 
 ## 2 名词解释
 
-作者名单：能触发业务身份回复的公钥集合，owner 仍按上游规则允许；本设计新词。其余术语见 [名词表](../glossary.md)。
+作者名单：显式允许触发业务身份回复的公钥集合；owner 及同 owner 已认证 agent 仍按上游规则允许。本设计新词。其余术语见 [名词表](../glossary.md)。
 
 ## 3 目标与非目标
 
-目标：七个业务身份仅响应名单内作者；启用身份级 Seatbelt，只允许身份运行目录及经核准的生产路径写入。
+目标：七个业务身份响应名单内作者、owner 及同 owner 已认证 agent；拒绝其他作者；启用身份级 Seatbelt，只允许身份运行目录及经核准的生产路径写入。
 
 非目标：改变开发身份的响应范围；修改上游 ACP；以提示词代替文件系统约束；自动推断哪些生产目录有业务必要性。
 
@@ -47,7 +47,7 @@ N/A。没有新页面。操作者从 Desktop 启动摘要、频道提及结果�
 
 ## 9 边界
 
-owner 的隐含允许行为由上游 ACP 决定；是否纳入 workflow 发布者须按实际签名公钥确认。Seatbelt 不是读权限控制；本票只限定文件写入。临时文件使用身份级 `TMPDIR`，不得写全局 `/tmp`。受限父进程中的 executor 继承既有 Seatbelt。
+owner 及同 owner 已认证 agent 的隐含允许行为由上游 ACP 决定；名单不能排除这些身份。上游对通过 relay 签名与标记校验的 workflow 消息，以 workflow owner 而非 relay 公钥判定准入；须核对实际发布者公钥与 NIP-11 `self`，不直接把 relay 公钥加入名单。Seatbelt 不是读权限控制；本票只限定文件写入。临时文件使用身份级 `TMPDIR`，不得写全局 `/tmp`。受限父进程中的 executor 继承既有 Seatbelt。
 
 ## 10 迁移/兼容/回滚
 
@@ -55,14 +55,14 @@ owner 的隐含允许行为由上游 ACP 决定；是否纳入 workflow 发布�
 
 ## 11 测试计划
 
-- E2E S1：七个启动摘要均为 allowlist，名单内和名单外成员各一次实际提及，后者无触发；见 `.agents/skills/verify-buzz-team/features/business-access.md`。
+- E2E S1：七个启动摘要均为 allowlist，显式名单内作者和既不在名单内、也非 owner/同 owner 已认证 agent 的成员各一次实际提及，后者无触发；见 `.agents/skills/verify-buzz-team/features/business-access.md`。
 - E2E S2：七个业务身份均被 Seatbelt 约束；一次核准生产写入成功、一次范围外写入拒绝。
 - Integration：隔离 Desktop 库存只改七个目标行，doctor 检出缺少有效 executor override，回退恢复原行；真实 `sandbox-exec` 执行正反向写入。
 - Unit：名单、公钥、路径与控制文件重叠校验；缺 Seatbelt 拒绝启动。
 
 ## 12 开放问题
 
-七个身份各自的实际作者名单以及生产写路径要从实例运维记录核对；未核对前不得绑定真实 Desktop。若上游 ACP 对 NIP-OA 消息使用 owner 身份判定，以实际签名与授权链观察结果为准。
+七个身份各自的实际作者名单以及生产写路径要从实例运维记录核对；未核对前不得绑定真实 Desktop。现有频道成员大多是同 owner 已认证 agent，名单外拒绝验证须选用真正处于 owner 信任边界之外的成员。
 
 ## 13 关联
 
