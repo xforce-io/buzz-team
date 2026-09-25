@@ -453,7 +453,7 @@ class CLITests(Fixture):
         updated, changed = desktop.binding_diff(self.config, self.rows)
         self.assertEqual(self.rows, original)
         self.assertEqual(changed, 1)
-        self.assertEqual(updated[0]["acp_command"], "buzz-acp")
+        self.assertEqual(updated[0]["acp_command"], original[0]["acp_command"])
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_SESSION_POLICY"], "thread")
         self.assertEqual(updated[0]["env_vars"]["BUZZ_ACP_MAX_TURNS_PER_SESSION"], "4")
 
