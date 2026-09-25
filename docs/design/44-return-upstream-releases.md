@@ -4,17 +4,17 @@
 
 ## 1 背景
 
-[Issue #44](https://github.com/xforce-io/buzz-team/issues/44)。生产 relay 是 `buzz-local:4937-activity-recovery`。运行中的 `buzz-acp` 与 Desktop 自带二进制 SHA 不同。
+[Issue #44](https://github.com/xforce-io/buzz-team/issues/44)。切换前生产 relay 是 `buzz-local:4937-activity-recovery`，运行中的 `buzz-acp` 与 Desktop 自带二进制 SHA 不同；2026-09-25 已按 `docs/runbooks/44-upstream-pin.md` 切换。
 
 ## 2 名词解释
 
-[兼容清单](../glossary.md) 的 `observed_baseline` 仍是正在跑的本地 fork。未应用的目标写在同一文件的 `upstream_pin`。[已知降级](../glossary.md) 只用于已经写明边界的项；未测不占用这个标记。
+[兼容清单](../glossary.md) 的 `observed_baseline` 记录当前 Desktop 0.5.25；已应用的上游目标写在同一文件的 `upstream_pin`。[已知降级](../glossary.md) 只用于已经写明边界的项；未测不占用这个标记。
 
 ## 3 目标与非目标
 
 目标：未提交的 fork 改动归档为可校验补丁且部署数为 0；目标 `buzz-acp` SHA 与官方 relay tag、digest 写进记录；仓库写明开源组件不 fork。
 
-非目标：在未授权时切换生产 relay 或 9 个进程；把补丁部署回去；用滚动 `:main` 当 pin。
+非目标：把补丁部署回去；用滚动 `:main` 当 pin。
 
 ## 4 能力
 
@@ -30,7 +30,7 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 6 架构
 
-补丁在 `docs/archive/44-local-fork/`。目标版本在 `docs/runbooks/44-upstream-pin.md`。规则在 `AGENTS.md`。主路径是记录与归档。失败路径是未授权的切换：不执行，并在发布记录里标 BLOCKED。
+补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/runbooks/44-upstream-pin.md`。规则在 `AGENTS.md`。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
 
 ## 7 模块
 
@@ -42,11 +42,11 @@ N/A。
 
 ## 9 边界
 
-补丁不含凭据。部署数为 0。9/9 进程对齐只在真正切换之后才成立。
+补丁不含凭据。部署数为 0。9/9 进程对齐仅针对这次 Desktop 0.5.25 包内 SHA。
 
 ## 10 迁移/兼容/回滚
 
-未切换，因此没有新的运行态需要回滚。记录本身的回滚是撤回本文件所在提交。
+2026-09-25 已切换。生产 relay 旧镜像与库存备份、迁移检查及回退目标见 `docs/runbooks/44-upstream-pin.md`；不得把 `0.2.1` 用作现库回退目标。buzz-team 自身 release 尚未切换。
 
 ## 11 测试计划
 
@@ -56,7 +56,7 @@ N/A。
 
 ## 12 开放问题
 
-生产切换与默认分支合入尚未授权。
+本设计仍是 Draft，尚无 L1/L2 批准；默认分支尚未合入。当前运行态记录不构成设计批准。
 
 ## 13 关联
 

@@ -10,8 +10,8 @@
 
 ## S3 收发与规则
 
-`AGENTS.md` 只写「开源组件不 fork」。`docs/activity-catalog.md` 在切换前把频道收发和 Activity 面板标为未执行。S3 在 S2 完成前为 fail。typing 不是通过。
+`AGENTS.md` 写明「开源组件不 fork，本地只允许配置层规避」。切换后按 `docs/activity-catalog.md` 核对频道收发和 Activity 各项标记。真实 Desktop 中须看见 Thinking 或工具调用，typing 不是通过。把截图或 UI 摘录、测试消息标识及候选 SHA 存在实例 `evidence/<candidate_sha>/`；缺少该精确 SHA 的客户端证据时，S3 不记 pass。
 
 ## 入口
 
-读上述文件。运行态切换不在未授权时执行。
+读上述文件及 `docs/runbooks/44-upstream-pin.md`，核对当前 relay 镜像 digest、Desktop `buzz-acp` 与 CLI 指纹、9 个身份运行态及实例 doctor。
