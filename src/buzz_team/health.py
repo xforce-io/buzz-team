@@ -96,6 +96,7 @@ def _inventory_definition_only(row: dict) -> bool:
         and row.get("start_on_app_launch") is False
         and row.get("runtime_pid") is None
         and row.get("last_started_at") is None
+        and _DEPRECATED_WRAPPER not in _inventory_launch_commands(row)
     )
 
 
@@ -159,11 +160,13 @@ def classify_desktop_inventory(agents: dict, rows: list) -> list[dict[str, str]]
             outside += 1
             continue
         relay = row.get("relay_url")
-        key = next((candidate for candidate in candidates if relays.get(candidate) == relay), candidates[0])
+        normalized_relay = relay.rstrip("/") if isinstance(relay, str) else relay
+        key = next((candidate for candidate in candidates
+                    if relays.get(candidate, "").rstrip("/") == normalized_relay), candidates[0])
         seen[key].append(index)
         reasons = []
         expected = relays.get(key)
-        if isinstance(expected, str) and relay != expected:
+        if isinstance(expected, str) and normalized_relay != expected.rstrip("/"):
             reasons.append("relay_url")
         if runtime_id and runtime_id != key:
             reasons.append("BUZZ_RUNTIME_ID")

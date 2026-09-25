@@ -486,6 +486,12 @@ class InventoryDoctorTests(Fixture):
             c["status"] == "fail" and c["id"].startswith("inventory_")
             for c in result["checks"]))
 
+        wrapped_definition = dict(definition, acp_command="/old/grok-acp-wrapper")
+        self._write(base + [wrapped_definition])
+        result, wrapped_empty = self._fails("inventory_empty_pubkey:")
+        self.assertEqual(len(wrapped_empty), 1)
+        self.assertEqual(wrapped_empty[0]["status"], "fail")
+
         outside = {
             "pubkey": "c" * 64,
             "relay_url": "ws://localhost:3000",
@@ -532,6 +538,9 @@ class InventoryDoctorTests(Fixture):
             {"pubkey": pubkey, "relay_url": "wss://one.example", "agent_command": "/one"},
             {"pubkey": pubkey, "relay_url": "wss://two.example", "agent_command": "/two"},
         ]
+        checks = health.classify_desktop_inventory(agents, rows)
+        self.assertFalse(any(c["status"] == "fail" for c in checks), checks)
+        rows[0]["relay_url"] += "/"
         checks = health.classify_desktop_inventory(agents, rows)
         self.assertFalse(any(c["status"] == "fail" for c in checks), checks)
 
