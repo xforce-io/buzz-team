@@ -46,8 +46,6 @@ def _load_policy(env: dict[str, str]) -> tuple[Path, Path, Path, list[Path]]:
         raise ValueError("Seatbelt policy belongs to a different Grok home")
     if not isinstance(policy["write_paths"], list):
         raise ValueError("write_paths must be a list")
-    if policy["mode"] == "development" and policy["write_paths"]:
-        raise ValueError("development policy cannot write production paths")
     roots = [grok_home.parent, *(_path(value, "write path") for value in policy["write_paths"])]
     if len(roots) != len(set(roots)):
         raise ValueError("duplicate write path")

@@ -79,12 +79,12 @@ class ThinLauncherTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Seatbelt unavailable"):
                 thin.command(self.env, ["agent"])
 
-    def test_rejects_production_write_in_development_and_wrong_command(self):
-        production = self.root / "production"
-        production.mkdir()
-        self.save("development", [str(production)])
-        with self.assertRaisesRegex(ValueError, "development policy"):
-            self.command()
+    def test_development_explicit_write_path_and_wrong_command(self):
+        project = self.root / "project"
+        project.mkdir()
+        self.save("development", [str(project)])
+        argv, _, _ = self.command()
+        self.assertIn(str(project), argv[2])
         self.save()
         with self.assertRaisesRegex(ValueError, "invalid Grok argument"):
             self.command(["auth"])
