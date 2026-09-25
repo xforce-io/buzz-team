@@ -10,6 +10,8 @@ Buzz Desktop 启动自带 `buzz-acp`；`buzz-acp` 通过 Desktop 的 Agent harne
 
 先在 Desktop Settings 中登记自定义 Agent harness，再单独编辑身份。当前 Desktop 在身份编辑弹窗内直接“Add custom harness…”会同时保存该身份，预览中曾清空其环境变量；每次保存后须检查变更摘要及原环境变量仍在，异常时先恢复原值，不重启该身份。
 
+同时修改 Agent harness 和作者准入时，当前 Desktop 的一次保存曾使作者准入留在旧值。分两次保存：先保存执行器并重启，再单独保存作者准入；从新进程日志核对实际 `respond_to`，不能只看编辑框。
+
 本机策略文件须在身份可写目录外，权限不允许 group/world 写。每个身份在 Desktop 环境变量中提供原 `GROK_HOME`、`GROK_ACP_CWD` 和 `BUZZ_TEAM_POLICY_PATH`。示例仅展示格式；实际路径在本机私有文件中填写：
 
 ```json
