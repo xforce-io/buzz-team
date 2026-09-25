@@ -1,0 +1,1521 @@
+diff --git a/crates/buzz-acp/src/acp.rs b/crates/buzz-acp/src/acp.rs
+index cd0498306..257fd23e4 100644
+--- a/crates/buzz-acp/src/acp.rs
++++ b/crates/buzz-acp/src/acp.rs
+@@ -167,6 +167,7 @@ pub struct AcpClient {
+     /// Used by [`cancel_with_cleanup`] to drain the correct response.
+     /// Set in [`session_prompt_with_idle_timeout`]; consumed in [`cancel_with_cleanup`].
+     last_prompt_id: Option<u64>,
++    prompt_delivery: crate::delivery::PromptDelivery,
+     /// Hard deadline for the current turn, set by `session_prompt_with_idle_timeout`.
+     /// Inherited by `cancel_with_cleanup` so the drain loop shares the same budget
+     /// rather than starting a fresh timer (prevents double-jeopardy).
+@@ -565,6 +566,7 @@ impl AcpClient {
+             pending_permission_id: None,
+             permission_responded: false,
+             last_prompt_id: None,
++            prompt_delivery: Default::default(),
+             current_hard_deadline: None,
+             observer: None,
+             observer_agent_index: None,
+@@ -578,6 +580,17 @@ impl AcpClient {
+         })
+     }
+ 
++    /// Start a new delivery generation without mutating evidence held by recovery.
++    pub(crate) fn begin_prompt_delivery(&mut self) -> crate::delivery::PromptDelivery {
++        self.prompt_delivery = Default::default();
++        self.prompt_delivery.clone()
++    }
++
++    /// Whether this turn may already have caused agent-side effects.
++    pub(crate) fn prompt_may_have_executed(&self) -> bool {
++        self.prompt_delivery.may_have_executed()
++    }
++
+     /// Attach a local observer feed to this ACP client.
+     pub fn set_observer(&mut self, observer: Option<ObserverHandle>, agent_index: usize) {
+         self.observer = observer;
+@@ -820,6 +833,8 @@ impl AcpClient {
+         });
+ 
+         tracing::debug!(target: "acp::wire", "→ {}", &serde_json::to_string(&msg).unwrap_or_default());
++        // A failed write may be partial: record uncertainty before the first byte.
++        self.prompt_delivery.mark_attempted();
+         if let Err(e) = self.write_ndjson(&msg).await {
+             self.last_prompt_id = None;
+             self.current_hard_deadline = None;
+@@ -3144,6 +3159,31 @@ mod tests {
+         );
+     }
+ 
++    #[tokio::test]
++    async fn prompt_delivery_survives_response_cleanup_and_new_turn() {
++        let mut client = spawn_script(r#"read -r request; printf '%s\n' '{"jsonrpc":"2.0","id":0,"result":{"stopReason":"end_turn"}}'; sleep 10"#).await;
++        let previous = client.begin_prompt_delivery();
++        assert!(!previous.may_have_executed());
++        let stop = client
++            .session_prompt_with_idle_timeout(
++                "test",
++                "run once",
++                std::time::Duration::from_secs(2),
++                std::time::Duration::from_secs(3),
++            )
++            .await
++            .unwrap();
++        assert_eq!(stop, StopReason::EndTurn);
++        assert!(client.last_prompt_id.is_none());
++        assert!(previous.may_have_executed());
++        let next = client.begin_prompt_delivery();
++        assert!(!next.may_have_executed());
++        assert!(
++            previous.may_have_executed(),
++            "new turns must not erase old recovery evidence"
++        );
++    }
++
+     #[tokio::test]
+     async fn idle_timeout_fires_on_silent_process() {
+         let mut client = spawn_script("sleep 10").await;
+diff --git a/crates/buzz-acp/src/lib.rs b/crates/buzz-acp/src/lib.rs
+index 3ff1dc398..3e5a4de2e 100644
+--- a/crates/buzz-acp/src/lib.rs
++++ b/crates/buzz-acp/src/lib.rs
+@@ -2,6 +2,7 @@
+ 
+ mod acp;
+ mod config;
++mod delivery;
+ mod engram_fetch;
+ mod filter;
+ mod observer;
+@@ -4533,6 +4534,7 @@ fn dispatch_pending(
+             .state
+             .set_scope_owner_generation(scope.clone(), owner_generation);
+ 
++        let prompt_delivery = agent.acp.begin_prompt_delivery();
+         let abort_handle = pool.join_set.spawn(async move {
+             pool::run_prompt_task(
+                 agent,
+@@ -4556,6 +4558,7 @@ fn dispatch_pending(
+                 recoverable_batch,
+                 control_tx: Some(control_tx),
+                 steer_tx,
++                prompt_delivery,
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -4681,6 +4684,7 @@ fn handle_prompt_result(
+     // branch below records what actually happened; only the hard-timeout
+     // match arm in the death_message construction reads it.
+     let mut hard_timeout_fate_suffix: Option<&'static str> = None;
++    let mut reconciliation_required = false;
+ 
+     // Requeue BEFORE mark_complete: requeue() sets retry_after with a future
+     // deadline, and mark_complete() checks for it to decide whether to preserve
+@@ -4711,6 +4715,23 @@ fn handle_prompt_result(
+                 // accounting, same as a clean cancel.
+                 let reason = batch.cancel_reason.unwrap_or(CancelReason::Steer);
+                 queue.requeue_as_cancelled(batch, reason);
++            } else if result.agent.acp.prompt_may_have_executed() {
++                reconciliation_required = true;
++                let content = "结果待核对：请求可能已经执行，但未能确认最终结果。已停止自动重试，请先核对已有产物和后台任务，再决定是否重新执行。".to_string();
++                spawn_failure_notice(rest_client, &batch, content.clone());
++                if let Some(ref observer) = observer {
++                    observer.emit(
++                        "turn_error",
++                        Some(agent_index),
++                        &observer::context_for(Some(batch.channel_id), None, Some(result.turn_id.clone())),
++                        serde_json::json!({
++                            "outcome": "reconciliation_required",
++                            "error": content,
++                            "triggeringEventIds": batch.events.iter().map(|e| e.event.id.to_hex()).collect::<Vec<_>>(),
++                        }),
++                    );
++                }
++                hard_timeout_fate_suffix = Some(" — result uncertain; automatic retry stopped");
+             } else if matches!(
+                 result.outcome,
+                 PromptOutcome::Timeout(TimeoutKind::Hard {
+@@ -4848,6 +4869,9 @@ fn handle_prompt_result(
+     let channel_id = result.source.channel_id();
+     let turn_id = result.turn_id.clone();
+     let emit_turn_error = |error_msg: &str, error_code: Option<i64>| {
++        if reconciliation_required {
++            return; // The actionable terminal event was already emitted above.
++        }
+         if let Some(ref observer) = observer {
+             let mut payload = serde_json::json!({
+                 "outcome": outcome_label,
+@@ -5074,8 +5098,20 @@ fn recover_panicked_agent(
+             if !removed_channels.contains(&ch) {
+                 // Dead-letter on exhaustion is logged inside requeue(); a
+                 // panic path has no outcome to report, so no notice here.
+-                let _ = queue.requeue(batch);
+-                tracing::warn!("requeued batch for panicked agent {i}");
++                if meta.prompt_delivery.may_have_executed() {
++                    tracing::error!(agent = i, turn_id = %meta.turn_id,
++                        "result uncertain after panic; automatic retry stopped");
++                    if let Some(ref observer) = observer {
++                        observer.emit("turn_error", Some(i),
++                            &observer::context_for(Some(ch), None, Some(meta.turn_id.clone())),
++                            serde_json::json!({"outcome": "reconciliation_required",
++                                "error": "结果待核对：执行中断，已停止自动重试。请核对已有产物和后台任务。",
++                                "triggeringEventIds": batch.events.iter().map(|e| e.event.id.to_hex()).collect::<Vec<_>>()}));
++                    }
++                } else {
++                    let _ = queue.requeue(batch);
++                    tracing::warn!("requeued undelivered batch for panicked agent {i}");
++                }
+             } else {
+                 tracing::debug!(
+                     channel_id = %ch,
+@@ -5115,8 +5151,12 @@ fn recover_panicked_agent(
+             Some(i),
+             &observer::context_for(meta.channel_id, None, Some(meta.turn_id)),
+             serde_json::json!({
+-                "outcome": "panic",
+-                "error": format!("Agent task panicked: {join_error}"),
++                "outcome": if meta.prompt_delivery.may_have_executed() { "reconciliation_required" } else { "panic" },
++                "error": if meta.prompt_delivery.may_have_executed() {
++                    format!("结果待核对：执行任务中断，自动重试已停止。请核对已有产物和后台任务。({join_error})")
++                } else {
++                    format!("Agent task panicked before delivery: {join_error}")
++                },
+             }),
+         );
+     }
+@@ -5206,7 +5246,7 @@ fn dispatch_heartbeat(
+     if *heartbeat_in_flight {
+         return;
+     }
+-    let agent = match pool.try_claim(None) {
++    let mut agent = match pool.try_claim(None) {
+         Some(a) => a,
+         None => return,
+     };
+@@ -5221,6 +5261,7 @@ fn dispatch_heartbeat(
+     let turn_id = Uuid::new_v4().to_string();
+     let task_turn_id = turn_id.clone();
+ 
++    let prompt_delivery = agent.acp.begin_prompt_delivery();
+     let abort_handle = pool.join_set.spawn(async move {
+         pool::run_prompt_task(
+             agent,
+@@ -5244,6 +5285,7 @@ fn dispatch_heartbeat(
+             recoverable_batch: None,
+             control_tx: None,
+             steer_tx: None,
++            prompt_delivery,
+             successful_steer_deliveries: HashSet::new(),
+         },
+     );
+@@ -6070,6 +6112,7 @@ mod owner_control_command_tests {
+                 recoverable_batch: None,
+                 control_tx: Some(control_tx),
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -6116,6 +6159,7 @@ mod owner_control_command_tests {
+                 recoverable_batch: None,
+                 control_tx: Some(control_tx),
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -9485,6 +9529,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::from([
+                     crate::pool::SuccessfulSteerDelivery {
+                         event_id: steer_event_id.into(),
+@@ -9565,6 +9610,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::from([
+                     crate::pool::SuccessfulSteerDelivery {
+                         event_id: "stale-event".into(),
+@@ -9687,6 +9733,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::from([
+                     crate::pool::SuccessfulSteerDelivery {
+                         event_id: "stale-event".into(),
+@@ -9756,6 +9803,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -9836,6 +9884,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -9883,6 +9932,108 @@ mod error_outcome_emission_tests {
+         assert_eq!(panic.turn_id.as_deref(), Some("panic-turn-id"));
+     }
+ 
++    #[tokio::test]
++    async fn panic_after_delivery_does_not_requeue() {
++        let mut pool = AgentPool::from_slots(vec![]);
++        let channel_id = Uuid::new_v4();
++        let mut client = AcpClient::spawn(
++            "bash",
++            &["-c".into(), "read -r request; sleep 10".into()],
++            &[],
++            false,
++        )
++        .await
++        .unwrap();
++        let delivery = client.begin_prompt_delivery();
++        let outcome = client
++            .session_prompt_with_idle_timeout(
++                "panic-session",
++                "run once",
++                Duration::from_millis(30),
++                Duration::from_secs(2),
++            )
++            .await;
++        assert!(matches!(outcome, Err(AcpError::IdleTimeout(_))));
++        let batch = FlushBatch {
++            channel_id,
++            scope: scope::SessionScope::Conversation { channel_id },
++            events: vec![BatchEvent {
++                event: EventBuilder::new(Kind::Custom(9), "test")
++                    .sign_with_keys(&Keys::generate())
++                    .unwrap(),
++                prompt_tag: "test".into(),
++                received_at: std::time::Instant::now(),
++            }],
++            cancelled_events: vec![],
++            cancel_reason: None,
++        };
++        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
++        let abort_handle = pool.join_set.spawn(async move {
++            let _ = started_tx.send(());
++            std::future::pending::<()>().await;
++        });
++        let task_id = abort_handle.id();
++        pool.task_map_mut().insert(
++            task_id,
++            crate::pool::TaskMeta {
++                agent_index: 0,
++                channel_id: Some(channel_id),
++                scope: Some(scope::SessionScope::Conversation { channel_id }),
++                turn_id: "panic-turn-id".to_string(),
++                recoverable_batch: Some(batch),
++                control_tx: None,
++                steer_tx: None,
++                prompt_delivery: delivery,
++                successful_steer_deliveries: HashSet::new(),
++            },
++        );
++        started_rx.await.unwrap();
++        abort_handle.abort();
++        let join_error = pool.join_set.join_next().await.unwrap().unwrap_err();
++
++        let mut queue = EventQueue::new(config::DedupMode::Queue);
++        let config = test_config();
++        let mut heartbeat_in_flight = false;
++        let removed_channels = HashSet::new();
++        let mut typing_channels = HashMap::new();
++        let mut crash_history = vec![SlotCircuit {
++            crash_times: Vec::new(),
++            open_until: None,
++            respawn_in_flight: false,
++        }];
++        let (respawn_tx, _respawn_rx) = mpsc::channel(8);
++        let mut respawn_tasks = tokio::task::JoinSet::new();
++        let observer = ObserverHandle::in_process();
++
++        recover_panicked_agent(
++            &mut pool,
++            &mut queue,
++            &config,
++            join_error,
++            &mut heartbeat_in_flight,
++            &removed_channels,
++            &mut typing_channels,
++            &mut crash_history,
++            &respawn_tx,
++            &mut respawn_tasks,
++            Some(observer.clone()),
++        );
++
++        let panic = observer
++            .snapshot()
++            .into_iter()
++            .find(|event| event.kind == "agent_panic")
++            .expect("panic recovery emits an observer event");
++        assert_eq!(
++            panic.channel_id.as_deref(),
++            Some(channel_id.to_string().as_str())
++        );
++        assert_eq!(panic.turn_id.as_deref(), Some("panic-turn-id"));
++        assert_eq!(panic.payload["outcome"], "reconciliation_required");
++        assert_eq!(queue.pending_channels(), 0);
++        assert_eq!(queue.queued_event_count(channel_id), 0);
++    }
++
+     // Fix #3: a panicked thread-scoped task must clear its EXACT scope from the
+     // in-flight set (via meta.scope), not `Conversation(channel_id)`. Otherwise
+     // the requeued batch stays wedged until the ~2h in-flight backstop.
+@@ -9928,6 +10079,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: Some(batch),
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -10027,6 +10179,7 @@ mod error_outcome_emission_tests {
+                     recoverable_batch: None,
+                     control_tx: None,
+                     steer_tx: None,
++                    prompt_delivery: Default::default(),
+                     successful_steer_deliveries: HashSet::new(),
+                 },
+             );
+@@ -10124,6 +10277,7 @@ mod error_outcome_emission_tests {
+                     recoverable_batch: None,
+                     control_tx: None,
+                     steer_tx: None,
++                    prompt_delivery: Default::default(),
+                     successful_steer_deliveries: HashSet::new(),
+                 },
+             );
+@@ -10232,6 +10386,7 @@ mod error_outcome_emission_tests {
+                     recoverable_batch: None,
+                     control_tx: None,
+                     steer_tx: None,
++                    prompt_delivery: Default::default(),
+                     successful_steer_deliveries: HashSet::new(),
+                 },
+             );
+@@ -10310,6 +10465,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -10380,6 +10536,118 @@ mod error_outcome_emission_tests {
+         );
+     }
+ 
++    #[tokio::test]
++    async fn delivered_prompt_timeout_stops_replay_and_preserves_uncertainty() {
++        let channel_id = Uuid::new_v4();
++        let mut agent = dummy_agent(0).await;
++        agent.acp = AcpClient::spawn(
++            "bash",
++            &["-c".into(), "read -r request; sleep 10".into()],
++            &[],
++            false,
++        )
++        .await
++        .unwrap();
++        let delivery = agent.acp.begin_prompt_delivery();
++        let outcome = agent
++            .acp
++            .session_prompt_with_idle_timeout(
++                "test-session",
++                "run once",
++                std::time::Duration::from_millis(30),
++                std::time::Duration::from_secs(2),
++            )
++            .await;
++        assert!(matches!(outcome, Err(AcpError::IdleTimeout(_))));
++        assert!(delivery.may_have_executed());
++        let mut pool = AgentPool::from_slots(vec![None]);
++        let task_id = pool.join_set.spawn(async {}).id();
++        pool.task_map_mut().insert(
++            task_id,
++            crate::pool::TaskMeta {
++                agent_index: 0,
++                channel_id: None,
++                scope: None,
++                turn_id: "test-turn-id".to_string(),
++                recoverable_batch: None,
++                control_tx: None,
++                steer_tx: None,
++                prompt_delivery: Default::default(),
++                successful_steer_deliveries: HashSet::new(),
++            },
++        );
++        let mut queue = EventQueue::new(config::DedupMode::Queue);
++        let config = test_config();
++        let mut heartbeat_in_flight = false;
++        let removed_channels = HashSet::new();
++        let mut crash_history = vec![SlotCircuit {
++            crash_times: Vec::new(),
++            open_until: None,
++            respawn_in_flight: false,
++        }];
++        let (respawn_tx, _respawn_rx) = mpsc::channel(8);
++        let mut respawn_tasks = tokio::task::JoinSet::new();
++        let observer = ObserverHandle::in_process();
++        let batch = FlushBatch {
++            channel_id,
++            scope: scope::SessionScope::Conversation { channel_id },
++            events: vec![BatchEvent {
++                event: EventBuilder::new(Kind::Custom(9), "test")
++                    .sign_with_keys(&Keys::generate())
++                    .unwrap(),
++                prompt_tag: "test".into(),
++                received_at: std::time::Instant::now(),
++            }],
++            cancelled_events: vec![],
++            cancel_reason: None,
++        };
++        let result = PromptResult {
++            agent,
++            source: PromptSource::Channel(scope::SessionScope::Conversation { channel_id }),
++            turn_id: "test-turn-id".to_string(),
++            outcome: PromptOutcome::Timeout(TimeoutKind::Hard {
++                recently_active: true,
++            }),
++            batch: Some(batch),
++        };
++        handle_prompt_result(
++            &mut pool,
++            &mut queue,
++            &config,
++            result,
++            &mut heartbeat_in_flight,
++            &removed_channels,
++            &mut crash_history,
++            &respawn_tx,
++            &mut respawn_tasks,
++            Some(observer.clone()),
++            None,
++        );
++
++        let events = observer.snapshot();
++        let errors: Vec<_> = events.iter().filter(|e| e.kind == "turn_error").collect();
++        assert_eq!(errors.len(), 1);
++        assert_eq!(errors[0].payload["outcome"], "reconciliation_required");
++        assert_eq!(
++            errors[0].payload["triggeringEventIds"]
++                .as_array()
++                .unwrap()
++                .len(),
++            1
++        );
++        assert_eq!(
++            queue.pending_channels(),
++            0,
++            "a delivered request must not be replayed"
++        );
++        assert_eq!(queue.queued_event_count(channel_id), 0);
++        let next = delivery.clone();
++        assert!(
++            next.may_have_executed(),
++            "cleanup must retain delivery evidence"
++        );
++    }
++
+     /// Same recently-active hard timeout, but the channel has already
+     /// exhausted its retry budget ([`crate::queue::MAX_RETRIES`] prior
+     /// attempts) — `queue.requeue()` dead-letters instead of requeueing, and
+@@ -10407,6 +10675,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -10527,6 +10796,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -10669,6 +10939,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -10803,6 +11074,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -10958,6 +11230,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -11061,6 +11334,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+@@ -11222,6 +11496,7 @@ mod error_outcome_emission_tests {
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+diff --git a/crates/buzz-acp/src/pool.rs b/crates/buzz-acp/src/pool.rs
+index c188633be..f5303afef 100644
+--- a/crates/buzz-acp/src/pool.rs
++++ b/crates/buzz-acp/src/pool.rs
+@@ -90,6 +90,8 @@ pub struct TaskMeta {
+     /// live session. The session ID prevents a late ack from contaminating a
+     /// replacement session after task return.
+     pub successful_steer_deliveries: HashSet<SuccessfulSteerDelivery>,
++    /// Delivery evidence survives a task panic and is scoped to this turn.
++    pub prompt_delivery: crate::delivery::PromptDelivery,
+ }
+ 
+ /// Agent-level model capabilities. Populated on first session creation.
+@@ -8335,6 +8337,7 @@ printf '%s\n' '{{"jsonrpc":"2.0","id":0,"result":{{"stopReason":"end_turn"}}}}'"
+                 recoverable_batch: None,
+                 control_tx: None,
+                 steer_tx: None,
++                prompt_delivery: Default::default(),
+                 successful_steer_deliveries: HashSet::new(),
+             },
+         );
+diff --git a/crates/buzz-core/src/observer.rs b/crates/buzz-core/src/observer.rs
+index 8347bda05..e5a838649 100644
+--- a/crates/buzz-core/src/observer.rs
++++ b/crates/buzz-core/src/observer.rs
+@@ -21,8 +21,11 @@ pub const OBSERVER_FRAME_CONTROL: &str = "control";
+ pub const NIP44_MIN_CONTENT_LEN: usize = 132;
+ /// Maximum NIP-44 v2 ciphertext length.
+ pub const NIP44_MAX_CONTENT_LEN: usize = 87_472;
+-/// Maximum observer plaintext JSON size accepted by helpers.
+-pub const OBSERVER_MAX_PLAINTEXT_LEN: usize = 65_535;
++/// Maximum observer plaintext JSON size accepted by the pinned NIP-44 v2 codec.
++///
++/// nostr 0.44.x supports at most 65,536 - 128 bytes, below the wire format
++/// ceiling. The ACP trimmer and batcher must use this same encryptable budget.
++pub const OBSERVER_MAX_PLAINTEXT_LEN: usize = 65_536 - 128;
+ 
+ /// Errors returned by observer payload encryption/decryption helpers.
+ #[derive(Debug, Error)]
+@@ -139,6 +142,43 @@ mod tests {
+         assert_eq!(decrypted, payload);
+     }
+ 
++    #[test]
++    fn observer_payload_at_budget_round_trips_through_real_codec() {
++        let sender = Keys::generate();
++        let recipient = Keys::generate();
++        // JSON string delimiters consume two bytes of the serialized budget.
++        let payload = "x".repeat(OBSERVER_MAX_PLAINTEXT_LEN - 2);
++        assert_eq!(
++            serde_json::to_string(&payload).unwrap().len(),
++            OBSERVER_MAX_PLAINTEXT_LEN
++        );
++        let encrypted = encrypt_observer_payload(&sender, &recipient.public_key(), &payload)
++            .expect("every payload accepted by the observer budget must encrypt");
++        let event = EventBuilder::new(
++            Kind::Custom(crate::kind::KIND_AGENT_OBSERVER_FRAME as u16),
++            encrypted,
++        )
++        .tags([Tag::public_key(recipient.public_key())])
++        .sign_with_keys(&sender)
++        .unwrap();
++        assert_eq!(
++            decrypt_observer_payload::<String>(&recipient, &event).unwrap(),
++            payload
++        );
++    }
++
++    #[test]
++    fn observer_payload_over_budget_reports_size_before_codec() {
++        let sender = Keys::generate();
++        let recipient = Keys::generate();
++        let payload = "x".repeat(OBSERVER_MAX_PLAINTEXT_LEN - 1);
++        assert!(matches!(
++            encrypt_observer_payload(&sender, &recipient.public_key(), &payload),
++            Err(ObserverPayloadError::PlaintextTooLarge { max, got })
++                if max == OBSERVER_MAX_PLAINTEXT_LEN && got == max + 1
++        ));
++    }
++
+     #[test]
+     fn observer_payload_rejects_short_ciphertext() {
+         let sender = Keys::generate();
+diff --git a/crates/buzz-relay/src/api/bridge.rs b/crates/buzz-relay/src/api/bridge.rs
+index 37c549610..73e5ad2bc 100644
+--- a/crates/buzz-relay/src/api/bridge.rs
++++ b/crates/buzz-relay/src/api/bridge.rs
+@@ -921,7 +921,7 @@ async fn submit_event_authed(
+ 
+     // Enforce relay membership (with NIP-OA fallback via x-auth-tag header).
+     let auth_tag = super::relay_members::extract_auth_tag_header(headers);
+-    let nip_oa_owner = match super::relay_members::enforce_relay_membership(
++    let admitted_via = match super::relay_members::enforce_relay_membership(
+         state,
+         tenant.community(),
+         &pubkey_bytes,
+@@ -930,17 +930,7 @@ async fn submit_event_authed(
+     )
+     .await
+     {
+-        Ok(owner) => owner.or_else(|| {
+-            if !state.config.require_relay_membership {
+-                super::relay_members::extract_nip_oa_owner(
+-                    &pubkey_bytes,
+-                    auth_tag,
+-                    signed_auth_created_at,
+-                )
+-            } else {
+-                None
+-            }
+-        }),
++        Ok(owner) => owner,
+         Err(e) => {
+             return SubmitOutcome::Err {
+                 status: e.0,
+@@ -948,6 +938,18 @@ async fn submit_event_authed(
+             };
+         }
+     };
++    // A direct member is admitted before delegation is ever consulted, so its
++    // attestation still has to be resolved here or the relay never learns it is
++    // an agent at all.
++    let nip_oa_owner = super::relay_members::resolve_nip_oa_owner(
++        state,
++        tenant.community(),
++        &pubkey_bytes,
++        auth_tag,
++        signed_auth_created_at,
++        admitted_via,
++    )
++    .await;
+     if let Some(owner) = nip_oa_owner {
+         super::relay_members::materialize_nip_oa_owner(state, tenant, &pubkey, &owner).await;
+     }
+@@ -4238,4 +4240,394 @@ mod postgres_tests {
+             "attribution line must carry the pubkey;\nlog:\n{log}"
+         );
+     }
++
++    // ── NIP-OA owner materialization over the real HTTP path ────────────────
++    //
++    // These enter at `submit_event_authed`, the authenticated core of
++    // `POST /events`: everything outside it is NIP-98 verification and the
++    // attribution log, and everything the owner path touches — the membership
++    // gate, `resolve_nip_oa_owner`, `materialize_nip_oa_owner` — is inside.
++    // The `outer_nip98` pair additionally drives the axum router so the signed
++    // authentication timestamp cannot be dropped before it reaches the owner
++    // path.
++
++    /// These tests are `#[ignore]`d and run only when explicitly selected, so a
++    /// silent skip is never what the caller wanted: it turns "the database was
++    /// missing" into a passing run. Fail loudly instead — this is the same
++    /// false-green shape the tests themselves exist to rule out.
++    fn require_infra<T>(value: Option<T>) -> T {
++        value.expect("NIP-OA owner tests need PostgreSQL and Redis; refusing to pass without them")
++    }
++
++    async fn nip_oa_test_state() -> Option<(Arc<AppState>, sqlx::PgPool)> {
++        let mut config = crate::config::Config::from_env().ok()?;
++        // The regression is closed-relay-only: on an open relay the owner was
++        // always recorded.
++        config.require_relay_membership = true;
++        config.database_url = crate::test_support::database_url();
++        config.redis_url =
++            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
++
++        let pool = sqlx::PgPool::connect(&config.database_url).await.ok()?;
++        let db = buzz_db::Db::from_pool(pool.clone());
++        let redis_pool = deadpool_redis::Config::from_url(&config.redis_url)
++            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
++            .ok()?;
++        let pubsub = Arc::new(
++            buzz_pubsub::PubSubManager::new(&config.redis_url, redis_pool.clone())
++                .await
++                .ok()?,
++        );
++        let audit = buzz_audit::AuditService::new(pool.clone());
++        let auth = buzz_auth::AuthService::new(config.auth.clone());
++        let search = buzz_search::SearchService::new(pool.clone());
++        let workflow_engine = Arc::new(buzz_workflow::WorkflowEngine::new(
++            db.clone(),
++            buzz_workflow::WorkflowConfig::default(),
++        ));
++        let media_storage = buzz_media::MediaStorage::new(&config.media).ok()?;
++        let (state, _audit_shutdown) = crate::state::AppState::new(
++            config,
++            db,
++            redis_pool,
++            audit,
++            pubsub,
++            auth,
++            search,
++            workflow_engine,
++            Keys::generate(),
++            media_storage,
++        );
++        Some((Arc::new(state), pool))
++    }
++
++    async fn seed_community(pool: &sqlx::PgPool) -> TenantContext {
++        let id = uuid::Uuid::new_v4();
++        let host = format!("nip-oa-{}.example", id.simple());
++        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
++            .bind(id)
++            .bind(&host)
++            .execute(pool)
++            .await
++            .expect("insert test community");
++        TenantContext::resolved(buzz_core::CommunityId::from_uuid(id), host)
++    }
++
++    /// A signed event for the request body. Its ingest outcome is irrelevant:
++    /// owner materialization happens before ingest, so the assertion holds
++    /// whether or not the event itself is accepted.
++    fn body_event(keys: &Keys) -> Vec<u8> {
++        let event = EventBuilder::new(Kind::TextNote, "nip-oa owner materialization probe")
++            .sign_with_keys(keys)
++            .expect("sign body event");
++        serde_json::to_vec(&event).expect("serialize body event")
++    }
++
++    fn auth_tag_headers(tag_json: &str) -> HeaderMap {
++        let mut headers = HeaderMap::new();
++        headers.insert("x-auth-tag", tag_json.parse().expect("header value"));
++        headers
++    }
++
++    async fn stored_owner(
++        state: &AppState,
++        tenant: &TenantContext,
++        agent: &nostr::PublicKey,
++    ) -> Option<Vec<u8>> {
++        state
++            .db
++            .get_agent_channel_policy(tenant.community(), agent.as_bytes())
++            .await
++            .expect("read agent policy")
++            .and_then(|(_, owner)| owner)
++    }
++
++    async fn seed_relay_members(state: &AppState, tenant: &TenantContext, members: &[&Keys]) {
++        for keys in members {
++            state
++                .db
++                .add_relay_member(
++                    tenant.community(),
++                    &keys.public_key().to_hex(),
++                    "member",
++                    None,
++                )
++                .await
++                .expect("add relay member");
++        }
++    }
++
++    /// Run one `POST /events` submission as `agent`, presenting `tag_json`.
++    ///
++    /// Panics if the submit fails before reaching owner materialization.
++    /// Admission and the NIP-98 replay guard run first and both fail closed on
++    /// a Redis blip, which short-circuits the request; without this check that
++    /// shows up downstream as "the owner was not recorded" and reads exactly
++    /// like a product bug instead of the infrastructure failure it is.
++    async fn submit_with_tag(
++        state: &Arc<AppState>,
++        tenant: &TenantContext,
++        agent: &Keys,
++        tag_json: Option<&str>,
++        auth_event_created_at: u64,
++    ) {
++        let headers = match tag_json {
++            Some(tag) => auth_tag_headers(tag),
++            None => HeaderMap::new(),
++        };
++        let outcome = submit_event_authed(
++            state,
++            tenant,
++            &headers,
++            &body_event(agent),
++            agent.public_key(),
++            fresh_nip98_event_id_bytes(),
++            Some(auth_event_created_at),
++        )
++        .await;
++        if let SubmitOutcome::Err { status, .. } = &outcome {
++            panic!(
++                "submit failed before owner materialization (status {status}) — \
++                 infrastructure, not the owner path"
++            );
++        }
++    }
++
++    /// Drive the complete NIP-98 `POST /events` boundary through the axum
++    /// router. Unlike `submit_with_tag`, this makes the production wrapper
++    /// authenticate the signed request and carry its timestamp into the
++    /// ownership policy.
++    async fn post_events_with_nip98_tag(
++        state: &Arc<AppState>,
++        tenant: &TenantContext,
++        agent: &Keys,
++        tag_json: &str,
++        auth_event_created_at: u64,
++    ) -> StatusCode {
++        use axum::body::Body;
++        use axum::http::{header, Request};
++        use tower::ServiceExt;
++
++        let body = body_event(agent);
++        let url = nip98_expected_url(&state.config.relay_url, tenant, "/events");
++        let auth_event = EventBuilder::new(Kind::HttpAuth, "")
++            .tags([
++                Tag::parse(["u", url.as_str()]).expect("u tag"),
++                Tag::parse(["method", "POST"]).expect("method tag"),
++            ])
++            .custom_created_at(nostr::Timestamp::from(auth_event_created_at))
++            .sign_with_keys(agent)
++            .expect("sign NIP-98 event");
++        let auth_event_json = serde_json::to_string(&auth_event).expect("serialize auth event");
++        let mut headers = nip98_auth_headers(&auth_event_json);
++        headers.insert(
++            header::HOST,
++            tenant.host().parse().expect("valid tenant host header"),
++        );
++        headers.insert("x-auth-tag", tag_json.parse().expect("header value"));
++
++        let mut request = Request::builder()
++            .method("POST")
++            .uri("/events")
++            .body(Body::from(body))
++            .expect("build request");
++        *request.headers_mut() = headers;
++
++        crate::router::build_router(state.clone())
++            .oneshot(request)
++            .await
++            .expect("router oneshot")
++            .status()
++    }
++
++    /// The regression itself: a direct relay member on a closed relay presents
++    /// a valid attestation, and the owner is recorded. Before the fix this
++    /// silently resolved to no owner, so `owner_only` policies had nothing to
++    /// match and observer frames were refused.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_http_records_owner_for_direct_member() {
++        let (state, pool) = require_infra(nip_oa_test_state().await);
++        let tenant = seed_community(&pool).await;
++        let agent = Keys::generate();
++        let owner = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent, &owner]).await;
++
++        let tag = buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "")
++            .expect("compute auth tag");
++        submit_with_tag(&state, &tenant, &agent, Some(&tag), 1_000).await;
++
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            Some(owner.public_key().to_bytes().to_vec()),
++            "a direct member's verified owner must be recorded on a closed relay",
++        );
++    }
++
++    /// The outer HTTP regression boundary: the router must authenticate a real
++    /// NIP-98 request and preserve its signed timestamp through `submit_event`
++    /// into owner materialization. Supplying `None` at that handoff makes this
++    /// assertion fail while the inner-path test above remains green.
++    ///
++    /// Authored by Ravneet Arora on the previous revision of this branch and
++    /// carried forward.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_http_outer_nip98_records_owner_for_direct_member() {
++        let (state, pool) = require_infra(nip_oa_test_state().await);
++        let tenant = seed_community(&pool).await;
++        let agent = Keys::generate();
++        let owner = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent, &owner]).await;
++
++        let tag = buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "")
++            .expect("compute auth tag");
++        let status = post_events_with_nip98_tag(
++            &state,
++            &tenant,
++            &agent,
++            &tag,
++            nostr::Timestamp::now().as_secs(),
++        )
++        .await;
++
++        assert_eq!(status, StatusCode::OK, "real POST /events must succeed");
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            Some(owner.public_key().to_bytes().to_vec()),
++            "the outer NIP-98 wrapper must carry its signed timestamp into owner materialization",
++        );
++    }
++
++    /// A member cannot mint a throwaway keypair, attest itself, and have that
++    /// key trusted: the resolved owner selects the agent rate class and is
++    /// first-write-wins, so an untrusted key must never reach the record.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_http_refuses_an_owner_that_is_not_a_relay_member() {
++        let (state, pool) = require_infra(nip_oa_test_state().await);
++        let tenant = seed_community(&pool).await;
++        let agent = Keys::generate();
++        let stranger = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent]).await;
++
++        let tag = buzz_sdk::nip_oa::compute_auth_tag(&stranger, &agent.public_key(), "")
++            .expect("compute auth tag");
++        submit_with_tag(&state, &tenant, &agent, Some(&tag), 1_000).await;
++
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            None,
++            "a non-member owner must not be recorded on a closed relay",
++        );
++    }
++
++    /// The new direct-member path must inherit the attestation's time bounds
++    /// rather than route around them: it resolves through
++    /// `extract_nip_oa_owner`, which evaluates `created_at` conditions against
++    /// the signed authentication event. The inside-window control proves the
++    /// refusal is the bound and not some unrelated rejection.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_http_refuses_an_expired_attestation() {
++        let (state, pool) = require_infra(nip_oa_test_state().await);
++        let tenant = seed_community(&pool).await;
++        let agent = Keys::generate();
++        let owner = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent, &owner]).await;
++
++        let expired =
++            buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "created_at<1000")
++                .expect("compute auth tag");
++        // Auth event is at the bound, which is outside it — bounds are strict.
++        submit_with_tag(&state, &tenant, &agent, Some(&expired), 1_000).await;
++
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            None,
++            "an expired attestation must not be materialized",
++        );
++
++        // Same tag, inside its window: proves the refusal above is the time
++        // bound and not some unrelated rejection.
++        submit_with_tag(&state, &tenant, &agent, Some(&expired), 999).await;
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            Some(owner.public_key().to_bytes().to_vec()),
++            "the same attestation inside its window must be recorded",
++        );
++    }
++
++    /// The real NIP-98 wrapper must apply strict attestation bounds to the
++    /// timestamp it verified. The inside-window control proves the expired
++    /// refusal is caused by the bound rather than a broken outer request.
++    ///
++    /// Authored by Ravneet Arora on the previous revision of this branch and
++    /// carried forward.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_http_outer_nip98_refuses_expired_attestation() {
++        let (state, pool) = require_infra(nip_oa_test_state().await);
++        let tenant = seed_community(&pool).await;
++        let agent = Keys::generate();
++        let owner = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent, &owner]).await;
++
++        let auth_event_created_at = nostr::Timestamp::now().as_secs();
++        let tag = buzz_sdk::nip_oa::compute_auth_tag(
++            &owner,
++            &agent.public_key(),
++            &format!("created_at<{auth_event_created_at}"),
++        )
++        .expect("compute auth tag");
++        let expired_status =
++            post_events_with_nip98_tag(&state, &tenant, &agent, &tag, auth_event_created_at).await;
++
++        assert_eq!(
++            expired_status,
++            StatusCode::OK,
++            "expired ownership metadata must not reject the otherwise valid event",
++        );
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            None,
++            "an attestation at its strict upper bound must not materialize through the outer wrapper",
++        );
++
++        let inside_status = post_events_with_nip98_tag(
++            &state,
++            &tenant,
++            &agent,
++            &tag,
++            auth_event_created_at.saturating_sub(1),
++        )
++        .await;
++        assert_eq!(
++            inside_status,
++            StatusCode::OK,
++            "the same attestation inside its window must reach owner materialization",
++        );
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            Some(owner.public_key().to_bytes().to_vec()),
++            "the inside-window control must prove the expired refusal is not vacuous",
++        );
++    }
++
++    /// Membership alone never invents an owner.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_http_without_a_tag_records_nothing() {
++        let (state, pool) = require_infra(nip_oa_test_state().await);
++        let tenant = seed_community(&pool).await;
++        let agent = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent]).await;
++
++        submit_with_tag(&state, &tenant, &agent, None, 1_000).await;
++
++        assert_eq!(
++            stored_owner(&state, &tenant, &agent.public_key()).await,
++            None,
++        );
++    }
+ }
+diff --git a/crates/buzz-relay/src/api/mod.rs b/crates/buzz-relay/src/api/mod.rs
+index 5745b8d4e..3b7eba5de 100644
+--- a/crates/buzz-relay/src/api/mod.rs
++++ b/crates/buzz-relay/src/api/mod.rs
+@@ -209,6 +209,67 @@ pub mod relay_members {
+         }
+     }
+ 
++    /// Decide which NIP-OA owner to record for a caller that is already admitted.
++    ///
++    /// `admitted_via` is what [`enforce_relay_membership`] returned: `Some` only
++    /// when admission itself went through delegation, which already proved the
++    /// owner is a relay member. `None` means the caller got in on its own — an
++    /// open relay, or a *direct* relay member.
++    ///
++    /// The direct-member case is the one this exists for. A closed relay never
++    /// reached owner extraction for it, because [`enforce_relay_membership`]
++    /// returns `Ok(None)` as soon as membership is established, so an agent that
++    /// was added to `relay_members` had no owner on file however many valid
++    /// attestations it presented (#4223, #4937).
++    ///
++    /// On a closed relay the attested owner must itself be a relay member.
++    /// [`materialize_nip_oa_owner`] is first-write-wins and the recorded owner
++    /// selects the agent rate class, so accepting an unverified owner would let
++    /// any member attest itself with a throwaway key — elevating its own rate
++    /// class and permanently binding the mapping against the real owner.
++    ///
++    /// `allow_nip_oa_auth` deliberately does not gate this. That flag governs
++    /// whether NIP-OA may *grant membership* on a closed relay; nothing here
++    /// grants access, the caller is already in.
++    pub async fn resolve_nip_oa_owner(
++        state: &AppState,
++        community: CommunityId,
++        pubkey_bytes: &[u8],
++        auth_tag_header: Option<&str>,
++        signed_auth_created_at: Option<u64>,
++        admitted_via: Option<nostr::PublicKey>,
++    ) -> Option<nostr::PublicKey> {
++        if admitted_via.is_some() {
++            return admitted_via;
++        }
++
++        let owner = extract_nip_oa_owner(pubkey_bytes, auth_tag_header, signed_auth_created_at)?;
++        if !state.config.require_relay_membership {
++            return Some(owner);
++        }
++
++        let owner_hex = owner.to_hex();
++        match state.db.is_relay_member(community, &owner_hex).await {
++            Ok(true) => Some(owner),
++            Ok(false) => {
++                info!(
++                    agent = %hex::encode(pubkey_bytes),
++                    owner = %owner_hex,
++                    "NIP-OA owner is not a relay member; not recording the attested mapping"
++                );
++                None
++            }
++            Err(e) => {
++                tracing::warn!(
++                    owner = %owner_hex,
++                    error = %e,
++                    "relay membership check (NIP-OA owner) failed; not recording the mapping"
++                );
++                None
++            }
++        }
++    }
++
+     /// Persist a cryptographically verified NIP-OA agent→owner relationship.
+     ///
+     /// Both principals are ensured first because `agent_owner_pubkey` has a
+diff --git a/crates/buzz-relay/src/handlers/auth.rs b/crates/buzz-relay/src/handlers/auth.rs
+index 02e2cc03a..7a47b4328 100644
+--- a/crates/buzz-relay/src/handlers/auth.rs
++++ b/crates/buzz-relay/src/handlers/auth.rs
+@@ -2,9 +2,11 @@
+ //!
+ //! Relay membership enforcement uses the shared
+ //! [`crate::api::relay_members::enforce_relay_membership`] helper, which supports
+-//! NIP-OA owner-delegation fallback on closed relays. On open relays, the auth
+-//! handler calls [`crate::api::relay_members::extract_nip_oa_owner`] directly to
+-//! extract the owner pubkey for agent→owner backfill (observer frame auth).
++//! NIP-OA owner-delegation fallback on closed relays. Whatever that helper
++//! decides, the handler then calls
++//! [`crate::api::relay_members::resolve_nip_oa_owner`] to settle the agent→owner
++//! backfill (observer frame auth) — including for a direct relay member, whose
++//! attestation admission never had to consult.
+ //!
+ //! For WebSocket auth, the NIP-OA `auth` tag is extracted from the signed AUTH
+ //! event itself (the tag is integrity-protected by the event signature).
+@@ -216,7 +218,7 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
+             }
+ 
+             // Relay membership gate — uses the shared helper with NIP-OA fallback.
+-            let nip_oa_owner = match crate::api::relay_members::enforce_relay_membership(
++            let admitted_via = match crate::api::relay_members::enforce_relay_membership(
+                 &state,
+                 conn.tenant.community(),
+                 pubkey.as_bytes(),
+@@ -240,21 +242,19 @@ pub async fn handle_auth(event: nostr::Event, conn: Arc<ConnectionState>, state:
+                 }
+             };
+ 
+-            // Open relay NIP-OA backfill: extract owner for agent→owner DB mapping
+-            // (needed for observer frame auth). Only runs on open relays — on closed
+-            // relays, enforce_relay_membership already handles NIP-OA delegation.
+-            // No feature flag needed: NIP-OA is cryptographically self-proving.
+-            let nip_oa_owner = nip_oa_owner.or_else(|| {
+-                if !state.config.require_relay_membership && auth_tag_json.is_some() {
+-                    crate::api::relay_members::extract_nip_oa_owner(
+-                        pubkey.as_bytes(),
+-                        auth_tag_json.as_deref(),
+-                        Some(signed_auth_created_at),
+-                    )
+-                } else {
+-                    None
+-                }
+-            });
++            // NIP-OA backfill: record the agent→owner mapping observer-frame auth
++            // and the agent rate class both read. `enforce_relay_membership` only
++            // reports an owner when admission itself went through delegation, so a
++            // direct member's attestation is resolved here or not at all.
++            let nip_oa_owner = crate::api::relay_members::resolve_nip_oa_owner(
++                &state,
++                conn.tenant.community(),
++                pubkey.as_bytes(),
++                auth_tag_json.as_deref(),
++                Some(signed_auth_created_at),
++                admitted_via,
++            )
++            .await;
+ 
+             // Stash NIP-OA owner on the auth context only after the shared
+             // backfill confirms the first-write-wins relationship.
+@@ -352,3 +352,264 @@ mod tests {
+         assert_eq!(extract_auth_tag_json(&event), None);
+     }
+ }
++
++/// NIP-OA owner materialization over the real NIP-42 path.
++///
++/// These drive `handle_auth` itself, so reverting its production call site
++/// makes the first one fail.
++#[cfg(test)]
++mod postgres_tests {
++    use std::collections::HashMap;
++    use std::sync::atomic::AtomicU8;
++    use std::sync::Arc;
++
++    use nostr::{EventBuilder, Keys, Tag};
++    use tokio::sync::{mpsc, Mutex, RwLock};
++    use tokio_util::sync::CancellationToken;
++    use uuid::Uuid;
++
++    use crate::connection::{AuthState, ConnectionState};
++    use crate::state::AppState;
++    use buzz_core::tenant::TenantContext;
++
++    /// An `#[ignore]`d test that was explicitly selected must never pass by
++    /// skipping: that turns "the database was missing" into a green run.
++    fn require_infra<T>(value: Option<T>) -> T {
++        value.expect("NIP-OA owner tests need PostgreSQL and Redis; refusing to pass without them")
++    }
++
++    async fn ws_test_state() -> Option<(Arc<AppState>, sqlx::PgPool)> {
++        let mut config = crate::config::Config::from_env().ok()?;
++        // The regression is closed-relay-only.
++        config.require_relay_membership = true;
++        config.database_url = crate::test_support::database_url();
++        config.redis_url =
++            std::env::var("REDIS_URL").unwrap_or_else(|_| "redis://127.0.0.1:6379".to_string());
++
++        let pool = sqlx::PgPool::connect(&config.database_url).await.ok()?;
++        let db = buzz_db::Db::from_pool(pool.clone());
++        let redis_pool = deadpool_redis::Config::from_url(&config.redis_url)
++            .create_pool(Some(deadpool_redis::Runtime::Tokio1))
++            .ok()?;
++        let pubsub = Arc::new(
++            buzz_pubsub::PubSubManager::new(&config.redis_url, redis_pool.clone())
++                .await
++                .ok()?,
++        );
++        let audit = buzz_audit::AuditService::new(pool.clone());
++        let auth = buzz_auth::AuthService::new(config.auth.clone());
++        let search = buzz_search::SearchService::new(pool.clone());
++        let workflow_engine = Arc::new(buzz_workflow::WorkflowEngine::new(
++            db.clone(),
++            buzz_workflow::WorkflowConfig::default(),
++        ));
++        let media_storage = buzz_media::MediaStorage::new(&config.media).ok()?;
++        let (state, _audit_shutdown) = AppState::new(
++            config,
++            db,
++            redis_pool,
++            audit,
++            pubsub,
++            auth,
++            search,
++            workflow_engine,
++            Keys::generate(),
++            media_storage,
++        );
++        Some((Arc::new(state), pool))
++    }
++
++    async fn ws_seed_community(pool: &sqlx::PgPool) -> TenantContext {
++        let id = Uuid::new_v4();
++        let host = format!("nip-oa-ws-{}.example", id.simple());
++        sqlx::query("INSERT INTO communities (id, host) VALUES ($1, $2)")
++            .bind(id)
++            .bind(&host)
++            .execute(pool)
++            .await
++            .expect("insert test community");
++        TenantContext::resolved(buzz_core::CommunityId::from_uuid(id), host)
++    }
++
++    async fn seed_relay_members(state: &AppState, tenant: &TenantContext, members: &[&Keys]) {
++        for keys in members {
++            state
++                .db
++                .add_relay_member(
++                    tenant.community(),
++                    &keys.public_key().to_hex(),
++                    "member",
++                    None,
++                )
++                .await
++                .expect("add relay member");
++        }
++    }
++
++    /// A pending connection ready to receive AUTH, plus its challenge.
++    fn pending_conn(tenant: &TenantContext) -> (Arc<ConnectionState>, String) {
++        let challenge = buzz_auth::generate_challenge();
++        let (send_tx, _send_rx) = mpsc::channel(16);
++        let (ctrl_tx, _ctrl_rx) = mpsc::channel(16);
++        let conn = Arc::new(ConnectionState {
++            conn_id: Uuid::new_v4(),
++            tenant: tenant.clone(),
++            remote_addr: "127.0.0.1:1234".parse().expect("socket addr"),
++            auth_state: RwLock::new(AuthState::Pending {
++                challenge: challenge.clone(),
++            }),
++            subscriptions: Arc::new(Mutex::new(HashMap::new())),
++            send_tx,
++            ctrl_tx,
++            cancel: CancellationToken::new(),
++            backpressure_count: Arc::new(AtomicU8::new(0)),
++            grace_limit: 3,
++        });
++        (conn, challenge)
++    }
++
++    /// Sign a NIP-42 AUTH event for `state`'s relay URL, carrying `tag_json`
++    /// as an `auth` tag, stamped at `created_at`.
++    fn auth_event(
++        state: &AppState,
++        tenant: &TenantContext,
++        agent: &Keys,
++        challenge: &str,
++        tag_json: &str,
++        created_at: u64,
++    ) -> nostr::Event {
++        let relay_url =
++            crate::api::bridge::nip42_expected_relay_url(&state.config.relay_url, tenant);
++        let url = nostr::RelayUrl::parse(&relay_url).expect("relay url");
++        let parts: Vec<String> = serde_json::from_str(tag_json).expect("auth tag json");
++        EventBuilder::auth(challenge, url)
++            .tags([Tag::parse(parts).expect("auth tag")])
++            .custom_created_at(nostr::Timestamp::from(created_at))
++            .sign_with_keys(agent)
++            .expect("sign auth event")
++    }
++
++    /// NIP-42 rejects a stale AUTH event, so these tests stamp at the real
++    /// clock and express the tag's bounds relative to it — which is also how a
++    /// live deployment presents an expiring credential.
++    fn now_secs() -> u64 {
++        nostr::Timestamp::now().as_secs()
++    }
++
++    async fn ws_stored_owner(
++        state: &AppState,
++        tenant: &TenantContext,
++        agent: &nostr::PublicKey,
++    ) -> Option<Vec<u8>> {
++        state
++            .db
++            .get_agent_channel_policy(tenant.community(), agent.as_bytes())
++            .await
++            .expect("read agent policy")
++            .and_then(|(_, owner)| owner)
++    }
++
++    /// The regression on the WebSocket path: a direct member authenticating
++    /// with a valid attestation gets its owner recorded *and* carried onto the
++    /// live auth context, which is what observer-frame authorization and the
++    /// agent rate class both read.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_ws_records_owner_and_sets_auth_context() {
++        let (state, pool) = require_infra(ws_test_state().await);
++        let tenant = ws_seed_community(&pool).await;
++        let agent = Keys::generate();
++        let owner = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent, &owner]).await;
++
++        let tag = buzz_sdk::nip_oa::compute_auth_tag(&owner, &agent.public_key(), "")
++            .expect("compute auth tag");
++        let (conn, challenge) = pending_conn(&tenant);
++        let event = auth_event(&state, &tenant, &agent, &challenge, &tag, now_secs());
++
++        super::handle_auth(event, Arc::clone(&conn), Arc::clone(&state)).await;
++
++        assert_eq!(
++            ws_stored_owner(&state, &tenant, &agent.public_key()).await,
++            Some(owner.public_key().to_bytes().to_vec()),
++            "NIP-42 auth by a direct member must record its verified owner",
++        );
++
++        let auth_state = conn.auth_state.read().await;
++        match &*auth_state {
++            AuthState::Authenticated(ctx) => assert_eq!(
++                ctx.agent_owner_pubkey,
++                Some(owner.public_key()),
++                "the live auth context must carry the owner",
++            ),
++            other => panic!("expected authenticated connection, got {other:?}"),
++        }
++    }
++
++    /// An expired attestation authenticates the agent but confers nothing: no
++    /// ownership record, and no owner on the session, so the connection cannot
++    /// be classified into the agent rate tier.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_ws_refuses_an_expired_attestation() {
++        let (state, pool) = require_infra(ws_test_state().await);
++        let tenant = ws_seed_community(&pool).await;
++        let agent = Keys::generate();
++        let owner = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent, &owner]).await;
++
++        let now = now_secs();
++        // Bound sits at the AUTH event's own timestamp; bounds are strict, so
++        // the credential is outside its window.
++        let expired = buzz_sdk::nip_oa::compute_auth_tag(
++            &owner,
++            &agent.public_key(),
++            &format!("created_at<{now}"),
++        )
++        .expect("compute auth tag");
++        let (conn, challenge) = pending_conn(&tenant);
++        let event = auth_event(&state, &tenant, &agent, &challenge, &expired, now);
++
++        super::handle_auth(event, Arc::clone(&conn), Arc::clone(&state)).await;
++
++        assert_eq!(
++            ws_stored_owner(&state, &tenant, &agent.public_key()).await,
++            None,
++            "an expired attestation must not be materialized",
++        );
++
++        let auth_state = conn.auth_state.read().await;
++        match &*auth_state {
++            AuthState::Authenticated(ctx) => assert_eq!(
++                ctx.agent_owner_pubkey, None,
++                "an expired attestation must not classify the session as an agent",
++            ),
++            other => panic!("expected authenticated connection, got {other:?}"),
++        }
++    }
++
++    /// A non-member owner is not trusted on a closed relay, so nothing is
++    /// recorded and the session stays unclassified.
++    #[tokio::test]
++    #[ignore = "requires PostgreSQL and Redis"]
++    async fn nip_oa_owner_ws_refuses_an_owner_that_is_not_a_relay_member() {
++        let (state, pool) = require_infra(ws_test_state().await);
++        let tenant = ws_seed_community(&pool).await;
++        let agent = Keys::generate();
++        let stranger = Keys::generate();
++        seed_relay_members(&state, &tenant, &[&agent]).await;
++
++        let tag = buzz_sdk::nip_oa::compute_auth_tag(&stranger, &agent.public_key(), "")
++            .expect("compute auth tag");
++        let (conn, challenge) = pending_conn(&tenant);
++        let event = auth_event(&state, &tenant, &agent, &challenge, &tag, now_secs());
++
++        super::handle_auth(event, Arc::clone(&conn), Arc::clone(&state)).await;
++
++        assert_eq!(
++            ws_stored_owner(&state, &tenant, &agent.public_key()).await,
++            None,
++            "a non-member owner must not be recorded on a closed relay",
++        );
++    }
++}
