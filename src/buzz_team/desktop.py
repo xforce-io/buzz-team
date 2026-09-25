@@ -167,8 +167,11 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
     for key, row in chosen.items():
         before = copy.deepcopy(row)
         runtime = Runtime(config, key)
-        row["acp_command"] = str(config.instance / "bin/agent-harness")
+        row["acp_command"] = "buzz-acp"
         row["agent_command"] = str(config.instance / "bin/agent-executor")
+        if runtime.agent.get("respond_to_allowlist") is not None:
+            row["respond_to"] = "allowlist"
+            row["respond_to_allowlist"] = runtime.agent["respond_to_allowlist"]
         env = row.setdefault("env_vars", {})
         env["BUZZ_RUNTIME_ID"] = key
         env["BUZZ_TEAM_INSTANCE"] = str(config.instance)

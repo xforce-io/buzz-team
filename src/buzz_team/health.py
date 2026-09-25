@@ -762,7 +762,6 @@ def collect_checks(config: Config, *, depth: str = "doctor",
             "tool_lsof", "fail", "dev_env",
             "lsof unavailable; cannot verify idle identity workspaces"))
     checks.extend(_seatbeltDevEnvChecks())
-
     # --- Component: buzz_runtime (per-identity) ---
     counts: dict[str, int] = {}
     for key in config.data["agents"]:
@@ -816,12 +815,15 @@ def collect_checks(config: Config, *, depth: str = "doctor",
                 f"workspace:{key[:20]}", "pass", "buzz_runtime",
                 "identity workspace directory present"))
 
-        if not runtime.policy["production_write"]:
+        if not runtime.policy["production_write"] or runtime.agent.get("respond_to_allowlist") is not None:
             if SEATBELT_EXEC.is_file():
+                summary = ("business executor wraps with sandbox-exec; unknown inherited confinement is refused; "
+                           "GROK_SANDBOX=off under that fence") if runtime.policy["production_write"] else (
+                           "configured identity wraps with sandbox-exec unless already confined (inherit); "
+                           "GROK_SANDBOX=off under that fence")
                 checks.append(check(
                     f"seatbelt_policy:{key[:20]}", "pass", "buzz_runtime",
-                    "restricted identity wraps with sandbox-exec unless already confined (inherit); "
-                    "GROK_SANDBOX=off under that fence"))
+                    summary))
             else:
                 checks.append(check(
                     f"seatbelt_policy:{key[:20]}", "fail", "buzz_runtime",

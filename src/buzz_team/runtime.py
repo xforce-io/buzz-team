@@ -106,7 +106,7 @@ class Runtime:
         env.update(self.executor.environment(self.base, cwd))
         # Grok may apply its own Seatbelt from GROK_SANDBOX or GROK_HOME config.toml.
         # Under the buzz-team fence, force off so ACP initialize is one layer.
-        if not self.policy["production_write"] and self.executor.kind == "grok":
+        if (not self.policy["production_write"] or self.agent.get("respond_to_allowlist") is not None) and self.executor.kind == "grok":
             env["GROK_SANDBOX"] = "off"
         env.update(BUZZ_RUNTIME_ID=self.key, BUZZ_TEAM_INSTANCE=str(self.config.instance),
                    TMPDIR=str(self.base / "tmp") + "/", XDG_CACHE_HOME=str(self.base / "cache"),
@@ -123,9 +123,25 @@ class Runtime:
         return env
 
     def profile(self) -> str:
-        if self.policy["production_write"]:
+        if self.policy["production_write"] and self.agent.get("respond_to_allowlist") is None:
             return "(version 1)\n(allow default)\n"
         q = json.dumps
+        if self.policy["production_write"]:
+            allowed = [self.base.resolve(), *(Path(path).resolve() for path in self.policy["write_paths"])]
+            exceptions = " ".join(f"(require-not (subpath {q(str(path))}))" for path in allowed)
+            lines = ["(version 1)", "(allow default)",
+                     f'(deny file-write* (require-all {exceptions} (require-not (literal "/dev/null"))))']
+            control = [self.config.instance, Path(__file__).absolute().parent,
+                       sys.prefix, sys.base_prefix, sys.executable, self.executor.spec["command"],
+                       *self.config.data["binaries"].values(),
+                       self.config.data["desktop"]["managed_agents"],
+                       self.config.data["desktop"]["app"]]
+            for item in control:
+                path = Path(item).resolve()
+                if any(overlap(path, root) for root in allowed):
+                    raise ValueError("business write path overlaps control files")
+                lines.append(f"(deny file-write* (subpath {q(str(path))}))")
+            return "\n".join(lines) + "\n"
         home = self.config.home
         lines = ["(version 1)", "(allow default)",
                  f"(deny file-write* (require-all (subpath {q(str(home))}) (require-not (subpath {q(str(self.base))}))))"]
@@ -153,11 +169,13 @@ class Runtime:
         return "\n".join(lines) + "\n"
 
     def command(self, argv: list[str]) -> list[str]:
-        if self.policy["production_write"]:
+        if self.policy["production_write"] and self.agent.get("respond_to_allowlist") is None:
             return argv
-        # Nested sandbox_apply can return EPERM (ACP initialize then fails).
-        # Inherit the already-applied profile instead of wrapping again.
+        # Nested sandbox_apply can return EPERM. A restricted identity inherits;
+        # a business identity cannot trust an unknown inherited profile.
         if underSeatbelt():
+            if self.policy["production_write"]:
+                raise ValueError("business executor already confined by an unknown Seatbelt profile")
             return argv
         if not SEATBELT_EXEC.is_file():
             raise ValueError("Seatbelt unavailable; refusing unconfined launch")

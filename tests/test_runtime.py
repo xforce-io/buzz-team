@@ -72,6 +72,54 @@ class Fixture(unittest.TestCase):
 
 
 class ConfigurationTests(Fixture):
+    def enable_business_boundary(self):
+        self.config.data["policies"]["development"].update(production_write=True, data_mode="production",
+                                                               write_paths=[str(self.prod)])
+        self.config.data["agents"][self.key]["respond_to_allowlist"] = ["b" * 64]
+        self.save()
+
+    def test_business_boundary_requires_paired_valid_fields(self):
+        self.config.data["agents"][self.key]["respond_to_allowlist"] = ["b" * 64]
+        with self.assertRaisesRegex(ValueError, "configured together"):
+            self.save()
+        self.config.data["policies"]["development"].update(production_write=True, write_paths=[str(self.root)])
+        with self.assertRaisesRegex(ValueError, "exceeds approved"):
+            self.save()
+        self.config.data["policies"]["development"]["write_paths"] = [str(self.prod)]
+        self.config.data["agents"][self.key]["respond_to_allowlist"] = ["not-a-key"]
+        with self.assertRaisesRegex(ValueError, "invalid business author"):
+            self.save()
+        self.config.data["agents"][self.key]["respond_to_allowlist"] = ["b" * 64]
+        self.save()
+
+    def test_business_boundary_profile_and_command(self):
+        self.enable_business_boundary()
+        runtime = Runtime(self.config, self.key)
+        profile = runtime.profile()
+        self.assertIn(str(self.base), profile)
+        self.assertIn(str(self.prod), profile)
+        self.assertIn("(deny file-write*", profile)
+        self.assertEqual(runtime.env({"GROK_SANDBOX": "workspace"})["GROK_SANDBOX"], "off")
+        with patch("buzz_team.runtime.underSeatbelt", return_value=False):
+            self.assertEqual(runtime.command(["/usr/bin/true"])[0], "/usr/bin/sandbox-exec")
+        with patch("buzz_team.runtime.underSeatbelt", return_value=True):
+            with self.assertRaisesRegex(ValueError, "unknown Seatbelt profile"):
+                runtime.command(["/usr/bin/true"])
+
+    @unittest.skipUnless(sys.platform == "darwin", "Seatbelt requires macOS")
+    def test_business_boundary_real_seatbelt_writes(self):
+        self.enable_business_boundary()
+        runtime = Runtime(self.config, self.key)
+        allowed = self.prod / "allowed.txt"
+        denied = self.root / "denied.txt"
+        script = "from pathlib import Path; import sys; Path(sys.argv[1]).write_text('test')"
+        for path, success in ((allowed, True), (denied, False)):
+            result = subprocess.run(["/usr/bin/sandbox-exec", "-p", runtime.profile(),
+                                     sys.executable, "-c", script, str(path)], capture_output=True)
+            self.assertEqual(result.returncode == 0, success, result.stderr)
+        self.assertTrue(allowed.exists())
+        self.assertFalse(denied.exists())
+
     def test_instance_and_production_must_not_overlap(self):
         for production in (self.instance, self.instance / "data", self.instance.parent):
             with self.subTest(production=production):
@@ -297,6 +345,30 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_business_binding_sets_author_allowlist(self):
+        self.config.data["policies"]["development"].update(production_write=True, data_mode="production",
+                                                               write_paths=[str(self.prod)])
+        self.config.data["agents"][self.key]["respond_to_allowlist"] = ["b" * 64]
+        self.save()
+        original = copy.deepcopy(self.rows)
+        updated, changed = desktop.binding_diff(self.config, self.rows)
+        self.assertEqual(self.rows, original)
+        self.assertEqual(changed, 1)
+        self.assertEqual(updated[0]["acp_command"], "buzz-acp")
+        self.assertEqual(updated[0]["respond_to"], "allowlist")
+        self.assertEqual(updated[0]["respond_to_allowlist"], ["b" * 64])
+
+    def test_business_executor_applies_profile_from_unconfined_acp(self):
+        self.config.data["policies"]["development"].update(production_write=True, data_mode="production",
+                                                               write_paths=[str(self.prod)])
+        self.config.data["agents"][self.key]["respond_to_allowlist"] = ["b" * 64]
+        self.save()
+        runtime = Runtime(self.config, self.key)
+        with patch("buzz_team.runtime.underSeatbelt", return_value=False), \
+             patch("os.chdir"), patch("buzz_team.runtime.runTurnGate", return_value=0) as gated:
+            self.assertEqual(runtime.launch("executor", ["acp"]), 0)
+        self.assertEqual(gated.call_args.args[0][:2], ["/usr/bin/sandbox-exec", "-p"])
+
     def test_task_launch_consumes_mapping_and_handoff_contract(self):
         task = "launch-task"
         SessionStore(self.instance).bind(community="ws://localhost:3000", identity=self.key,
@@ -1056,8 +1128,9 @@ assert r.returncode != 0
         inner = (
             "from buzz_team.runtime import Runtime, underSeatbelt\n"
             "from buzz_team.config import Config\n"
+            "from pathlib import Path\n"
             "assert underSeatbelt()\n"
-            f"cmd = Runtime(Config({str(self.instance)!r}), {self.key!r}).command(['/usr/bin/true'])\n"
+            f"cmd = Runtime(Config(Path({str(self.instance)!r})), {self.key!r}).command(['/usr/bin/true'])\n"
             "assert cmd == ['/usr/bin/true'], cmd\n"
             "print('inherited')\n"
         )

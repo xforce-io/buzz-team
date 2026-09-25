@@ -69,6 +69,29 @@ class Config:
                 raise ValueError("production_write must be explicit boolean")
             if policy.get("data_mode") not in {"test", "production"}:
                 raise ValueError("unknown data_mode")
+            allowlist = agent.get("respond_to_allowlist")
+            write_paths = policy.get("write_paths")
+            if (allowlist is None) != (write_paths is None):
+                raise ValueError("business author allowlist and write paths must be configured together")
+            if allowlist is not None:
+                if not policy["production_write"]:
+                    raise ValueError("business access cannot be assigned to a restricted identity")
+                if (not isinstance(allowlist, list) or not allowlist or
+                        any(not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value)
+                            for value in allowlist) or len(set(allowlist)) != len(allowlist)):
+                    raise ValueError("invalid business author allowlist")
+                if not isinstance(write_paths, list) or not write_paths:
+                    raise ValueError("invalid business write paths")
+                approved = [self.production, *(absolute(path) for path in c["production"]["protected_paths"])]
+                control = [self.instance, self.state, absolute(c["desktop"]["managed_agents"]),
+                           absolute(c["desktop"]["app"]), *(absolute(path) for path in c["binaries"].values())]
+                for value in write_paths:
+                    if not isinstance(value, str) or not Path(value).is_absolute():
+                        raise ValueError("invalid business write path")
+                    path = absolute(value)
+                    if (not any(path.is_relative_to(root) for root in approved)
+                            or any(overlap(path, item) for item in control)):
+                        raise ValueError("business write path exceeds approved production boundary")
             selected = adapter(c["adapters"][agent["adapter"]])
             selected.validate()
             if not policy["production_write"] and not self.state.is_relative_to(self.home):
