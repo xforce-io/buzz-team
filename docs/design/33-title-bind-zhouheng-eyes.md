@@ -1,5 +1,7 @@
 # #33 角色头衔绑定周衡 p + 自提及可见 👀
 
+> 历史记录：#53 已退役本文涉及的本地 ACP 代理、任务/会话状态或 Desktop 私有绑定入口。文中的旧模块、CLI 和操作步骤不再是现行契约；当前运行与回退见 [运行手册](../runbook.md)及 [#53 设计](53-remove-acp-middle-layer.md)。
+
 状态：**Approved**（Approve 默认已锁定：S1 证据面 A；S2 以 CLI `wake ack` 验收；等价信号关闭）。实现与本文同步。
 
 Owner：Quill · Runtime。关联：[Issue #33](https://github.com/xforce-io/buzz-team/issues/33)。how：`docs/eval/33-title-bind-how.md`。
