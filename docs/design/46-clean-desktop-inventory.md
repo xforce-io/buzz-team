@@ -4,7 +4,7 @@
 
 ## 1 背景
 
-[Issue #46](https://github.com/xforce-io/buzz-team/issues/46)。`doctor` 今天用 `desktop.selected_rows` 跳过空公钥行，因此旧 `grok-acp-wrapper` 启动行可以与本机实例身份并存而仍报通过。
+[Issue #46](https://github.com/xforce-io/buzz-team/issues/46)。原 `doctor` 只用 `desktop.selected_rows`，会跳过空公钥行，因此旧 `grok-acp-wrapper` 启动行曾与本机实例身份并存而仍报通过。13 条旧 wrapper 行已从本机库存清理，备份在实例目录。
 
 ## 2 名词解释
 
@@ -24,7 +24,7 @@ N/A。无页面。操作者看到的是 `doctor` JSON：`ok` 与 `inventory_*` �
 
 ## 5 思路与折衷
 
-在现有 `health.run` 里先分类再做代理对照。空公钥的启动行算本机异常。没有启动命令、公钥也不属于本实例的行只报告。同名不合并公钥。
+在现有 `health.run` 里先分类再做代理对照。空公钥的启动行算本机异常；无 relay、无 agent 启动命令、无运行标识和启动历史的 Desktop persona 定义只报告，即使 Desktop 填入默认 `acp_command=buzz-acp`。任何实际启动命令中的旧 wrapper 均 fail。身份由规范化的 relay 地址与公钥共同确定，同名不合并。
 
 放弃：让 `selected_rows` 继续把重复和缺失收成一句「unreadable」，调用方无法分辨四类。
 
@@ -63,7 +63,7 @@ N/A。不改库存文件格式。已有干净的单行绑定仍通过。
 
 ## 12 开放问题
 
-确认废弃的 13 行从本机 Desktop 库存删除，要单独授权。本设计不执行删除。
+13 条旧 wrapper 行已清理，库存备份在实例目录。当前剩余 9 条本实例身份、4 条 persona 定义、2 条其他实例身份；本设计不删除后 6 条。L1/L2 仍为 Draft，合入须先取得真实批准。
 
 ## 13 关联
 
