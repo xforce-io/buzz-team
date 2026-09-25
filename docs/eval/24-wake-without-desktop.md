@@ -1,5 +1,7 @@
 # #24 评估：不依赖 Desktop 注入的频道 wake / mention 控烧
 
+> 历史记录：#53 已退役本文涉及的本地 ACP 代理、任务/会话状态或 Desktop 私有绑定入口。文中的旧模块、CLI 和操作步骤不再是现行契约；当前运行与回退见 [运行手册](../runbook.md)及 [#53 设计](../design/53-remove-acp-middle-layer.md)。
+
 状态：评估收口（2026-09-22）。Staff/peng 先核无 @；parent 活机三问已贴 [Issue #24](https://github.com/xforce-io/buzz-team/issues/24#issuecomment-5775220603)。
 
 **票级结论：downgrade。** 强制把 Online 每帖改经 `agent-executor`：**no-go**（技术做不到，且产品上不应要求）。不改 `block/buzz`；禁假 `BUZZ_WAKE_*`；#23 保持 park。

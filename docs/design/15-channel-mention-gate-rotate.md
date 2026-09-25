@@ -1,5 +1,7 @@
 # #15 Desktop 频道 mention-gate 与超限 session rotate
 
+> 历史记录：#53 已退役本文涉及的本地 ACP 代理、任务/会话状态或 Desktop 私有绑定入口。文中的旧模块、CLI 和操作步骤不再是现行契约；当前运行与回退见 [运行手册](../runbook.md)及 [#53 设计](53-remove-acp-middle-layer.md)。
+
 状态：Approved（peng 2026-09-22 批准；开放问题按下列默认收口）。
 
 ## 1 背景

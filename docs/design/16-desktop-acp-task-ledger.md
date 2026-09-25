@@ -1,5 +1,7 @@
 # #16 Desktop ACP 挂 #6/#7 硬熔断与可消费 handoff
 
+> 历史记录：#53 已退役本文涉及的本地 ACP 代理、任务/会话状态或 Desktop 私有绑定入口。文中的旧模块、CLI 和操作步骤不再是现行契约；当前运行与回退见 [运行手册](../runbook.md)及 [#53 设计](53-remove-acp-middle-layer.md)。
+
 状态：Approved（L1 经 peng via Jenny 于 2026-09-22 Asia/Shanghai 批准；本 L2 为实现唯一事实源）。
 
 ## 1 背景
