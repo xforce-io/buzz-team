@@ -426,3 +426,174 @@ class HealthTaxonomyTests(Fixture):
             ma, pidIsAlive=lambda pid: False)
         self.assertEqual(liveOnly, {})
         self.assertEqual({entry["pid"] for entry in deadOnly}, {livePid, deadPid})
+
+
+class InventoryDoctorTests(Fixture):
+    """Doctor inventory classes go through health.run, the CLI doctor entry."""
+
+    def _rows(self):
+        return json.loads(self.desktop_file.read_text())
+
+    def _write(self, rows):
+        self.desktop_file.write_text(json.dumps(rows, indent=2) + "\n")
+
+    def _fails(self, prefix):
+        result = health.run(self.config, depth="doctor")
+        return result, [c for c in result["checks"] if c["id"].startswith(prefix)]
+
+    def test_four_instance_anomalies_fail_doctor_and_outside_rows_stay(self):
+        original = self.desktop_file.read_bytes()
+        base = self._rows()
+        self.assertEqual(len(base), 1)
+
+        self._write([])
+        result, missing = self._fails("inventory_missing:")
+        self.assertFalse(result["ok"])
+        self.assertTrue(missing)
+        self.assertEqual(missing[0]["status"], "fail")
+        self.assertEqual(missing[0]["component"], "buzz_runtime")
+
+        wrapper = {
+            "pubkey": "",
+            "name": "not-a-pubkey-match",
+            "agent_command": "/Users/xupeng/lab/buzz-team/bin/grok-acp-wrapper",
+            "relay_url": "",
+        }
+        self._write(base + [wrapper])
+        result, empty = self._fails("inventory_empty_pubkey:")
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(empty), 1)
+        self.assertIn("grok-acp-wrapper", empty[0]["summary"])
+        self.assertEqual(self._rows()[-1]["agent_command"], wrapper["agent_command"])
+
+        plain = {"pubkey": "", "name": "seat", "acp_command": "/Applications/Buzz.app/Contents/MacOS/buzz-acp"}
+        self._write(base + [plain])
+        result, empty_plain = self._fails("inventory_empty_pubkey:")
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(empty_plain), 1)
+        self.assertIn("launch row", empty_plain[0]["summary"])
+
+        definition = {
+            "pubkey": "", "relay_url": "", "slug": "persona-definition",
+            "acp_command": "buzz-acp", "agent_command": "",
+            "start_on_app_launch": False, "runtime_pid": None,
+            "last_started_at": None,
+        }
+        self._write(base + [definition])
+        result, definition_empty = self._fails("inventory_empty_pubkey:")
+        self.assertEqual(definition_empty, [])
+        self.assertFalse(any(
+            c["status"] == "fail" and c["id"].startswith("inventory_")
+            for c in result["checks"]))
+
+        wrapped_definition = dict(definition, acp_command="/old/grok-acp-wrapper")
+        self._write(base + [wrapped_definition])
+        result, wrapped_empty = self._fails("inventory_empty_pubkey:")
+        self.assertEqual(len(wrapped_empty), 1)
+        self.assertEqual(wrapped_empty[0]["status"], "fail")
+
+        outside = {
+            "pubkey": "c" * 64,
+            "relay_url": "ws://localhost:3000",
+            "name": "other-fleet",
+            "agent_command": "/elsewhere/executor",
+        }
+        self._write(base + [outside])
+        result, reported = self._fails("inventory_non_instance")
+        self.assertEqual(len(reported), 1)
+        self.assertEqual(reported[0]["status"], "pass")
+        self.assertIn("not deleted", reported[0]["summary"])
+        self.assertIn("1 inventory row", reported[0]["summary"])
+        self.assertFalse(any(
+            c["status"] == "fail" and c["id"].startswith("inventory_")
+            for c in result["checks"]))
+        self.assertEqual(self._rows()[-1]["pubkey"], "c" * 64)
+
+        mismatched = json.loads(json.dumps(base))
+        mismatched[0]["relay_url"] = "ws://localhost:3999"
+        self._write(mismatched)
+        result, bound = self._fails("inventory_binding_mismatch:")
+        self.assertFalse(result["ok"])
+        self.assertTrue(bound)
+        self.assertIn("relay_url", bound[0]["summary"])
+
+        self.desktop_file.write_bytes(original)
+        result, dup = self._fails("inventory_duplicate:")
+        self.assertEqual(dup, [])
+        restored = health.run(self.config, depth="doctor")
+        self.assertFalse(any(
+            c["status"] == "fail" and c["id"].startswith("inventory_")
+            for c in restored["checks"]))
+
+    def _fail_ids(self, result):
+        return {c["id"] for c in result["checks"] if c["status"] == "fail"}
+
+    def test_same_pubkey_on_two_relays_is_two_distinct_identities(self):
+        pubkey = "a" * 64
+        agents = {
+            "relay-one": {"pubkey": pubkey, "relay_url": "wss://one.example"},
+            "relay-two": {"pubkey": pubkey, "relay_url": "wss://two.example"},
+        }
+        rows = [
+            {"pubkey": pubkey, "relay_url": "wss://one.example", "agent_command": "/one"},
+            {"pubkey": pubkey, "relay_url": "wss://two.example", "agent_command": "/two"},
+        ]
+        checks = health.classify_desktop_inventory(agents, rows)
+        self.assertFalse(any(c["status"] == "fail" for c in checks), checks)
+        rows[0]["relay_url"] += "/"
+        checks = health.classify_desktop_inventory(agents, rows)
+        self.assertFalse(any(c["status"] == "fail" for c in checks), checks)
+
+    def _writer_policy_so_doctor_can_pass(self):
+        """Restricted identities fail doctor where Seatbelt is absent. A writer
+        policy has no seatbelt check, so a clean inventory can be ok=true."""
+        self.config.data["policies"]["development"]["production_write"] = True
+        self.save()
+
+    def test_duplicate_launch_row_fails_then_restored_inventory_passes(self):
+        self._writer_policy_so_doctor_can_pass()
+        original = self.desktop_file.read_bytes()
+        before = health.run(self.config, depth="doctor")
+        self.assertTrue(before["ok"], self._fail_ids(before))
+        self.assertFalse(any(i.startswith("inventory_") for i in self._fail_ids(before)))
+        rows = self._rows()
+        rows.append(json.loads(json.dumps(rows[0])))
+        self._write(rows)
+        failed = health.run(self.config, depth="doctor")
+        self.assertFalse(failed["ok"])
+        duplicates = [c for c in failed["checks"] if c["id"].startswith("inventory_duplicate:")]
+        self.assertEqual(len(duplicates), 1)
+        self.assertIn("2 launch rows", duplicates[0]["summary"])
+        self.desktop_file.write_bytes(original)
+        restored = health.run(self.config, depth="doctor")
+        self.assertTrue(restored["ok"], self._fail_ids(restored))
+        self.assertEqual(self._fail_ids(restored), self._fail_ids(before))
+        self.assertFalse(any(c["id"].startswith("inventory_duplicate:") for c in restored["checks"]))
+        self.assertEqual(self.desktop_file.read_bytes(), original)
+
+    def test_pubkey_wrapper_launch_fails_outside_instance_override_alone_does_not(self):
+        original = self.desktop_file.read_bytes()
+        base = self._rows()
+        outside = {
+            "pubkey": "d" * 64,
+            "name": "fizz-old",
+            "relay_url": "ws://localhost:3000",
+            "agent_command": "/Users/xupeng/lab/buzz-team/bin/grok-acp-wrapper",
+        }
+        self._write(base + [outside])
+        result, wrapped = self._fails("inventory_deprecated_wrapper:")
+        self.assertFalse(result["ok"])
+        self.assertEqual(len(wrapped), 1)
+        self.assertEqual(wrapped[0]["status"], "fail")
+        self.assertIn("grok-acp-wrapper", wrapped[0]["summary"])
+        reported = [c for c in result["checks"] if c["id"] == "inventory_non_instance"]
+        self.assertEqual(reported[0]["status"], "pass")
+        self.assertIn("0 inventory row", reported[0]["summary"])
+
+        override_only = json.loads(json.dumps(base))
+        override_only[0]["agent_command_override"] = "/Users/xupeng/lab/buzz-team/bin/grok-acp-wrapper"
+        self._write(override_only)
+        clean, still = self._fails("inventory_deprecated_wrapper:")
+        self.assertEqual(still, [])
+        self.assertFalse(any(c["id"].startswith("inventory_deprecated_wrapper:") for c in clean["checks"]))
+        self.desktop_file.write_bytes(original)
