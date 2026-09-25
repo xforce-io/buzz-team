@@ -167,9 +167,9 @@ def binding_diff(config: Config, rows: list) -> tuple[list, int]:
     for key, row in chosen.items():
         before = copy.deepcopy(row)
         runtime = Runtime(config, key)
-        row["acp_command"] = "buzz-acp"
         row["agent_command"] = str(config.instance / "bin/agent-executor")
         if runtime.agent.get("respond_to_allowlist") is not None:
+            row["acp_command"] = "buzz-acp"
             row["respond_to"] = "allowlist"
             row["respond_to_allowlist"] = runtime.agent["respond_to_allowlist"]
             # Desktop resolves the effective agent binary from this override;

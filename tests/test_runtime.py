@@ -347,6 +347,11 @@ class ConfigurationTests(Fixture):
 
 
 class CLITests(Fixture):
+    def test_unconfigured_identity_keeps_existing_acp_entry(self):
+        updated, _ = desktop.binding_diff(self.config, self.rows)
+        self.assertEqual(updated[0]["acp_command"], self.rows[0]["acp_command"])
+        self.assertNotIn("agent_command_override", updated[0])
+
     def test_business_binding_sets_author_allowlist(self):
         self.config.data["policies"]["development"].update(production_write=True, data_mode="production",
                                                                write_paths=[str(self.prod)])
