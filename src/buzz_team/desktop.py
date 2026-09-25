@@ -74,6 +74,8 @@ def live_processes(config: Config) -> list[int]:
         for field in ("agent_command", "acp_command"):
             value = row.get(field)
             if value:
+                if field == "acp_command" and value == "buzz-acp":
+                    value = app + "Contents/MacOS/buzz-acp"
                 if not isinstance(value, str) or not Path(value).is_absolute():
                     raise ValueError("Desktop binding command must be an absolute path")
                 executors.add(value)
