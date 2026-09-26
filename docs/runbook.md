@@ -1,76 +1,52 @@
-# 安装、预览迁移与发布
+# 本机薄入口运行手册
 
-## 所有权与认证
+## 当前链路
 
-Desktop 管理 agent 生命周期，buzz-team 不运行额外守护进程。通用包安装到实例之外，实例仅含私有配置、薄入口、备份及证据。执行器认证和会话保持原地；不复制、不改写、不回退 auth.json，不调用登录命令。
+Buzz Desktop 启动自带 `buzz-acp`；`buzz-acp` 通过 Desktop 的 Agent harness 配置启动 `buzz-team-thin`；薄入口施加 macOS Seatbelt 后 `exec` Grok。Desktop 管身份、凭据、会话、作者准入和进程生命周期。官方 `buzz` CLI 直接负责消息操作。
 
 ## 安装
 
-使用 Python >=3.11 创建仓库外虚拟环境，通过 `python -m pip install --no-cache-dir <源码目录>` 或 `uv pip install --no-cache --python <虚拟环境/python> <源码目录>` 非 editable 安装。记录实际源 SHA；工作树必须干净。同版本本地源码可能命中旧构建缓存，必须禁用缓存，并逐文件比较安装后的 `buzz_team` 与候选 `src/buzz_team`（忽略 `__pycache__`）；目录名或版本号不能替代产物核验。下文 `buzz-team` 指该安装生成的绝对可执行文件路径，`INSTANCE` 等参数由操作者填写，不预置机器路径。
+将本仓库以普通 wheel 安装在仓库外目录，记录安装提交及上一个可用目录。Desktop 的自定义 Agent harness 选择安装后 `buzz-team-thin` 的绝对路径，Arguments 沿用原 `agent --always-approve --no-leader --reasoning-effort <值> stdio`。ACP command 保持 Desktop 自带 `buzz-acp`。不要把薄入口登记为 ACP command。
 
-```sh
-buzz-team --instance /absolute/instance init --legacy /absolute/legacy/runtime.local.json --desktop-config /absolute/managed-agents.json --app /Applications/Buzz.app
-buzz-team --instance /absolute/instance prepare
-buzz-team --instance /absolute/instance doctor
-buzz-team --instance /absolute/instance status
+先在 Desktop Settings 中登记自定义 Agent harness，再单独编辑身份。当前 Desktop 在身份编辑弹窗内直接“Add custom harness…”会同时保存该身份，预览中曾清空其环境变量；每次保存后须检查变更摘要及原环境变量仍在，异常时先恢复原值，不重启该身份。
+
+本机策略文件须在身份可写目录外，权限不允许 group/world 写。每个身份在 Desktop 环境变量中提供原 `GROK_HOME`、`GROK_ACP_CWD` 和 `BUZZ_TEAM_POLICY_PATH`。示例仅展示格式；实际路径在本机私有文件中填写：
+
+```json
+{
+  "version": 1,
+  "grok_home": "/absolute/identity/grok",
+  "grok_executable": "/absolute/grok",
+  "mode": "development",
+  "write_paths": []
+}
 ```
 
-init 不绑定客户端，prepare 不重写身份状态。路径不得重叠。已有实例拒绝覆盖。不要拷贝整个旧目录。
+业务身份使用 `"mode": "business"` 并逐项列出批准的生产写路径；无需生产写入时可留空。开发身份在 `write_paths` 中逐项列出确需写入的项目路径。两种策略均允许本身份目录写入；`mode` 仅用于记录身份类别，不自动扩大权限。策略文件、Grok 可执行文件和其他身份 home 不得位于允许写入的根下。缺 Seatbelt、路径不存在、home 不匹配或策略无效时拒启。读取和网络能力沿用当前系统与上游行为，策略只限定文件写入。
 
-## 预合入验证环境
+## 逐身份预览
 
-本项目允许有界的**本机迁移预览**：使用现有 Desktop 和相同身份状态，先观察空闲、停止旧进程，再临时切换新绑定，绝不启动并行身份消费者。该预览用于 S3/S4，不算生产发布；完成后恢复旧绑定。用户已批准迁移预览和原地认证复用；真实业务变更不在授权范围。
+1. 记录目标身份原 Agent harness、ACP command、参数、环境、作者准入、home 和 Desktop 状态。确认无正在执行的 turn。
+2. 在该身份的私有目录外写入策略文件，先运行 `buzz-team-thin agent --help` 验证执行路径，再用真实 Desktop 自定义 harness 只切该身份；其他身份保持原配置。
+3. 核对 Desktop 日志里 ACP 命令仍为包内 `buzz-acp`，执行器为薄入口；发送一次真实提及并检查原线程回复。检查身份目录允许写、外部路径拒写、符号链接逃逸拒写。记录 Activity 已知降级。
+4. 成功后按身份推广。失败时只在 Desktop 恢复该身份原 harness 与环境，等待其回到 Running 并核对回复；不要启动平行消费者，不复制认证文件。
 
-```sh
-buzz-team --instance /absolute/instance stop --idle-confirmed
-buzz-team --instance /absolute/instance status
-buzz-team --instance /absolute/instance bind
-buzz-team --instance /absolute/instance start
-```
+## 正式发布与健康检查
 
-status 必须确认进程退出；bind 也会强制检查。保存返回的 receipt 路径，按项目验证手册完成客户端验证。进程尚未退出时等待，不能强杀活跃任务。CLI start 返回请求已发出，不代表客户端健康通过。
+目标环境是本机 Desktop 管理的现役身份及其所在社区。合入后从已审查提交构建普通 wheel，保留上一个可用 wheel 和安装目录记录，再安装到 Desktop 当前登记的固定入口；不通过修改 Desktop 私有库存发布。逐身份从 Desktop 重启，避免中断正在执行的 turn。
 
-## 回退
+记录提交 SHA、wheel 摘要、安装后的 `thin.py` 摘要，以及新进程日志的启动时间、Desktop 自带 `buzz-acp` 路径和执行器路径。安装文件与已审查源码字节一致且身份进程在安装后重启，才算确认实际运行版本。每个身份重启后 **10 分钟内**应回到 Running，日志显示目标链路；全体切换后再在 **10 分钟内**完成只读 doctor、一次真实原线程回复和适用的 Seatbelt 允许/拒绝写入检查。`unverified` 不算库存健康通过。
 
-```sh
-buzz-team --instance /absolute/instance stop --idle-confirmed
-buzz-team --instance /absolute/instance rollback --receipt /absolute/instance/backups/receipt-id/receipt.json
-open -a /Applications/Buzz.app
-```
+任一项失败或超时，停止推广，用保留的上一个可用 wheel 恢复原固定入口，并在 Desktop 重启受影响身份；按同一检查和 10 分钟时限核对回退结果。若回退也未恢复，记录实际运行状态并停止继续切换。
 
-回退后 CLI start 会因新实例未绑定而拒绝，使用 Desktop 正常入口启动旧环境。rollback 只还原本次修改的绑定字段，保留 Desktop 时间戳和无关设置更新；这些绑定字段本身若被后续修改则拒绝覆盖，交操作者核对。不可整体覆盖后续设置或恢复备份 OAuth。
-
-## 正式发布
-
-冻结候选 → 测试与客户端预览 → 独立审查 PASS → 当前候选人工批准 → CI/交付校验 → 合入 → 从合入版本安装 → 空闲停机切换 → 客户端健康核验。升级安装放实例之外；不改写旧安装以保留回退能力。不满足门禁不能把预览称作已发布。
-
-## 健康检查语义
-
-`doctor` 做静态/安装预检与 Desktop↔CLI 代理键对照；`diagnose` 共用同一内核，并增加已声明代理端点的 TCP 探测及 `unverified_surfaces` 列表。输出含 `checks[{id,status,component,summary}]`，`status` 为 pass / fail / unverified / na。顶层 `ok` **仅当无 fail**；存在 unverified **不**表示整体健康。
-
-- `grok_credentials_files`：仅检查 auth.json / config.toml 文件存在，与代理可达性、上游请求分开。
-- 死代理或端点不可达归因到 `proxy` 组件，不得只报成 auth 缺失。
-- CLI 频道/消息只读成功 ≠ Desktop Activity/UI 通过；静态检查 ≠ 角色对话验证。
-- Git：真实仓库报告状态；非仓库目录为不适用（na），不是「Git 不可用」。详见验证 Skill `features/health.md`。
+## 只读诊断
 
 ```sh
-buzz-team --instance /absolute/instance doctor
-buzz-team --instance /absolute/instance diagnose
+buzz-team doctor --inventory '<Desktop managed-agents.json 路径>' --policies '<本机策略目录>'
 ```
 
-## 已知限制
+`fail` 表示可识别的异常；`unverified` 表示未提供路径、不可读取或库存结构未知。`ok` 仅表示没有 `fail`。诊断不修改 Desktop 配置，也不能代替真实消息和沙箱验证。
 
-受限身份的沙箱是身份级，不是任务级；具有 production_write 的身份沿用原有权限、不包裹 sandbox-exec。development 启动只在尚未 confined 时套一层 Seatbelt；harness 已 seatbelt 后再 launch executor 继承现有 profile，并把 `GROK_SANDBOX=off`，避免二次 `sandbox_apply` EPERM。尚无完整 skills 白名单或 memory ready 门禁。doctor/diagnose 的兼容指纹与代理对照不证明模型质量、缓存效率、角色对话或客户端 Activity 端到端成功。这些项目以独立 Issue 跟踪。
+## 官方升级
 
-
-## Desktop ACP 任务账本（#16）
-
-频道执行向长跑须先 `session bind`，再通过 agent `binding_environment` 或 Desktop `env_vars` 设置 `BUZZ_TASK_ID`（可选 `BUZZ_TASK_SCOPE`），然后 `bind`。`launch harness` 在 `BUZZ_WAKE_SURFACE=stream` 或显式 consume/ledger 路径缺 task 时 fail-closed；普通 ACP 会话不要求 task，也不要写入假 `BUZZ_TASK_*`。
-
-Desktop 频道 stream 唤醒必须注入 `BUZZ_WAKE_SURFACE=stream`、`BUZZ_WAKE_CHANNEL`、`BUZZ_WAKE_POST_REF`、`BUZZ_WAKE_BODY`（或一次写入 `BUZZ_WAKE_PAYLOAD` JSON，由 `applyWakePayload` 展开）。缺字段 fail-closed。无 `BUZZ_WAKE_SURFACE=stream` 且无 `BUZZ_WAKE_FUSE` 的冷启动不过该门，即使实例已配置 `channel_wake` / `mention_aliases`，也不要写入假 `BUZZ_WAKE_*`。硬停时进程带 `BUZZ_WAKE_FUSE=<turns|usd|input_tokens|budget_exceeded>`，#15 消费后回帖并换窗。
-
-超限后 ledger 为 `budget_exceeded`（或 rotate 等价上限 / 金额 `unavailable`）时拒绝同 task 再 launch（硬闸）。handoff 为 ready 时须 `buzz-team context consume --task TASK` 或 `launch --consume-handoff`（或 `BUZZ_CONSUME_HANDOFF=1`）后再开跑；换窗/rotate 见 #15。
-
-## 长工具 turn gate（#29）
-
-`launch executor` 在 ACP stdio 上扣住 `session/prompt` 的 `end_turn` 以及专有 `_x.ai/session/prompt_complete` / `session/update` `turn_completed` / `_x.ai/session_notification` `turn_completed`（含 `stop_reason: end_turn`），直到未完成长工具（含 `[bg]`）退出且可判定。无 `pid=N` 的自然 `[bg]` 保持打开，直到超时或后续纯数字 PID 绑定；不把 executor 最新子进程当作权威 PID。可选 `long_tool.timeout_seconds`（默认 1200）与 `long_tool.poll_seconds`（默认 60，上限 120）。环境变量 `BUZZ_LONG_TOOL_TIMEOUT_SECONDS` / `BUZZ_LONG_TOOL_POLL_SECONDS` 可覆盖。超时或**已绑定**进程消失写 stderr `long_tool_alert`；有 `BUZZ_WAKE_CHANNEL` + `BUZZ_WAKE_POST_REF` 时回帖 `【长工具】`，不走 #15 熔断换窗。非法配置 fail-closed。不做 inflight job 账本。
+记录实际 Desktop、Grok、relay 版本和镜像 digest，按官方发布渠道及其回退方式升级。正常升级不修改本仓库代码或包内版本清单。升级后用原身份检查启动、回复和沙箱边界；上游公开契约不兼容时回退相应组件并反馈上游。

@@ -1,10 +1,12 @@
 # 停用本地 fork，记下上游 pin
 
-状态：Approved（2026-09-25，用户确认）
+状态：Approved（2026-09-25，用户确认）；#53 后仅作历史设计归档。
+
+本设计记录 #44 切换当时的模块、CLI 与验收路径。#53 已删除下文提到的 `instance.prepare`、`desktop.live_processes`、`buzz-team status/prepare` 和 `features/upstream-pin.md`；它们不再是可执行的现行操作。当前运行和回退边界见[运行手册](../runbook.md)及[#53 设计](53-remove-acp-middle-layer.md)。本文件中的版本、指纹与回退目标只适用于 2026-09-25 那次切换。
 
 ## 1 背景
 
-[Issue #44](https://github.com/xforce-io/buzz-team/issues/44)。切换前生产 relay 是 `buzz-local:4937-activity-recovery`，运行中的 `buzz-acp` 与 Desktop 自带二进制 SHA 不同；2026-09-25 已按 `docs/runbooks/44-upstream-pin.md` 切换。
+[Issue #44](https://github.com/xforce-io/buzz-team/issues/44)。切换前生产 relay 是 `buzz-local:4937-activity-recovery`，运行中的 `buzz-acp` 与 Desktop 自带二进制 SHA 不同；2026-09-25 已按 `docs/archive/issue-44/upstream-cutover.md` 切换。
 
 ## 2 名词解释
 
@@ -30,7 +32,7 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 6 架构
 
-补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/runbooks/44-upstream-pin.md`。规则在 `AGENTS.md`。进程检查把 Desktop 的内置 `acp_command=buzz-acp` 解析为包内程序，`prepare` 在 Desktop 运行时拒绝改写薄入口。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
+补丁在 `docs/archive/44-local-fork/`。目标版本和切换、回退记录在 `docs/archive/issue-44/upstream-cutover.md`。规则在 `AGENTS.md`。进程检查把 Desktop 的内置 `acp_command=buzz-acp` 解析为包内程序，`prepare` 在 Desktop 运行时拒绝改写薄入口。主路径是归档、切换、核对运行态。失败路径是指纹或迁移不匹配：停止切换，按 runbook 回退。
 
 ## 7 模块
 
@@ -46,7 +48,7 @@ N/A。无新页面。频道收发与 Activity 标记见 `docs/activity-catalog.m
 
 ## 10 迁移/兼容/回滚
 
-2026-09-25 已切换。生产 relay 旧镜像与库存备份、迁移检查及回退目标见 `docs/runbooks/44-upstream-pin.md`；不得把 `0.2.1` 用作现库回退目标。buzz-team 自身 release 尚未切换。
+2026-09-25 已切换。生产 relay 旧镜像与库存备份、迁移检查及回退目标见 `docs/archive/issue-44/upstream-cutover.md`；不得把 `0.2.1` 用作现库回退目标。buzz-team 自身 release 尚未切换。
 
 ## 11 测试计划
 

@@ -1,3 +1,5 @@
+> 历史切换记录（#44，2026-09-25）。其中的包内版本清单、SHA 和回退目标只描述当时状态，不是当前升级门禁或通用回退指令。当前操作见 [运行手册](../../runbook.md)。
+
 # 上游版本记录
 
 机器可读字段是 `src/buzz_team/compatibility.json` 的 `upstream_pin`，`status` 为 `applied`。`observed_baseline.harness_sha256` 是正在跑的 Desktop 0.5.25 `buzz-acp`。
