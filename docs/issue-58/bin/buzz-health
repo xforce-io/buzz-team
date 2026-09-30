@@ -1,0 +1,397 @@
+#!/usr/bin/python3
+"""~/lab/buzz/bin/buzz-health (issue #58): read-only instance health check.
+
+Steps (L1 r2 K1-K4):
+  a. run the cb63521 `buzz-team doctor --inventory ... --policies ...` and keep its JSON;
+  b. derive local identities from the Desktop inventory at runtime and reconcile the
+     doctor launch-identity count; policies are a cross-check only;
+  c. read BUZZ_RELAY_URL / BUZZ_ACP_AGENT_COMMAND / BUZZ_TEAM_POLICY_PATH of every
+     buzz-acp process (no other variable is kept or printed) and require >=1 valid
+     process per local identity; other relays (yuanbao) are recorded only;
+  d. codesign --verify --strict + TeamIdentifier EYF346PHUG on the official buzz CLI;
+     sha256 and CFBundleShortVersionString are recorded, a change is only reported.
+
+Writes nothing, contacts no relay, needs no private key. Exit 0 pass, 2 fail.
+Test-only hooks (reported under "test_hooks"): BUZZ58_TEST_OFFICIAL_BUZZ,
+BUZZ58_TEST_PS_FIXTURE, BUZZ58_TEST_DOCTOR_FIXTURE.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import plistlib
+import re
+import shlex
+import subprocess
+import sys
+
+HOME = Path.home()
+DEFAULT_INVENTORY = HOME / "Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json"
+DEFAULT_HARNESSES = HOME / "Library/Application Support/xyz.block.buzz.app/custom_harnesses"
+DEFAULT_POLICIES = HOME / "lab/buzz/policies"
+DEFAULT_DOCTOR = str(HOME / ".local/share/buzz-team/releases/cb63521aa8572831691e823c4745b34c2bb6a696/bin/buzz-team")
+DEFAULT_LOCAL_RELAY = "ws://127.0.0.1:3000"
+OFFICIAL_BUZZ = "/Applications/Buzz.app/Contents/MacOS/buzz"
+TEAM_IDENTIFIER = "EYF346PHUG"
+SIGNING_IDENTIFIER = "buzz"
+# Last recorded official component (2026-09-30); a difference is reported, never a failure.
+RECORDED_SHA256 = "bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba"
+RECORDED_VERSION = "0.5.25"
+ENV_KEYS = ("BUZZ_RELAY_URL", "BUZZ_ACP_AGENT_COMMAND", "BUZZ_TEAM_POLICY_PATH")
+LAUNCH_COUNT = re.compile(r"^(\d+) launch identities checked$")
+
+
+def _norm_relay(value: object) -> str:
+    return value.rstrip("/") if isinstance(value, str) else ""
+
+
+def _launches(row: dict) -> bool:
+    return bool(row.get("agent_command_override") or row.get("agent_command"))
+
+
+def _env(row: dict) -> dict:
+    env = row.get("env_vars")
+    return env if isinstance(env, dict) else {}
+
+
+def _row_name(row: dict) -> str:
+    return str(row.get("name") or row.get("display_name") or "")
+
+
+# ---------------------------------------------------------------- a. doctor
+
+def run_doctor(command: list[str], inventory: Path, policies: Path, runner=subprocess.run) -> dict:
+    argv = command + ["doctor", "--inventory", str(inventory), "--policies", str(policies)]
+    try:
+        proc = runner(argv, capture_output=True, text=True, timeout=60)
+    except (OSError, subprocess.SubprocessError) as exc:
+        return {"command": argv, "exit_code": None, "ok": False, "error": type(exc).__name__, "result": None}
+    try:
+        result = json.loads(proc.stdout)
+    except ValueError:
+        result = None
+    return {"command": argv, "exit_code": proc.returncode,
+            "ok": bool(isinstance(result, dict) and result.get("ok") is True and proc.returncode == 0),
+            "result": result}
+
+
+def doctor_launch_count(result: object) -> int | None:
+    if not isinstance(result, dict):
+        return None
+    for check in result.get("checks") or []:
+        if isinstance(check, dict) and check.get("name") == "desktop_inventory" and check.get("status") == "pass":
+            match = LAUNCH_COUNT.match(str(check.get("detail", "")))
+            if match:
+                return int(match.group(1))
+    return None
+
+
+def doctor_policy_status(result: object) -> dict[str, str]:
+    statuses = {}
+    if isinstance(result, dict):
+        for check in result.get("checks") or []:
+            if isinstance(check, dict) and str(check.get("name", "")).endswith(".json"):
+                statuses[str(check["name"])] = str(check.get("status"))
+    return statuses
+
+
+# ---------------------------------------------------------- b. identities
+
+def load_harness_command(harnesses: Path, runtime: object) -> str | None:
+    if not isinstance(runtime, str) or not runtime or "/" in runtime:
+        return None
+    try:
+        data = json.loads((harnesses / f"{runtime}.json").read_text())
+    except (OSError, ValueError):
+        return None
+    command = data.get("command") if isinstance(data, dict) else None
+    return command if isinstance(command, str) and command else None
+
+
+def classify_inventory(rows: object, local_relay: str, harnesses: Path) -> dict:
+    """Split inventory rows into local identities, other-relay launch rows and skipped rows.
+
+    Desktop keeps shared env on the definition row (slug) and instance overrides on the
+    launch row (persona_id -> slug); the effective policy path is the launch row value
+    if set, else the definition row value.
+    """
+    out = {"local": [], "other_relay": [], "skipped_definition_rows": [], "unresolved": []}
+    if not isinstance(rows, list):
+        out["error"] = "inventory is not a list"
+        return out
+    definitions = {}
+    for row in rows:
+        if isinstance(row, dict) and not _launches(row) and isinstance(row.get("slug"), str):
+            definitions.setdefault(row["slug"], row)
+    local = _norm_relay(local_relay)
+    for index, row in enumerate(rows):
+        if not isinstance(row, dict):
+            out["unresolved"].append({"index": index, "reason": "row is not an object"})
+            continue
+        name = _row_name(row)
+        if not _launches(row):
+            out["skipped_definition_rows"].append({"index": index, "name": name})
+            continue
+        relay = _norm_relay(row.get("relay_url"))
+        if not relay:
+            out["unresolved"].append({"index": index, "name": name, "reason": "launch row without relay_url"})
+            continue
+        if relay != local:
+            out["other_relay"].append({"index": index, "name": name, "relay": relay})
+            continue
+        definition = definitions.get(row.get("persona_id")) if isinstance(row.get("persona_id"), str) else None
+        policy = _env(row).get("BUZZ_TEAM_POLICY_PATH")
+        policy_source = "launch_row"
+        if not policy and definition is not None:
+            policy = _env(definition).get("BUZZ_TEAM_POLICY_PATH")
+            policy_source = f"definition_row_{rows.index(definition)}"
+        if not policy:
+            policy, policy_source = None, "missing"
+        runtime = row.get("runtime")
+        if isinstance(runtime, str) and runtime:
+            command, command_source = load_harness_command(harnesses, runtime), f"custom_harnesses/{runtime}.json"
+        else:
+            command = row.get("agent_command_override") or row.get("agent_command")
+            command_source = "agent_command"
+        out["local"].append({"index": index, "name": name, "runtime": runtime,
+                             "policy": policy, "policy_source": policy_source,
+                             "expected_agent_command": command, "command_source": command_source})
+    return out
+
+
+def check_policies(local: list[dict], policies: Path, doctor_statuses: dict[str, str]) -> dict:
+    try:
+        root = policies.resolve()
+        files = sorted(p.name for p in policies.glob("*.json"))
+    except OSError:
+        root, files = policies, []
+    seen: dict[str, list[str]] = {}
+    rows, ok = [], True
+    for identity in local:
+        policy = identity["policy"]
+        problems = []
+        if not policy:
+            problems.append("no BUZZ_TEAM_POLICY_PATH")
+        else:
+            path = Path(policy)
+            if path.parent.resolve() != root or not path.is_file():
+                problems.append("not a file in the policies directory")
+            elif doctor_statuses.get(path.name) != "pass":
+                problems.append(f"doctor status {doctor_statuses.get(path.name, 'missing')}")
+            seen.setdefault(str(path), []).append(identity["name"])
+        ok = ok and not problems
+        rows.append({"identity": identity["name"], "policy": policy, "ok": not problems, "problems": problems})
+    shared = {path: names for path, names in seen.items() if len(names) > 1}
+    return {"dir": str(policies), "files": len(files), "per_identity": rows, "shared": shared,
+            "ok": ok and not shared}
+
+
+# ------------------------------------------------------------ c. processes
+
+def list_acp_pids(runner=subprocess.run) -> list[int]:
+    proc = runner(["ps", "-axww", "-o", "pid=", "-o", "comm="], capture_output=True, text=True, timeout=20)
+    pids = []
+    for line in proc.stdout.splitlines():
+        parts = line.strip().split(None, 1)
+        if len(parts) == 2 and parts[0].isdigit() and os.path.basename(parts[1].strip()) == "buzz-acp":
+            pids.append(int(parts[0]))
+    return sorted(pids)
+
+
+def read_process_env(pid: int, runner=subprocess.run) -> dict[str, str | None]:
+    """Return only ENV_KEYS for pid. The raw ps line (which carries secrets) is discarded here."""
+    proc = runner(["ps", "-E", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=20)
+    raw = proc.stdout
+    values: dict[str, str | None] = {}
+    for key in ENV_KEYS:
+        found = re.findall(r"(?:^|\s)" + key + r"=(\S*)", raw)
+        values[key] = found[-1] if found and found[-1] else None
+    del raw
+    return values
+
+
+def collect_processes(runner=subprocess.run) -> list[dict]:
+    return [{"pid": pid, "env": read_process_env(pid, runner)} for pid in list_acp_pids(runner)]
+
+
+def evaluate_processes(processes: list[dict], local: list[dict], local_relay: str) -> dict:
+    by_policy = {identity["policy"]: identity for identity in local if identity["policy"]}
+    local_url = _norm_relay(local_relay)
+    per_identity = {identity["name"] + f"#{identity['index']}": [] for identity in local}
+    local_rows, other_rows, invalid = [], [], []
+    for item in processes:
+        env = {key: item.get("env", {}).get(key) for key in ENV_KEYS}
+        relay = _norm_relay(env["BUZZ_RELAY_URL"])
+        record = {"pid": item.get("pid"), "relay": env["BUZZ_RELAY_URL"],
+                  "agent_command": env["BUZZ_ACP_AGENT_COMMAND"], "policy": env["BUZZ_TEAM_POLICY_PATH"]}
+        if relay and relay != local_url:
+            record["counted"] = False
+            other_rows.append(record)
+            continue
+        reasons = []
+        if not relay:
+            reasons.append("BUZZ_RELAY_URL missing")
+        identity = by_policy.get(env["BUZZ_TEAM_POLICY_PATH"]) if env["BUZZ_TEAM_POLICY_PATH"] else None
+        if env["BUZZ_TEAM_POLICY_PATH"] is None:
+            reasons.append("BUZZ_TEAM_POLICY_PATH missing")
+        elif identity is None:
+            reasons.append("BUZZ_TEAM_POLICY_PATH matches no local identity")
+        if env["BUZZ_ACP_AGENT_COMMAND"] is None:
+            reasons.append("BUZZ_ACP_AGENT_COMMAND missing")
+        elif identity is not None and env["BUZZ_ACP_AGENT_COMMAND"] != identity["expected_agent_command"]:
+            reasons.append("BUZZ_ACP_AGENT_COMMAND differs from custom harness command")
+        record["identity"] = identity["name"] if identity else None
+        record["valid"] = not reasons
+        record["reasons"] = reasons
+        local_rows.append(record)
+        if reasons:
+            invalid.append(record["pid"])
+        else:
+            per_identity[identity["name"] + f"#{identity['index']}"].append(record["pid"])
+    missing = sorted(name for name, pids in per_identity.items() if not pids)
+    return {"local": local_rows, "other_relay": other_rows, "per_identity": per_identity,
+            "identities_without_valid_process": missing, "invalid_local_pids": invalid,
+            "valid_local": sum(len(p) for p in per_identity.values()),
+            "other_relay_recorded": len(other_rows), "ok": bool(local) and not missing}
+
+
+# ------------------------------------------------------------ d. signature
+
+def check_signature(path: str, runner=subprocess.run) -> dict:
+    out = {"path": path, "codesign_verify": "fail", "team_identifier": None, "identifier": None,
+           "sha256": None, "version": None, "recorded": {"sha256": RECORDED_SHA256, "version": RECORDED_VERSION}}
+    problems = []
+    target = Path(path)
+    if not target.is_file():
+        problems.append("binary missing")
+    else:
+        out["sha256"] = hashlib.sha256(target.read_bytes()).hexdigest()
+        plist = target.parent.parent / "Info.plist"
+        try:
+            out["version"] = plistlib.loads(plist.read_bytes()).get("CFBundleShortVersionString")
+        except (OSError, ValueError, plistlib.InvalidFileException):
+            out["version"] = None
+        try:
+            verify = runner(["/usr/bin/codesign", "--verify", "--strict", path], capture_output=True, text=True, timeout=60)
+            info = runner(["/usr/bin/codesign", "-dv", path], capture_output=True, text=True, timeout=60)
+        except (OSError, subprocess.SubprocessError) as exc:
+            problems.append(f"codesign unavailable ({type(exc).__name__})")
+        else:
+            if verify.returncode == 0:
+                out["codesign_verify"] = "pass"
+            else:
+                problems.append("codesign --verify --strict failed")
+            text = (info.stderr or "") + (info.stdout or "")
+            for line in text.splitlines():
+                if line.startswith("TeamIdentifier="):
+                    out["team_identifier"] = line.split("=", 1)[1]
+                elif line.startswith("Identifier="):
+                    out["identifier"] = line.split("=", 1)[1]
+            if out["team_identifier"] != TEAM_IDENTIFIER:
+                problems.append(f"TeamIdentifier {out['team_identifier']!r} is not {TEAM_IDENTIFIER}")
+            if out["identifier"] != SIGNING_IDENTIFIER:
+                problems.append(f"Identifier {out['identifier']!r} is not {SIGNING_IDENTIFIER}")
+    out["updated"] = bool(out["sha256"] and (out["sha256"] != RECORDED_SHA256 or out["version"] != RECORDED_VERSION))
+    if out["updated"]:
+        out["note"] = "official component updated (recorded only, not a failure)"
+    out["problems"] = problems
+    out["ok"] = not problems
+    return out
+
+
+# ------------------------------------------------------------------ main
+
+def evaluate(*, inventory: Path, policies: Path, harnesses: Path, local_relay: str,
+             doctor: dict, processes: list[dict], signature: dict) -> dict:
+    failures = []
+    try:
+        rows = json.loads(inventory.read_text())
+    except (OSError, ValueError):
+        rows = None
+    classified = classify_inventory(rows, local_relay, harnesses)
+    if rows is None or "error" in classified:
+        failures.append("inventory unreadable or not a list")
+    if not doctor["ok"]:
+        failures.append("doctor not ok:true")
+    doctor_count = doctor_launch_count(doctor.get("result"))
+    local, other = classified["local"], classified["other_relay"]
+    reconciled = doctor_count is not None and doctor_count == len(local) + len(other) and not classified["unresolved"]
+    if not reconciled:
+        failures.append("doctor launch identities != local identities + other-relay rows")
+    if not local:
+        failures.append("no local identities in inventory")
+    for identity in local:
+        if not identity["expected_agent_command"]:
+            failures.append(f"no harness command for {identity['name']}#{identity['index']}")
+    policy_check = check_policies(local, policies, doctor_policy_status(doctor.get("result")))
+    if not policy_check["ok"]:
+        failures.append("policy cross-check failed")
+    process_check = evaluate_processes(processes, local, local_relay)
+    if not process_check["ok"]:
+        failures.append("local identity without a valid buzz-acp process")
+    if not signature["ok"]:
+        failures.append("official buzz signature check failed")
+    return {
+        "ok": not failures,
+        "failures": failures,
+        "inputs": {"inventory": str(inventory), "policies": str(policies), "harnesses": str(harnesses),
+                   "local_relay": local_relay, "doctor": doctor["command"]},
+        "doctor": {"exit_code": doctor["exit_code"], "ok": doctor["ok"], "launch_identities": doctor_count,
+                   "result": doctor.get("result")},
+        "identities": {"local_count": len(local), "other_relay_count": len(other),
+                       "reconciliation": {"doctor_launch_identities": doctor_count, "local": len(local),
+                                          "other_relay": len(other), "unresolved": classified["unresolved"],
+                                          "ok": reconciled},
+                       "local": local, "other_relay": other,
+                       "skipped_definition_rows": classified["skipped_definition_rows"]},
+        "policies": policy_check,
+        "processes": process_check,
+        "official_buzz": signature,
+    }
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="buzz-health", description="Read-only ~/lab/buzz health check (issue #58)")
+    parser.add_argument("--inventory", type=Path, default=DEFAULT_INVENTORY)
+    parser.add_argument("--policies", type=Path, default=DEFAULT_POLICIES)
+    parser.add_argument("--harnesses", type=Path, default=DEFAULT_HARNESSES)
+    parser.add_argument("--doctor", default=DEFAULT_DOCTOR, help="buzz-team command (shell words)")
+    parser.add_argument("--local-relay", default=DEFAULT_LOCAL_RELAY)
+    args = parser.parse_args(argv)
+    hooks = []
+    official = os.environ.get("BUZZ58_TEST_OFFICIAL_BUZZ") or OFFICIAL_BUZZ
+    if official != OFFICIAL_BUZZ:
+        hooks.append("BUZZ58_TEST_OFFICIAL_BUZZ")
+    doctor_fixture = os.environ.get("BUZZ58_TEST_DOCTOR_FIXTURE")
+    if doctor_fixture:
+        hooks.append("BUZZ58_TEST_DOCTOR_FIXTURE")
+        try:
+            result = json.loads(Path(doctor_fixture).read_text())
+        except (OSError, ValueError):
+            result = None
+        doctor = {"command": ["<fixture>", doctor_fixture], "exit_code": 0 if isinstance(result, dict) and result.get("ok") else 2,
+                  "ok": bool(isinstance(result, dict) and result.get("ok") is True), "result": result}
+    else:
+        doctor = run_doctor(shlex.split(args.doctor), args.inventory, args.policies)
+    ps_fixture = os.environ.get("BUZZ58_TEST_PS_FIXTURE")
+    if ps_fixture:
+        hooks.append("BUZZ58_TEST_PS_FIXTURE")
+        try:
+            processes = json.loads(Path(ps_fixture).read_text())
+        except (OSError, ValueError):
+            processes = []
+    else:
+        processes = collect_processes()
+    report = evaluate(inventory=args.inventory, policies=args.policies, harnesses=args.harnesses,
+                      local_relay=args.local_relay, doctor=doctor, processes=processes,
+                      signature=check_signature(official))
+    report["test_hooks"] = hooks
+    print(json.dumps(report, ensure_ascii=False, indent=2))
+    return 0 if report["ok"] else 2
+
+
+if __name__ == "__main__":
+    sys.exit(main())

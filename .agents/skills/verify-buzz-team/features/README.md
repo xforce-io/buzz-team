@@ -8,3 +8,4 @@
 | #47 S1–S3 | [原生会话](native-session.md) | Desktop Advanced、usage 事件 |
 | #48 S1–S3 | [业务权限](business-access.md) | Desktop 作者策略、Seatbelt |
 | #54 S1–S4 | [官方升级](official-upgrade.md) | 官方组件、只读诊断、官方 Buzz CLI |
+| #58 S1–S5 | [实例入口](instance-entries.md) | `~/lab/buzz/bin/buzz`、`bin/buzz-health`、`docs/issue-58/*.sh` |
