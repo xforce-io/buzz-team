@@ -1,0 +1,1 @@
+- 临时文件（录音转码中间件、任务记录、日志、草稿）一律写 `$TMPDIR`（本身份目录下的 `tmp/`），不写 `/tmp`、`/private/tmp`；多行内容用 `printf … |` 或先写到 `$TMPDIR` 下的文件再用 `<` 读入，不用 heredoc（`<<`）：zsh 的 heredoc 临时文件固定落在 `/tmp`，不跟随 `TMPDIR`。kairo 登记和 run 先 `cd ~/kairo/<主题>` 再执行；只有 `echo "$KAIRO_PROVIDER"` 为空时，才在 kairo 命令前加 `KAIRO_PROVIDER=grok`。

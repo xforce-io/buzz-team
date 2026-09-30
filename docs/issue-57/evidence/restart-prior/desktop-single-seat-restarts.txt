@@ -1,0 +1,47 @@
+# Prior Desktop-driven single-seat restarts of 周衡 (read-only grep 2026-09-30 13:4x CST)
+# Source: ~/Library/Application Support/xyz.block.buzz.app/agents/logs/<pubkey>__<team>.log
+#   local relay log:   51fb6cd8…__a558771623f2….log  (ws://127.0.0.1:3000)
+#   yuanbao relay log: 51fb6cd8…__283d55098b1b….log  (wss://yuanbao.communities.buzz.xyz)
+# Lines "=== stopped/starting <name> (<pubkey>) at <UTC> ===" are written by Buzz Desktop itself
+# when it stops/starts one agent (pubkeys elided below). CST = UTC+8.
+
+## 2026-09-25 23:24–23:26 CST: only 周衡 restarted (both relays); no other seat in either relay's
+## logs between 23:22:00 and 23:28:00 CST (秦牧 last at 23:21:59, 苏晴 next at 23:28:01).
+local   === stopped 周衡  at 2026-09-25T15:24:32.566375+00:00 ===   (23:24:32 CST)
+local   === starting 周衡  at 2026-09-25T15:24:32.640557+00:00 ===
+local   2026-09-25T15:24:32.665219Z INFO buzz_acp: buzz-acp starting: relay=ws://127.0.0.1:3000 … agent_cmd=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin agent --always-approve …
+local   === stopped 周衡  at 2026-09-25T15:25:25.807924+00:00 ===   (23:25:25 CST)
+local   === starting 周衡  at 2026-09-25T15:25:26.011154+00:00 ===
+yuanbao === stopped 周衡  at 2026-09-25T15:25:24.774202+00:00 ===
+yuanbao === starting 周衡  at 2026-09-25T15:25:25.957273+00:00 ===
+(other 8 seats, same window, both relays: 0 stop/start lines)
+
+## 2026-09-26 21:25–21:26 CST: rolling per-seat restart, ~3 s apart, one seat at a time
+## (these are the current processes; 周衡 local 56568 started 21:26:11, yuanbao 56430 21:25:17)
+local   === stopped 周衡  at 2026-09-26T13:26:11.573184+00:00 ===
+local   === starting 周衡  at 2026-09-26T13:26:11.632306+00:00 ===
+local   2026-09-26T13:26:12.407938Z INFO buzz_acp: agent_pool_ready agents=2
+local   2026-09-26T13:26:12.445544Z INFO buzz_acp: presence set to online
+yuanbao === stopped 周衡  at 2026-09-26T13:25:17.313221+00:00 ===
+yuanbao === starting 周衡  at 2026-09-26T13:25:17.373692+00:00 ===
+
+## What the new processes inherit
+Buzz Desktop main process (pid 63683, started 2026-09-25 18:56:36 CST) environment, whitelisted keys:
+  KAIRO_PROVIDER=grok
+  HTTP_PROXY=http://127.0.0.1:9567  HTTPS_PROXY=http://127.0.0.1:9567  ALL_PROXY=socks5://127.0.0.1:9567
+  http_proxy=http://127.0.0.1:9567  https_proxy=http://127.0.0.1:9567  all_proxy=socks5://127.0.0.1:9567
+All 18 buzz-acp processes started by the 9/26 per-seat restarts carry exactly these values
+(rehearsal/03-snapshot-before.txt), i.e. a Desktop stop/start of one agent keeps KAIRO_PROVIDER and the
+six 9567 proxy variables. A Desktop quit/reopen would not (that is why the procedure never quits Desktop).
+
+## Negative precedent (not acceptable)
+#38 live apply 2026-09-24 14:02 CST (Hogan, ~/lab/buzz/evidence/issue-38-live-reverify/RESULT.md):
+safe-kill of 周衡 pid 81513, then "TIMEOUT 60s waiting for Desktop respawn of 周衡": Desktop does
+not respawn a killed agent. Rollback left 周衡 dead until restarted from Desktop.
+
+## Gap
+The logs show Desktop-driven single-seat stop/start happened and left other seats alone; they do not
+record which UI control triggered it (the 9/25 restarts coincide with the #53 per-seat harness switch,
+which saves the agent config; row 9 has auto_restart_on_config_change=true). The exact UI click path
+(Stop → Start on 周衡) is therefore evidenced by outcome, not by a recorded click. The procedure's stop
+conditions cover a failure of that step.

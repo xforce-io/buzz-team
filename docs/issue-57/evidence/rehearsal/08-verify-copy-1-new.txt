@@ -1,0 +1,17 @@
+issue57 verify: expect=new policies=/Users/xupeng/bt57-r3-work/policies expected 周衡 sha256=8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d
+relays=local (yuanbao recorded, not gated; peng 2026-09-30 14:21)
+PASS zhouheng-seatbelt.json sha256 8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d
+PASS fangwei-seatbelt.json unchanged vs baseline-before (af0cf59d0caf)
+PASS hanchuan-seatbelt.json unchanged vs baseline-before (9085ca476e62)
+PASS lushen-seatbelt.json unchanged vs baseline-before (7125d513f552)
+PASS peizhao-seatbelt.json unchanged vs baseline-before (da6c411e556a)
+PASS qinmu-seatbelt.json unchanged vs baseline-before (9bd3d3a3e50a)
+PASS shenyu-seatbelt.json unchanged vs baseline-before (8bf475730ba1)
+PASS suqing-seatbelt.json unchanged vs baseline-before (7086c4509877)
+PASS weiping-seatbelt.json unchanged vs baseline-before (e2d35950dc7c)
+PASS 9 policy files present (9)
+PASS thin._load_policy precheck PRECHECK PASS policy_sha256=8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d profile_sha256=478b02f3e96aa3a029e56676fdd8b9f820f815b4a0a2578a6b8e
+PASS 1 local 周衡 managed-agents row in /Users/xupeng/bt57-r3-work/managed-agents.json ([15])
+INFO prompt row 9 relay=<definition> rule_count=1 (not gated)
+PASS row 15 prompt rule count 1 (want 1)
+VERIFY PASS
