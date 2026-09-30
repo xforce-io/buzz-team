@@ -1,0 +1,20 @@
+### apply with a policy that names a missing directory (must refuse, nothing changed)
+issue57: TEST HOOK new policy /Users/xupeng/scout57-rehearsal-20260930/run/broken.json
+issue57: target=/Users/xupeng/scout57-rehearsal-20260930/run/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
+issue57 precheck: FAIL [Errno 2] No such file or directory: '/Users/xupeng/kairo/does-not-exist-scout57'
+issue57: ABORT: new policy fails thin._load_policy; nothing changed
+rc=1 (expected non-zero)
+zhouheng copy sha256 after refused apply: 9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23
+### apply refuses the live managed-agents.json while Desktop runs
+issue57: target=/Users/xupeng/scout57-rehearsal-20260930/run/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
+issue57: ABORT: Buzz Desktop is running: do not write the live managed-agents.json; add the rule in the Desktop UI (README step 4)
+rc=1 (expected non-zero)
+zhouheng copy sha256: 9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23
+### apply on the live directory without ISSUE57_I_UNDERSTAND_LIVE (must refuse)
+issue57: ABORT: target is the live policy directory; set ISSUE57_I_UNDERSTAND_LIVE=yes (see docs/issue-57/README.md)
+rc=1 (expected non-zero)
+### verify with 周衡 local process missing BUZZ_TEAM_POLICY_PATH (fixture from the live snapshot)
+NOTE processes come from a TEST FIXTURE
+FAIL [local] pid 56568 BUZZ_TEAM_POLICY_PATH=<missing>
+FAIL [local] pid 56568 policy-in-env sha256 unreadable
+VERIFY FAIL (2)

@@ -1,0 +1,27 @@
+# 周衡 session 01a0e741-1fb2-7662-9a74-b50e8791cc12 updates.jsonl — tool output lines with EPERM
+# read-only extract 2026-09-30 13:4x CST (only tool_call_update text lines matching
+# "Operation not permitted|PermissionError"; times CST). Source:
+# <周衡 GROK_HOME>/sessions/%2FUsers%2Fxupeng%2F.buzz/01a0e741-1fb2-7662-9a74-b50e8791cc12/updates.jsonl
+L34 09-28 17:05:07 CST call-ca9d4f94-c1e6-4db4-93ef-7695c7617fe
+    (eval):1: can't create temp file for here document: operation not permitted
+L70 09-28 17:06:41 CST call-23e53187-1fb4-4c89-829e-6c336e4d7b5
+    mkdir: /tmp/memo-id: Operation not permitted
+L113 09-28 17:15:36 CST call-0c25fce1-ce43-4116-8722-9e55175f6c5
+    PermissionError: [Errno 1] Operation not permitted:
+L117 09-28 17:15:48 CST call-73448858-821c-4ba0-bf23-d0ee198d4fe
+    touch: /Users/xupeng/kairo/.kairo/global-home/.write-test: Operation not permitted
+    touch: /Users/xupeng/.buzz/.write-test-zh: Operation not permitted
+L155 09-28 18:39:04 CST call-c2f379c7-0c5f-4964-8167-39677df6746
+    touch: /Users/xupeng/kairo/.kairo/global-home/.write-test-zh: Operation not permitted
+L159 09-28 18:39:13 CST call-88b0c070-3bbf-4261-a8ef-f9872b3411e
+    touch: ./write-test-zh: Operation not permitted
+L163 09-28 18:39:26 CST call-cce37243-6d1a-4674-9c27-25f0550b6c0
+    touch: /Users/xupeng/kairo/能源梳理/write-test-zh: Operation not permitted
+    touch: /private/tmp/write-test-zh: Operation not permitted
+L179 09-30 11:18:07 CST call-a822062f-d205-4dbf-9ec4-4a6ac5115c6
+    touch: /Users/xupeng/kairo/.kairo/global-home/.write-test-zh: Operation not permitted
+L195 09-30 11:18:54 CST call-0c9298c6-322c-488f-8b67-7a7606e1263
+    PermissionError: [Errno 1] Operation not permitted:
+
+# Note: L179/L195 (2026-09-30 11:18 CST) are a new occurrence in the same session: registering
+# `20260929 090208.m4a` failed the same way. EPERM is still live on the current (9e087351) policy.
