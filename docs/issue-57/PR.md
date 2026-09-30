@@ -59,6 +59,12 @@
 - (b) 这些内容由 8787 的 `kairo serve`（pid 76501）直接对外提供，写坏立即可见——L1 未写。
 - (c) 回滚只收回写权限，收不回已写入内容——L1 未写。
 
+## r2 修订（Knox @f97b16e）
+
+- **P2 落位顺序**：Hogan 已在房间同意新顺序；先由 Jenny 取得 peng 对重启的同意，再在同一获准窗口内 apply、立即由 Desktop 停/启周衡、双 relay verify、probe 和现役验收。未获同意、窗口中止或任一验收失败，都立即 rollback 并确认 sha256 回到 `9e087351`，不把新文件留给后续重启。
+- 原因：周衡定义行有 `auto_restart_on_config_change=true`；若新策略留在现役目录，保存配置、Desktop 重启或 Mac 重启都可能绕过同意门槛而激活它。
+- **Knox P3 已知项（本轮不改，以保持 rehearsal blob ids 对齐）**：`apply.sh` 在最后“另外 8 份策略 sha”检查退出非 0 时不会自动恢复周衡策略文件，操作者必须立即运行 `rollback.sh` 并确认 `9e087351`；`rollback.sh` 使用裸 `sed`，运行时应确保 PATH 中 `/usr/bin` 优先（或显式记录这一点）。
+
 ## 验收表
 
 新跑，均在冻结候选的干净树上：单测在 box 上跑，Mac 演练用的是同一批 blob。
@@ -99,6 +105,7 @@ S5: pass / pending-live  docs/issue-57/README.md + rehearse.sh  落位、备份�
 - Desktop 单席停、启的效果有日志为证（9/25 23:24–23:26 只有周衡重启，另外 8 席没有动），但日志没有记下是哪个 UI 操作触发的；第一次现役执行本身就是对这一步的验证，停止条件已覆盖失败情形。
 - 元宝 relay 目前 403、连接 CLOSED：只记录，不作为通过条件，但周衡在元宝上的进程也会按 relay 核对环境变量和策略。
 - UI 编辑 System prompt 实际改的是定义行还是实例行尚不确定；verify 两行都查，不一致时按停止条件 f 处理。
+- 周衡定义行的 `auto_restart_on_config_change=true` 意味着，若新策略文件留在现役目录，保存周衡配置、Desktop 重启或 Mac 重启都可能使它绕过同意门槛而生效；因此同意必须先于 apply，窗口中止或验收失败必须立即回滚到 `9e087351`。
 - 功能地图 README 与 #59（#58）都在末尾加了一行，先合入的一方之后另一方需要简单 rebase。
 
 ## 落位与回退（Hogan，peng 同意后）
