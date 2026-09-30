@@ -1,6 +1,6 @@
 # #57 周衡 seatbelt 放行 Kairo 必需子目录
 
-依据：Issue #57 L1 评论 5871019270。peng 2026-09-28 21:19（北京时间）授权范围；2026-09-30 13:39 批准该设计并附两项安全措施（见「两项安全措施」）。批准只到开 PR 为止；合入由 peng 手动完成；合入后的生效（重启周衡在本地和元宝两个 relay 上的进程）需要 peng 另行同意，由 Jenny 取得，Hogan 执行。
+依据：Issue #57 L1 评论 5871019270。peng 2026-09-28 21:19（北京时间）授权范围；2026-09-30 13:39 经 Jenny 批准设计（peng 在 Jenny 处给出，原文记录在 Scout 职务说明），附两项安全措施；最终放行为 peng 手动合入（见「两项安全措施」）。合入后的生效（重启周衡在本地和元宝两个 relay 上的进程）需要 peng 另行同意，由 Jenny 取得，Hogan 执行。
 
 范围限制：不开放整个 `~/kairo`，不开放 `/private/tmp`；不改另外 8 个席位的 `write_paths`、档位和 prompt；不动 thin-bin pin、runtime/ACP、thin 代码（`src/` 未改），也不改上游 block/buzz。
 
@@ -42,6 +42,20 @@
 3. **插入位置**。现役 prompt 里「## 长任务执行与恢复」出现了两次（现役相对仓库 `pj.md` 已漂移，本单不同步）。规则插在最后一节的最后一条之后，也就是 prompt 的末尾。仓库 `pj.md` 里这一节只出现一次，插在该节末尾。
 4. **待定点 1–3 按 L1 默认取**：放行整个 `~/kairo/.kairo`；topic 只开 `.kairo` 和 `references`；接受 glossary 降级。批准原文没有逐条写明，如果 peng 当时另有取舍，请在审查时指出。
 5. **写测反例比 L1 多两个**：除了 `~/kairo` 根目录和 `/private/tmp`，还加了两个 topic 根目录和 `~/.config/kairo`；另外用身份目录 `tmp/` 做正向对照。
+
+## 待定点逐条取值与依据
+
+- 待定点 1：取 L1 默认——放行整个 `~/kairo/.kairo`。依据：13:39 批准由 peng 在 Jenny 处给出，未逐条列明，按 L1 默认；**待 peng 合入时明确确认**。
+- 待定点 2：取 L1 默认——topic 只开 `.kairo` 和 `references`。依据：13:39 批准由 peng 在 Jenny 处给出，未逐条列明，按 L1 默认；**待 peng 合入时明确确认**。
+- 待定点 3：取 L1 默认——接受 glossary 降级。依据：13:39 批准由 peng 在 Jenny 处给出，未逐条列明，按 L1 默认；**待 peng 合入时明确确认**。
+- 待定点 4：取现有规则行的决定——临时文件只写 `$TMPDIR`，不写 `/tmp`、`/private/tmp`，且不用 heredoc。依据：现有 README/PR 仅记为调用方经 Jenny 转述的 peng 对待定点 4–6 的决定，未逐点记录，待 peng 确认。
+- 待定点 5：取现有规则行的决定——kairo 先 `cd ~/kairo/<主题>`。依据：现有 README/PR 仅记为调用方经 Jenny 转述的 peng 对待定点 4–6 的决定，未逐点记录，待 peng 确认。
+- 待定点 6：取现有规则行的决定——仅在 `KAIRO_PROVIDER` 为空时才在命令前加 `KAIRO_PROVIDER=grok`。依据：现有 README/PR 仅记为调用方经 Jenny 转述的 peng 对待定点 4–6 的决定，未逐点记录，待 peng 确认。
+
+**合入时请 peng 明确确认**
+- (a) 待定点 1 放开 `~/kairo/.kairo` 即放开整个 global-home，含 1.3G uploads、其他全局 ref、constitution.yaml、projects/、review-work/。
+- (b) 这些内容由 8787 的 `kairo serve`（pid 76501）直接对外提供，写坏立即可见——L1 未写。
+- (c) 回滚只收回写权限，收不回已写入内容——L1 未写。
 
 ## 两项安全措施（peng 2026-09-30 13:39）
 
@@ -104,8 +118,9 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 
    另跑一次 `bash snapshot.sh > $D/05-snapshot-after.txt`。
 6. 现役验收（S1/S2/S4/S3 复测）：
-   - peng 在真实会话里请周衡登记 `20260928 140109.m4a`（→ 能源梳理）和 `20260928 150601.m4a`（→ ai-native），各跑一次 `cd ~/kairo/<主题> && kairo run --ref <rid>`；
-   - 核对 CLI 输出无 EPERM/PermissionError，`ref-catalog.json` 里有两条 ref，会话 `updates.jsonl` 中写 `/tmp` 的尝试为 0；
+   - peng 在真实会话里请周衡登记 `20260928 140109.m4a`（→ 能源梳理）、`20260928 150601.m4a`（→ ai-native）和 `20260930 093139.m4a`（→ 能源梳理，标题「刚总沟通」），各跑一次 `cd ~/kairo/<主题> && kairo run --ref <rid>`；
+   - 核对 CLI 输出无 EPERM/PermissionError，`ref-catalog.json` 里有三条 ref，会话 `updates.jsonl` 中写 `/tmp` 的尝试为 0；
+   - 记录核验：周衡 9/30 11:18 选择的 `20260929 090208.m4a` 实为「算法例会-260928」，经 Jenny 查 Voice Memos 核实为错误选择，不计入验收；两条 9/28 录音的标题已由 Jenny 核对正确；
    - `cp ~/lab/buzz/policies/zhouheng-seatbelt.json $D/copy.json && bash probe.sh --policy $D/copy.json --workdir $D/probe --out $D/06-probe`，结果必须是 PROBE PASS。
 7. 收尾：`rm -rf $D`，先把证据拷走。备份留在 `~/lab/buzz/policies/zhouheng-seatbelt.json.issue57-<ts>.bak` 和 `~/lab/buzz/backups/issue57-<ts>/`。
 
