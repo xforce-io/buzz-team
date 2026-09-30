@@ -1,0 +1,98 @@
+# r2 self-signed negative (Knox P2). Two parts: (A) box re-sign with rcodesign, (B) Mac run of docs/issue-58/selfsigned-negative.sh
+
+## A. why a second signer, and how the copy was made (box, Linux, 2026-09-30 14:02 CST)
+On the Mac, codesign refused both identity forms from the temporary keychain file (see B §3: 'no identity found' by
+name and by SHA-1; find-identity lists it as CSSMERR_TP_NOT_TRUSTED). Adding the keychain to the search list or
+trusting the cert was out of bounds, so the same kind of cert was used with rcodesign (apple-codesign 0.29.0,
+github.com/indygreg/apple-platform-rs release binary) on the box, which signs from PEM files without a keychain:
+  openssl req -x509 -newkey rsa:2048 -nodes -sha256 -days 1  (same cert.cnf as selfsigned-negative.sh:
+    CN=buzz58 r2 self-signed test (not Apple), OU=EYF346PHUG, O=buzz58-r2-test; EKU critical codeSigning)
+  subject=issuer=CN=buzz58 r2 self-signed test (not Apple), OU=EYF346PHUG, O=buzz58-r2-test
+  cert sha1=38:55:9A:EC:DC:99:2E:68:54:07:4D:43:B3:BC:15:58:ED:FA:F9:96
+  rcodesign sign --pem-file key.pem --pem-file cert.pem --binary-identifier buzz --team-name EYF346PHUG <copy of official buzz>
+    input  sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba (official 0.5.25, copied from the Mac)
+    rcodesign: 'signing without an Apple signed certificate but signing settings contain a team name'; rc=0
+    output sha256=0b9afb32ad580e50d9a9a763c53441a4bd06ea59b443c92fd89c239a1117720d
+  rcodesign print-signature-info: identifier: buzz, team_name: EYF346PHUG, designated: identifier "buzz" and certificate root = H"38559aec…f996"
+The private key was deleted right after signing. The signed copy was shipped to the Mac temp dir as a byte delta against
+the official binary (4 header bytes + 143088-byte signature tail) and rebuilt there with sha256 checks on input and output
+(result: ok 0b9afb32…720d); it was then passed as SELFSIGNED_PRESIGNED. The temp keychain part still ran in full.
+A first Mac run at 13:59 (before SELFSIGNED_PRESIGNED existed) hit the same codesign failure and then ran §4–5 on the
+UNMODIFIED copy, so those lines were meaningless; that run was discarded and the script now skips §4–5 unless the copy
+differs from the official binary.
+
+## B. Mac: SELFSIGNED_PRESIGNED=<copy> bash docs/issue-58/selfsigned-negative.sh ~/buzz58-r2-<ts>/selfsigned <9802f52 bin/buzz>
+# 2026-09-30 14:27:27 CST  workdir=/Users/xupeng/buzz58-r2-20260930-135556/selfsigned
+requirement: =anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"
+openssl: LibreSSL 3.3.6
+## keychain state BEFORE
+list-keychains:
+      "/Users/xupeng/Library/Keychains/login.keychain-db"
+      "/Library/Keychains/System.keychain"
+default-keychain: "/Users/xupeng/Library/Keychains/login.keychain-db"
+user trust settings sha256: 1c2fc4698361a1edb3faacd9c450ffebca3ce7906feb09e47e5533ead3e0af0a
+## 1. throwaway self-signed code-signing cert (subject OU=EYF346PHUG)
+openssl req rc=0
+  subject= /CN=buzz58 r2 self-signed test (not Apple)/OU=EYF346PHUG/O=buzz58-r2-test
+  issuer= /CN=buzz58 r2 self-signed test (not Apple)/OU=EYF346PHUG/O=buzz58-r2-test
+              X509v3 Extended Key Usage: critical
+                  Code Signing
+  cert sha1=E7C68A3597373902563C979F005CDAA9219AB937
+openssl pkcs12 rc=0
+## 2. temporary keychain file (random password; not added to the search list by this script)
+security create-keychain <tmp> rc=0
+list-keychains right after create-keychain:
+      "/Users/xupeng/Library/Keychains/login.keychain-db"
+      "/Library/Keychains/System.keychain"
+security unlock-keychain rc=0
+security import p12 -> tmp keychain only rc=0
+security set-key-partition-list (tmp keychain) rc=0
+find-identity -p codesigning <tmp keychain> (all, incl. untrusted):
+  
+  Policy: Code Signing
+    Matching identities
+    1) E7C68A3597373902563C979F005CDAA9219AB937 "buzz58 r2 self-signed test (not Apple)" (CSSMERR_TP_NOT_TRUSTED)
+       1 identities found
+  
+    Valid identities only
+       0 valid identities found
+## 3. sign a COPY of the official binary
+codesign -f -s '<CN>' -i buzz --keychain <tmp> <copy>: rc=1
+  buzz58 r2 self-signed test (not Apple): no identity found
+codesign -f -s <cert sha1> -i buzz --keychain <tmp> <copy>: rc=1
+  E7C68A3597373902563C979F005CDAA9219AB937: no identity found
+codesign could not sign here; using SELFSIGNED_PRESIGNED (re-signed elsewhere with a throwaway self-signed OU=EYF346PHUG cert)
+signed_by=presigned
+copy sha256=0b9afb32ad580e50d9a9a763c53441a4bd06ea59b443c92fd89c239a1117720d official sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+## 4. what the copy asserts (codesign -dv / -d -r-; self-asserted, record only)
+  Identifier=buzz
+  Format=Mach-O thin (x86_64)
+  Authority=buzz58 r2 self-signed test (not Apple)
+  TeamIdentifier=EYF346PHUG
+  designated => identifier buzz and certificate root = H"38559aecdc992e6854074d43b3bc1558edfaf996"
+codesign --verify --strict (no -R, pre-r2 first step): rc=0
+codesign --verify --strict -R <requirement> (r2 decision): rc=3
+  test-requirement: code failed to satisfy specified code requirement(s)
+## 5. gates
+docs/issue-58/selfsigned-negative.sh: line 125: 71070 Killed: 9               BUZZ58_TEST_OFFICIAL_BUZZ="$COPY" bash "$OLD_BUZZ" --help > "$W/old.out" 2> "$W/old.err"
+pre-r2 bin/buzz (9802f52) --help: rc=137 stdout_bytes=0 stderr=
+r2 bin/buzz --help: rc=3 stdout_bytes=0 stderr=bin/buzz: refused, nothing sent: /Users/xupeng/buzz58-r2-20260930-135556/selfsigned/copy/buzz: codesign --verify --strict -R '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"' failed 
+r2 common.sh official_signature_ok (apply precheck): rc=3
+r2 buzz-health: exit=2 ok=False failures=['official buzz signature check failed'] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=fail recorded team=EYF346PHUG id=buzz problems=['codesign --verify --strict -R <requirement> failed']
+## 6. cleanup
+security delete-keychain <tmp> rc=0
+tmp keychain file gone: yes
+## keychain state AFTER
+list-keychains:
+      "/Users/xupeng/Library/Keychains/login.keychain-db"
+      "/Library/Keychains/System.keychain"
+default-keychain: "/Users/xupeng/Library/Keychains/login.keychain-db"
+user trust settings sha256: 1c2fc4698361a1edb3faacd9c450ffebca3ce7906feb09e47e5533ead3e0af0a
+keychain state before == after: IDENTICAL
+workdir removed: yes
+
+## addendum (14:27:47 CST): same self-signed copy (sha256 0b9afb32ad580e50d9a9a763c53441a4bd06ea59b443c92fd89c239a1117720d) kept in the temp dir for two extra reads
+run the self-signed copy directly (--help): rc=137  (137 = SIGKILL by macOS at exec; so rc=137 from pre-r2 bin/buzz means its gate passed and it exec'd)
+pre-r2 buzz-health (9802f52): exit=0 ok=True failures=[]
+  official_buzz: verify=pass team=EYF346PHUG id=buzz ok=True problems=[]

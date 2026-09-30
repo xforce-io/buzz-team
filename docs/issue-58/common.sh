@@ -56,14 +56,16 @@ resolve_target() {
   echo "issue58: target=$TARGET live=$IS_LIVE"
 }
 
+# Designated requirement for the official CLI (same text as bin/buzz and bin/buzz-health):
+# Apple-anchored chain + identifier "buzz" + leaf subject OU EYF346PHUG. `codesign -dv`
+# fields are self-asserted and never decide.
+ISSUE58_REQUIREMENT='=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"'
+
 # 0 when the official CLI passes the same gate as bin/buzz.
 official_signature_ok() {
-  local bin="${BUZZ58_TEST_OFFICIAL_BUZZ:-$OFFICIAL_BUZZ}" info
+  local bin="${BUZZ58_TEST_OFFICIAL_BUZZ:-$OFFICIAL_BUZZ}"
   [ -x /usr/bin/codesign ] && [ -f "$bin" ] || return 1
-  /usr/bin/codesign --verify --strict "$bin" 2>/dev/null || return 1
-  info=$(/usr/bin/codesign -dv "$bin" 2>&1) || return 1
-  printf '%s\n' "$info" | grep -qx 'TeamIdentifier=EYF346PHUG' || return 1
-  printf '%s\n' "$info" | grep -qx 'Identifier=buzz'
+  /usr/bin/codesign --verify --strict -R "$ISSUE58_REQUIREMENT" "$bin" 2>/dev/null
 }
 
 acp_pids() {

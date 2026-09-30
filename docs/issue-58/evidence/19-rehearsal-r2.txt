@@ -1,0 +1,268 @@
+# r2 rehearsal: bash docs/issue-58/rehearse.sh /tmp/buzz58-r2-20260930-135556/final (Mac, 2026-09-30 13:56 CST)
+# Same script as r1 (evidence 00-16), rerun on the r2 code; key outputs concatenated. Temp dirs deleted afterwards.
+
+=================== 00-meta.txt
+date: 2026-09-30 13:56:23 CST
+repo_sha: uncommitted r2 working tree on 9802f52 (blob ids below)
+ProductName:  macOS
+ProductVersion:  26.6.2
+BuildVersion:  25G83
+workdir: /private/tmp/buzz58-r2-20260930-135556/final
+git blob ids of the rehearsed files:
+  303b374e8509ef7f7c6c2c192d982888a10fc01b  common.sh
+  efa76733ac446837d6db1c9a29ab60476544d07b  apply.sh
+  875e8a838f09fa64c76e7a22dad9bc5d22da8b0a  rollback.sh
+  43d3badbeb29b617f7d1f9d5a889a91992752ed4  verify.sh
+  643fa51971105e86c47c644c3c0e94e6890d48f9  rehearse.sh
+  7eaf56b2f97887a9f980f45e2a73642fc121e818  instance-readme-line.md
+  b06502487b136381544555ee24bd1156fdde8fd0  bin/buzz
+  87d55e4c06643eb97f2a43ce58bc9e8e7885c5cc  bin/buzz-health
+
+=================== 01-live-before.txt
+# 2026-09-30 13:56:23 CST
+## ls -l ~/lab/buzz/bin
+total 96
+-rwx------  1 xupeng  staff  196 Sep 30 08:59 agent-executor
+-rwx------  1 xupeng  staff  196 Sep 23 14:26 agent-executor.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  196 Sep 23 22:26 agent-executor.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  195 Sep 30 08:59 agent-harness
+-rwx------  1 xupeng  staff  195 Sep 23 14:26 agent-harness.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  195 Sep 23 22:26 agent-harness.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  187 Sep 30 08:59 agent-worktree
+-rwx------  1 xupeng  staff  187 Sep 23 14:26 agent-worktree.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  187 Sep 23 22:26 agent-worktree.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  185 Sep 30 08:59 buzz
+-rwx------  1 xupeng  staff  185 Sep 23 14:26 buzz.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  185 Sep 23 22:26 buzz.bak-pin-20260923-222646
+## sha256 live entries + README
+819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31  bin/buzz
+60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f  bin/agent-executor
+fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c  bin/agent-harness
+73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23  bin/agent-worktree
+<absent>  bin/buzz-health
+31e0b91dfd88e1236c3829fb8a56f28590dceb58dab995afc12f1f316b0b12da  README.md
+## buzz-acp pids (18)
+56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632 
+## managed-agents.json sha256
+f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7
+
+=================== 02-copy-entries-before.txt
+819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31  buzz  expected_595=819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f  agent-executor  expected_595=60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c  agent-harness  expected_595=fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23  agent-worktree  expected_595=73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+
+=================== 03-verify-0-old.txt
+issue58 verify: target=/private/tmp/buzz58-r2-20260930-135556/final/instance expect=old
+  buzz 819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health <absent>
+PASS buzz is the 595c0cfe entry
+PASS agent-executor is the 595c0cfe entry
+PASS agent-harness is the 595c0cfe entry
+PASS agent-worktree is the 595c0cfe entry
+PASS no bin/buzz-health
+PASS bin/buzz --help rc=0
+PASS buzz-health ok (exit 0) -> /private/tmp/buzz58-r2-20260930-135556/final/evidence/health-0-old.json
+buzz-acp pids (18): 56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632
+managed-agents.json sha256: f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7
+PASS state saved to /private/tmp/buzz58-r2-20260930-135556/final/evidence/state-before.txt
+VERIFY PASS
+
+=================== 04-apply.txt
+issue58: target=/private/tmp/buzz58-r2-20260930-135556/final/instance live=no
+issue58: official buzz CLI signature OK (codesign --verify --strict -R '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"')
+issue58: backup /private/tmp/buzz58-r2-20260930-135556/final/instance/backups/20260930-135626-issue58
+before:
+  buzz 819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health <absent>
+after:
+  buzz 92e53f333aecd8b8fe216578004e4035252393ea49e516518fa7fee80a04b792
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness <absent>
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health cd58c77fc964ea8d47d0f00553a57306d5d103492f002276ea15efba65609e96
+issue58: applied. Rollback: /Users/xupeng/buzz58-r2-20260930-135556/src/docs/issue-58/rollback.sh --target /private/tmp/buzz58-r2-20260930-135556/final/instance --backup /private/tmp/buzz58-r2-20260930-135556/final/instance/backups/20260930-135626-issue58
+
+=================== 05-verify-1-new.txt
+issue58 verify: target=/private/tmp/buzz58-r2-20260930-135556/final/instance expect=new
+  buzz 92e53f333aecd8b8fe216578004e4035252393ea49e516518fa7fee80a04b792
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness <absent>
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health cd58c77fc964ea8d47d0f00553a57306d5d103492f002276ea15efba65609e96
+PASS bin/buzz is the #58 entry
+PASS bin/buzz-health is the #58 entry
+PASS agent-harness retired
+PASS agent-executor unchanged (595c0cfe)
+PASS agent-worktree unchanged (595c0cfe)
+PASS bin/buzz --help rc=0
+PASS buzz-health ok (exit 0) -> /private/tmp/buzz58-r2-20260930-135556/final/evidence/health-1-new.json
+buzz-acp pids (18): 56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632
+managed-agents.json sha256: f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7
+PASS buzz-acp pid set unchanged
+PASS managed-agents.json unchanged
+VERIFY PASS
+
+=================== 07-signature-controls.txt
+requirement: =anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"
+### live  /Applications/Buzz.app/Contents/MacOS/buzz
+sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+codesign --verify --strict -R <requirement> (decides): rc=0
+codesign --verify --strict without -R (record only): rc=0
+codesign -dv (self-asserted, record only):
+  Identifier=buzz
+  TeamIdentifier=EYF346PHUG
+bin/buzz --help: rc=0 stderr=<empty>
+buzz-health: exit=0 ok=True failures=[] test_hooks=[]
+  official_buzz: verify=pass team=EYF346PHUG id=buzz version=0.5.25 updated=False problems=[]
+### official-copy  /private/tmp/buzz58-r2-20260930-135556/final/neg/official-copy/buzz
+sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+codesign --verify --strict -R <requirement> (decides): rc=0
+codesign --verify --strict without -R (record only): rc=0
+codesign -dv (self-asserted, record only):
+  Identifier=buzz
+  TeamIdentifier=EYF346PHUG
+bin/buzz --help: rc=0 stderr=<empty>
+buzz-health: exit=0 ok=True failures=[] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=pass team=EYF346PHUG id=buzz version=None updated=True problems=[]
+### adhoc  /private/tmp/buzz58-r2-20260930-135556/final/neg/adhoc/buzz
+sha256=405677e90cd9826d353dd5fe6984909f4193419ec202487c4567ea1cc948ba1c
+codesign --verify --strict -R <requirement> (decides): rc=3
+codesign --verify --strict without -R (record only): rc=0
+codesign -dv (self-asserted, record only):
+  Identifier=buzz-555549440728b0ca3857357198a54bc92e96dd57
+  Signature=adhoc
+  TeamIdentifier=not set
+bin/buzz --help: rc=3 stderr=bin/buzz: refused, nothing sent: /private/tmp/buzz58-r2-20260930-135556/final/neg/adhoc/buzz: codesign --verify --strict -R '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"' failed
+buzz-health: exit=2 ok=False failures=['official buzz signature check failed'] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=fail team=not set id=buzz-555549440728b0ca3857357198a54bc92e96dd57 version=None updated=True problems=['codesign --verify --strict -R <requirement> failed']
+### modified  /private/tmp/buzz58-r2-20260930-135556/final/neg/modified/buzz
+sha256=8c0a8dfd78f6ecd5392e6ac5f945c2bb92aaeb6757e69d30fc5254467d2bfece
+codesign --verify --strict -R <requirement> (decides): rc=1
+codesign --verify --strict without -R (record only): rc=1
+codesign -dv (self-asserted, record only):
+  Identifier=buzz
+  TeamIdentifier=EYF346PHUG
+bin/buzz --help: rc=3 stderr=bin/buzz: refused, nothing sent: /private/tmp/buzz58-r2-20260930-135556/final/neg/modified/buzz: codesign --verify --strict -R '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"' failed
+buzz-health: exit=2 ok=False failures=['official buzz signature check failed'] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=fail team=EYF346PHUG id=buzz version=None updated=True problems=['codesign --verify --strict -R <requirement> failed']
+
+=================== 08-health-negatives.txt
+### control-live-ps-fixture: exit=0 ok=True failures=[] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=9 other_relay_recorded=9 without_valid=[] invalid=[]
+### env-missing: exit=2 ok=False failures=['local identity without a valid buzz-acp process'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=8 other_relay_recorded=9 without_valid=['陆深#21'] invalid=[(56626, ['BUZZ_TEAM_POLICY_PATH missing'])]
+### env-wrong: exit=2 ok=False failures=['local identity without a valid buzz-acp process'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=8 other_relay_recorded=9 without_valid=['陆深#21'] invalid=[(56626, ['BUZZ_ACP_AGENT_COMMAND differs from custom harness command'])]
+### non-local-relay: exit=2 ok=False failures=['local identity without a valid buzz-acp process'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=8 other_relay_recorded=10 without_valid=['陆深#21'] invalid=[]
+### recon-doctor-12: exit=2 ok=False failures=['doctor launch identities != local identities + other-relay rows'] test_hooks=['BUZZ58_TEST_DOCTOR_FIXTURE', 'BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=12 local=9 other_relay=2 unresolved=[] ok=False
+  processes: valid_local=9 other_relay_recorded=9 without_valid=[] invalid=[]
+### recon-inventory-relay-blank: exit=2 ok=False failures=['doctor launch identities != local identities + other-relay rows'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=None local=9 other_relay=1 unresolved=[{'index': 12, 'name': 'Fizz', 'reason': 'launch row without relay_url'}] ok=False
+  processes: valid_local=9 other_relay_recorded=9 without_valid=[] invalid=[]
+
+=================== 09-rollback.txt
+issue58: target=/private/tmp/buzz58-r2-20260930-135556/final/instance live=no
+before:
+  buzz 92e53f333aecd8b8fe216578004e4035252393ea49e516518fa7fee80a04b792
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness <absent>
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health cd58c77fc964ea8d47d0f00553a57306d5d103492f002276ea15efba65609e96
+issue58: source=backup /private/tmp/buzz58-r2-20260930-135556/final/instance/backups/20260930-135626-issue58
+after:
+  buzz 819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health <absent>
+issue58: rolled back; 4/4 entries byte-identical to 595c0cfe
+
+=================== 10-verify-2-old.txt
+issue58 verify: target=/private/tmp/buzz58-r2-20260930-135556/final/instance expect=old
+  buzz 819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health <absent>
+PASS buzz is the 595c0cfe entry
+PASS agent-executor is the 595c0cfe entry
+PASS agent-harness is the 595c0cfe entry
+PASS agent-worktree is the 595c0cfe entry
+PASS no bin/buzz-health
+PASS bin/buzz --help rc=0
+PASS buzz-health ok (exit 0) -> /private/tmp/buzz58-r2-20260930-135556/final/evidence/health-2-old.json
+buzz-acp pids (18): 56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632
+managed-agents.json sha256: f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7
+PASS buzz-acp pid set unchanged
+PASS managed-agents.json unchanged
+VERIFY PASS
+
+=================== 11-copy-entries-after-rollback.txt
+819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31  buzz  expected_595=819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31  live=819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f  agent-executor  expected_595=60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f  live=60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c  agent-harness  expected_595=fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c  live=fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23  agent-worktree  expected_595=73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23  live=73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+README.md after rollback: byte-identical to live
+
+=================== 12-agent-harness-retirement.txt
+buzz-acp processes: 18
+  BUZZ_ACP_AGENT_COMMAND=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin: 18
+  pointing at agent-harness: 0
+  pointing at lab/buzz/bin/*: 0
+grep -c agent-harness managed-agents.json: 0
+grep -c agent-harness custom_harnesses/grok.json: 0
+grep -c agent-harness custom_harnesses/seatbelt-grok-f66ef5e.json: 0
+grep -c agent-harness custom_harnesses/seatbelt-grok-medium-preview.json: 0
+lab/buzz/bin/* in managed-agents.json:  9 lab/buzz/bin/agent-executor;
+processes whose command line names lab/buzz/bin (excluding this probe): 0
+
+=================== 14-live-after.txt
+# 2026-09-30 13:56:38 CST
+## ls -l ~/lab/buzz/bin
+total 96
+-rwx------  1 xupeng  staff  196 Sep 30 08:59 agent-executor
+-rwx------  1 xupeng  staff  196 Sep 23 14:26 agent-executor.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  196 Sep 23 22:26 agent-executor.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  195 Sep 30 08:59 agent-harness
+-rwx------  1 xupeng  staff  195 Sep 23 14:26 agent-harness.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  195 Sep 23 22:26 agent-harness.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  187 Sep 30 08:59 agent-worktree
+-rwx------  1 xupeng  staff  187 Sep 23 14:26 agent-worktree.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  187 Sep 23 22:26 agent-worktree.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  185 Sep 30 08:59 buzz
+-rwx------  1 xupeng  staff  185 Sep 23 14:26 buzz.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  185 Sep 23 22:26 buzz.bak-pin-20260923-222646
+## sha256 live entries + README
+819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31  bin/buzz
+60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f  bin/agent-executor
+fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c  bin/agent-harness
+73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23  bin/agent-worktree
+<absent>  bin/buzz-health
+31e0b91dfd88e1236c3829fb8a56f28590dceb58dab995afc12f1f316b0b12da  README.md
+## buzz-acp pids (18)
+56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632 
+## managed-agents.json sha256
+f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7
+
+=================== 15-live-diff.txt
+live bin + README + pids + inventory before vs after (ignoring timestamp line):
+IDENTICAL
+pids saved before apply: 56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632
+pids at end of rehearsal: 56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632
+
+=================== 16-redaction-check.txt
+files scanned: 37
+matches for PRIVATE_KEY|nsec1|BUZZ_PRIVATE: 0

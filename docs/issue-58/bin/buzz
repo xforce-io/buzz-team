@@ -1,17 +1,17 @@
 #!/bin/bash
 # ~/lab/buzz/bin/buzz (issue #58): signature gate, then exec the official Buzz CLI.
-# No buzz-team release, no python. Refuses (sends nothing) unless the binary passes
-# `codesign --verify --strict`, is signed by TeamIdentifier EYF346PHUG and has Identifier buzz.
+# No buzz-team release, no python. Refuses (sends nothing, exit 3) unless the binary satisfies
+# an explicit designated requirement: Apple-anchored certificate chain, signing identifier
+# "buzz", leaf certificate subject OU (team) EYF346PHUG. `codesign -dv` fields are self-asserted
+# by the signer and are never used for the decision.
+# Only builtins and /usr/bin/codesign (absolute path) are used.
 # BUZZ58_TEST_OFFICIAL_BUZZ is a test-only override of the binary path; the check still applies.
 set -u
 official="${BUZZ58_TEST_OFFICIAL_BUZZ:-/Applications/Buzz.app/Contents/MacOS/buzz}"
+requirement='=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"'
 refuse() { echo "bin/buzz: refused, nothing sent: $official: $1" >&2; exit 3; }
 [ -x /usr/bin/codesign ] || refuse "/usr/bin/codesign not available"
 [ -f "$official" ] && [ -x "$official" ] || refuse "official binary missing or not executable"
-/usr/bin/codesign --verify --strict "$official" 2>/dev/null || refuse "codesign --verify --strict failed"
-info=$(/usr/bin/codesign -dv "$official" 2>&1) || refuse "codesign -dv failed"
-team=$(printf '%s\n' "$info" | sed -n 's/^TeamIdentifier=//p')
-ident=$(printf '%s\n' "$info" | sed -n 's/^Identifier=//p')
-[ "$team" = "EYF346PHUG" ] || refuse "TeamIdentifier '${team:-none}' is not EYF346PHUG"
-[ "$ident" = "buzz" ] || refuse "Identifier '${ident:-none}' is not buzz"
+/usr/bin/codesign --verify --strict -R "$requirement" "$official" 2>/dev/null \
+  || refuse "codesign --verify --strict -R '$requirement' failed"
 exec "$official" "$@"

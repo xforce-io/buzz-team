@@ -211,39 +211,61 @@ class BuzzHealthTests(unittest.TestCase):
         self.assertNotIn("SECRET", json.dumps(self.evaluate(processes=procs)))
 
 
+REQUIREMENT = '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"'
+SELF_ASSERTED = "Identifier=buzz\nTeamIdentifier=EYF346PHUG\n"
+
+
 class SignatureTests(unittest.TestCase):
+    """buzz-health: only `codesign --verify --strict -R <requirement>` decides; -dv is recorded."""
+
     def setUp(self):
         temp = tempfile.TemporaryDirectory()
         self.addCleanup(temp.cleanup)
         self.binary = Path(temp.name) / "buzz"
         self.binary.write_bytes(b"binary")
 
-    def check(self, verify_rc=0, info="Identifier=buzz\nTeamIdentifier=EYF346PHUG\n"):
+    def check(self, requirement_ok=True, plain_verify_rc=0, info=SELF_ASSERTED):
         calls = []
 
         def runner(argv, **_):
             calls.append(argv)
-            return completed(returncode=verify_rc) if "--verify" in argv else completed(stderr=info)
+            if "--verify" in argv:
+                if "-R" in argv:  # the requirement must be exactly ours and precede the path
+                    i = argv.index("-R")
+                    ok = requirement_ok and argv[i + 1] == REQUIREMENT and argv[-1] == str(self.binary)
+                    return completed(returncode=0 if ok else 3)
+                return completed(returncode=plain_verify_rc)
+            return completed(stderr=info)
         result = health.check_signature(str(self.binary), runner)
         self.assertTrue(all(call[0] == "/usr/bin/codesign" for call in calls))
+        self.calls = calls
         return result
+
+    def test_requirement_text_matches_knox_p2(self):
+        self.assertEqual(health.REQUIREMENT, REQUIREMENT)
 
     def test_valid_signature_passes_and_records_update(self):
         result = self.check()
         self.assertTrue(result["ok"])
+        self.assertEqual(result["requirement"], REQUIREMENT)
+        self.assertEqual((result["team_identifier"], result["identifier"]), ("EYF346PHUG", "buzz"))
         self.assertTrue(result["updated"])
         self.assertIn("official component updated", result["note"])
+        verify = [c for c in self.calls if "--verify" in c]
+        self.assertEqual(verify, [["/usr/bin/codesign", "--verify", "--strict", "-R", REQUIREMENT, str(self.binary)]])
 
-    def test_verify_failure_fails(self):
-        self.assertFalse(self.check(verify_rc=1)["ok"])
-
-    def test_adhoc_signature_without_team_fails(self):
-        result = self.check(info="Identifier=buzz\nSignature=adhoc\nTeamIdentifier=not set\n")
+    def test_self_asserted_team_cannot_pass_without_requirement(self):
+        # Self-signed cert with OU=EYF346PHUG or an ad-hoc copy: plain --verify passes (rc 0) and
+        # -dv says the right team/identifier, but the Apple-anchored requirement fails.
+        result = self.check(requirement_ok=False, plain_verify_rc=0, info=SELF_ASSERTED)
         self.assertFalse(result["ok"])
+        self.assertEqual(result["codesign_verify"], "fail")
+        self.assertEqual(result["problems"], ["codesign --verify --strict -R <requirement> failed"])
 
-    def test_other_team_or_identifier_fails(self):
-        self.assertFalse(self.check(info="Identifier=buzz\nTeamIdentifier=ABCDE12345\n")["ok"])
-        self.assertFalse(self.check(info="Identifier=buzz-acp\nTeamIdentifier=EYF346PHUG\n")["ok"])
+    def test_dv_output_is_not_part_of_the_decision(self):
+        result = self.check(info="Identifier=buzz-5555\nSignature=adhoc\nTeamIdentifier=not set\n")
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["team_identifier"], "not set")  # recorded only
 
     def test_missing_codesign_fails(self):
         def runner(argv, **_):
@@ -252,6 +274,110 @@ class SignatureTests(unittest.TestCase):
 
     def test_missing_binary_fails(self):
         self.assertFalse(health.check_signature(str(self.binary) + ".gone")["ok"])
+
+
+FAKE_CODESIGN = r"""#!/bin/sh
+# Fake codesign for tests. Logs argv (one per line, then ---). Plain --verify always passes and
+# -dv always self-asserts the right team, like an ad-hoc or self-signed copy on macOS; only the
+# requirement check honours FAKE_REQUIREMENT_OK.
+for a in "$@"; do printf '%s\n' "$a" >> "$FAKE_LOG"; done; echo --- >> "$FAKE_LOG"
+case " $* " in
+  *" -dv "*) printf 'Identifier=buzz\nTeamIdentifier=EYF346PHUG\n' >&2; exit 0 ;;
+esac
+prev=""; for a in "$@"; do
+  if [ "$prev" = "-R" ]; then
+    [ "$a" = "$FAKE_EXPECTED_REQ" ] && [ "${FAKE_REQUIREMENT_OK:-0}" = 1 ] && exit 0
+    exit 3
+  fi
+  prev="$a"
+done
+exit 0
+"""
+
+
+def code_lines(text):
+    return "\n".join(line for line in text.splitlines() if not line.lstrip().startswith("#"))
+
+
+class RequirementGateTests(unittest.TestCase):
+    """bin/buzz and common.sh official_signature_ok, run from temp copies whose absolute
+    /usr/bin/codesign path is rewritten to a fake (no test hook is added to the real scripts)."""
+
+    def setUp(self):
+        temp = tempfile.TemporaryDirectory()
+        self.addCleanup(temp.cleanup)
+        self.dir = Path(temp.name)
+        self.fake = self.dir / "fake-codesign"
+        self.fake.write_text(FAKE_CODESIGN)
+        self.fake.chmod(0o755)
+        self.log = self.dir / "codesign.log"
+        self.marker = self.dir / "ran"
+        self.official = self.dir / "official-buzz"
+        self.official.write_text(f'#!/bin/sh\nprintf "%s\\n" "$@" > "{self.marker}"\n')
+        self.official.chmod(0o755)
+        self.buzz = self.rewrite(ISSUE / "bin" / "buzz", "buzz")
+        self.common = self.rewrite(ISSUE / "common.sh", "common.sh")
+
+    def rewrite(self, src, name):
+        text = src.read_text()
+        code = code_lines(text)
+        self.assertIn("/usr/bin/codesign --verify --strict -R ", code)
+        self.assertNotIn("-dv", code)  # -dv output is self-asserted; it must not feed the decision
+        self.assertNotIn("TeamIdentifier", code)
+        out = self.dir / name
+        out.write_text(text.replace("/usr/bin/codesign", str(self.fake)))
+        out.chmod(0o755)
+        return out
+
+    def env(self, requirement_ok):
+        return dict(os.environ, BUZZ58_TEST_OFFICIAL_BUZZ=str(self.official), FAKE_LOG=str(self.log),
+                    FAKE_EXPECTED_REQ=REQUIREMENT, FAKE_REQUIREMENT_OK="1" if requirement_ok else "0")
+
+    def calls(self):
+        chunks = self.log.read_text().split("---\n") if self.log.exists() else []
+        return [c.splitlines() for c in chunks if c]
+
+    def test_requirement_text_is_identical_in_all_three_checks(self):
+        self.assertIn(f"requirement='{REQUIREMENT}'", (ISSUE / "bin" / "buzz").read_text())
+        self.assertIn(f"ISSUE58_REQUIREMENT='{REQUIREMENT}'", (ISSUE / "common.sh").read_text())
+        self.assertEqual(health.REQUIREMENT, REQUIREMENT)
+
+    def test_bin_buzz_uses_only_absolute_external_tools(self):
+        text = code_lines((ISSUE / "bin" / "buzz").read_text())
+        for tool in ("sed", "grep", "awk", "printf"):
+            self.assertNotRegex(text, rf"(^|[|;(\s]){tool}\s")
+        self.assertIn("/usr/bin/codesign --verify --strict -R \"$requirement\" \"$official\"", text)
+
+    def test_bin_buzz_passes_and_execs_with_all_args(self):
+        proc = subprocess.run(["bash", str(self.buzz), "messages", "send", "a b", "--x"], env=self.env(True),
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 0, proc.stderr)
+        self.assertEqual(self.marker.read_text(), "messages\nsend\na b\n--x\n")
+        self.assertEqual(self.calls(), [["--verify", "--strict", "-R", REQUIREMENT, str(self.official)]])
+
+    def test_bin_buzz_refuses_when_requirement_fails_even_if_dv_says_team(self):
+        proc = subprocess.run(["bash", str(self.buzz), "messages", "send"], env=self.env(False),
+                              capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 3)
+        self.assertIn("refused, nothing sent", proc.stderr)
+        self.assertIn(REQUIREMENT, proc.stderr)
+        self.assertFalse(self.marker.exists())
+
+    def test_bin_buzz_refuses_missing_binary(self):
+        env = self.env(True)
+        env["BUZZ58_TEST_OFFICIAL_BUZZ"] = str(self.dir / "gone")
+        proc = subprocess.run(["bash", str(self.buzz), "--help"], env=env, capture_output=True, text=True)
+        self.assertEqual(proc.returncode, 3)
+        self.assertEqual(self.calls(), [])
+
+    def test_official_signature_ok_uses_requirement(self):
+        for ok, rc in ((True, 0), (False, 1)):
+            with self.subTest(requirement_ok=ok):
+                self.log.unlink(missing_ok=True)
+                proc = subprocess.run(["bash", "-c", f'source "{self.common}"; official_signature_ok'],
+                                      env=self.env(ok), capture_output=True, text=True)
+                self.assertEqual(proc.returncode != 0, rc != 0, proc.stderr)
+                self.assertEqual(self.calls(), [["--verify", "--strict", "-R", REQUIREMENT, str(self.official)]])
 
 
 @unittest.skipIf(Path("/usr/bin/codesign").exists(), "fail-closed path needs a host without codesign")
@@ -331,6 +457,8 @@ class ApplyRollbackTests(unittest.TestCase):
         rolled = self.run_script("rollback.sh", "--from-template")
         self.assertEqual(rolled.returncode, 0, rolled.stderr)
         self.assertEqual({p.name: p.read_bytes() for p in (self.target / "bin").iterdir()}, self.original)
+        self.assertIn("README.md is NOT restored and must be restored manually", rolled.stdout)
+        self.assertIn("README.md NOT restored (--from-template)", rolled.stdout.splitlines()[-1])
 
     def test_rollback_refuses_tampered_backup(self):
         self.assertEqual(self.run_script("apply.sh").returncode, 0)

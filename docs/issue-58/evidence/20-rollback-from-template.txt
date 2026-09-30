@@ -1,0 +1,24 @@
+# 2026-09-30 14:27:57 CST  P3b: rollback.sh --from-template on a /tmp copy of ~/lab/buzz/{bin,README.md} (target /tmp/buzz58-r2-20260930-135556/tpl)
+## apply.sh --target <copy>
+issue58: official buzz CLI signature OK (codesign --verify --strict -R '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"')
+issue58: applied. Rollback: <r2>/src/docs/issue-58/rollback.sh --target /private/tmp/buzz58-r2-20260930-135556/tpl --backup /private/tmp/buzz58-r2-20260930-135556/tpl/backups/20260930-142758-issue58
+## rollback.sh --target <copy> --from-template (full output)
+issue58: target=/private/tmp/buzz58-r2-20260930-135556/tpl live=no
+before:
+  buzz 92e53f333aecd8b8fe216578004e4035252393ea49e516518fa7fee80a04b792
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness <absent>
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health cd58c77fc964ea8d47d0f00553a57306d5d103492f002276ea15efba65609e96
+issue58: source=template (595c0cfe)
+issue58: NOTE: --from-template restores the four bin/ entries only; README.md is NOT restored and must be restored manually (e.g. from backups/<ts>-issue58/README.md)
+after:
+  buzz 819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health <absent>
+issue58: rolled back; 4/4 entries byte-identical to 595c0cfe
+issue58: README.md NOT restored (--from-template): restore /private/tmp/buzz58-r2-20260930-135556/tpl/README.md manually
+rollback rc=0
+## README.md after --from-template vs live: differs (expected: README not restored, still the #58 text)

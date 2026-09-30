@@ -2,7 +2,8 @@
 # Issue #58 rollback: restore the four 595c0cfe entries and README.md, remove bin/buzz-health.
 # Source: the apply backup (default: path in <target>/backups/issue58-latest), or
 # --from-template to regenerate the canonical 595c0cfe entries when no backup is usable
-# (README is then left as is). Every restored entry must match the recorded 595c0cfe sha256.
+# (README.md is then NOT restored and must be restored manually; the script prints this).
+# Every restored entry must match the recorded 595c0cfe sha256.
 # Does not restart Desktop or touch any process.
 #
 # Usage: rollback.sh [--target DIR] [--backup DIR | --from-template]
@@ -29,6 +30,7 @@ trap 'rm -rf "$STAGE"' EXIT
 if [ "$TEMPLATE" = yes ]; then
   for e in $ENTRIES; do entry_595_text "$e" > "$STAGE/$e"; done
   echo "issue58: source=template (595c0cfe)"
+  echo "issue58: NOTE: --from-template restores the four bin/ entries only; README.md is NOT restored and must be restored manually (e.g. from backups/<ts>-issue58/README.md)"
 else
   if [ -z "$B" ]; then
     [ -f "$TARGET/backups/issue58-latest" ] || die "no --backup and no backups/issue58-latest"
@@ -63,3 +65,6 @@ for e in $ENTRIES; do
 done
 [ ! -e "$BIN/buzz-health" ] || die "buzz-health still present"
 echo "issue58: rolled back; 4/4 entries byte-identical to 595c0cfe"
+if [ "$TEMPLATE" = yes ]; then
+  echo "issue58: README.md NOT restored (--from-template): restore $TARGET/README.md manually"
+fi

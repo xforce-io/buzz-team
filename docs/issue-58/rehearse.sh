@@ -74,12 +74,15 @@ cp "$OFFICIAL_BUZZ" "$N/official-copy/buzz"
 cp "$OFFICIAL_BUZZ" "$N/adhoc/buzz"; /usr/bin/codesign --force -s - "$N/adhoc/buzz" 2>/dev/null
 cp "$OFFICIAL_BUZZ" "$N/modified/buzz"; printf '\0' >> "$N/modified/buzz"
 {
+  echo "requirement: $ISSUE58_REQUIREMENT"
   for case_ in live:"$OFFICIAL_BUZZ" official-copy:"$N/official-copy/buzz" adhoc:"$N/adhoc/buzz" modified:"$N/modified/buzz"; do
     name="${case_%%:*}"; bin="${case_#*:}"
     echo "### $name  $bin"
     echo "sha256=$(sha256_of "$bin")"
-    /usr/bin/codesign --verify --strict "$bin" >/dev/null 2>&1 && echo "codesign --verify --strict: rc=0" || echo "codesign --verify --strict: rc=$?"
-    /usr/bin/codesign -dv "$bin" 2>&1 | grep -E '^(Identifier|TeamIdentifier|Signature)=' || true
+    /usr/bin/codesign --verify --strict -R "$ISSUE58_REQUIREMENT" "$bin" >/dev/null 2>&1 && echo "codesign --verify --strict -R <requirement> (decides): rc=0" || echo "codesign --verify --strict -R <requirement> (decides): rc=$?"
+    /usr/bin/codesign --verify --strict "$bin" >/dev/null 2>&1 && echo "codesign --verify --strict without -R (record only): rc=0" || echo "codesign --verify --strict without -R (record only): rc=$?"
+    echo "codesign -dv (self-asserted, record only):"
+    /usr/bin/codesign -dv "$bin" 2>&1 | grep -E '^(Identifier|TeamIdentifier|Signature)=' | sed 's/^/  /' || true
     if [ "$name" = live ]; then
       out=$("$C/bin/buzz" --help 2>&1 >/dev/null) && rc=0 || rc=$?
     else

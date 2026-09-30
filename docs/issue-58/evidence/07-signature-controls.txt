@@ -31,3 +31,8 @@ TeamIdentifier=EYF346PHUG
 bin/buzz --help: rc=3 stderr=bin/buzz: refused, nothing sent: /private/tmp/buzz58-rehearsal-20260930-130602/final/neg/modified/buzz: codesign --verify --strict failed
 buzz-health: exit=2 ok=False failures=['official buzz signature check failed'] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
   official_buzz: verify=fail team=EYF346PHUG id=buzz version=None updated=True problems=['codesign --verify --strict failed']
+
+### addendum (r2, 2026-09-30): this file is the r1 run of the pre-r2 gate (plain `--verify --strict` + TeamIdentifier/
+### Identifier parsed from `codesign -dv`). Knox r2 P2: the ad-hoc copy above already shows `--verify --strict` rc=0, and
+### -dv fields are self-asserted. r2 replaces the decision with `codesign --verify --strict -R '<requirement>'`; the rerun
+### of these four cases is in 19-rehearsal-r2.txt (section 07), the self-signed OU=EYF346PHUG case in 18.

@@ -40,7 +40,7 @@ if [ -n "${ISSUE58_TEST_SKIP_SIGNATURE:-}" ]; then
   echo "issue58: TEST HOOK: signature precheck skipped (temp targets only)"
 else
   official_signature_ok || die "official buzz CLI fails the signature gate; new bin/buzz would refuse to send"
-  echo "issue58: official buzz CLI signature OK (codesign --strict, TeamIdentifier EYF346PHUG)"
+  echo "issue58: official buzz CLI signature OK (codesign --verify --strict -R '$ISSUE58_REQUIREMENT')"
 fi
 
 # ---- backup
