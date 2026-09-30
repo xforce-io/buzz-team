@@ -4,6 +4,8 @@
 
 范围限制：不开放整个 `~/kairo`，不开放 `/private/tmp`；不改另外 8 个席位的 `write_paths`、档位和 prompt；不动 thin-bin pin、runtime/ACP、thin 代码（`src/` 未改），也不改上游 block/buzz。
 
+结论：#57 已于 2026-10-01 按本票范围判通过并关闭，详见文末「#57 收尾结论（2026-10-01）」。RUN3 未退出，已转 #64。
+
 ## 新策略（`zhouheng-seatbelt.json`，sha256 `8b402ff8…0868d`）
 
 只改 `write_paths`，由 `[]` 改为 5 条，其余四个字段逐字不变。thin 把每条路径生成一条 seatbelt `subpath` 例外，并要求路径已经存在（`resolve(strict=True)`）。Kairo 用「写 .tmp 再 `os.replace`」落盘，需要父目录可写，所以只能按目录放行，无法按单个文件放行。
@@ -39,6 +41,8 @@
 ## 元宝 relay 不再管理（peng 2026-09-30 14:21）
 
 本轮 live window 只管理周衡的本地 relay 进程（`ws://127.0.0.1:3000`）：peng 只在本地周衡 row 的 `relay_url=ws://127.0.0.1:3000` 上粘贴规则并保存，然后只停、启本地周衡。定义 row（`relay_url` 为空）和任何非本地 row 只记录，不作为通过/失败或停止条件；不能按 row index 选本地 row。
+
+> **更正（2026-10-01）**：prompt 的编辑位置以下文「定义行与本地实例行」为准：规则在定义窗口（Agent instructions）粘贴或删除，不在本地实例 row 上改。本地 row 启动时会从定义行复制 prompt。通过/失败仍只看本地周衡。
 
 策略文件由两个周衡进程共享（相同的 `BUZZ_TEAM_POLICY_PATH`）。apply 后，元宝周衡会在自己的下一次重启（Desktop 重启、保存配置触发的 auto restart，或 Mac 重启）前继续在内存中使用旧策略；下一次重启后会加载新的 write_paths，但没有验收。rollback 同样只有在元宝下一次重启后才到达元宝。若要分离，需要通过 `managed-agents.json` 指向单独策略文件，超出本单范围。元宝状态仍记录在 evidence 中，但永远不是 pass/fail 或 stop condition。
 
@@ -117,6 +121,9 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
    2. 立即在 Desktop 里只操作本地社区的周衡：停止本地周衡；在 managed-agents.json 中 `relay_url=ws://127.0.0.1:3000` 的周衡 row（当前 index 15 仅作提示，不作为定位依据）的 System prompt 末尾（最后一条「完成标准是获得退出结果……」之后）另起一行，粘贴 `zhouheng-prompt-rule.md` 的内容并保存；启动本地周衡。不要改 `relay_url` 为空的定义 row，也不要改任何元宝 row。
 
    Hogan 看本地周衡旧进程退出并出现新的本地启动日志；不操作元宝周衡。先停再改 prompt，这样即使定义行设置了 `auto_restart_on_config_change` 引发重启，也会用新 prompt 启动。apply 或停、启操作中止时，立即执行 R 并确认旧 sha 后才停止。
+
+   > **更正（2026-10-01）**：本步「在本地 row 上粘贴、不要改定义 row」的写法不对。本地周衡的 prompt 唯一来源是定义行，本地 row 启动时从定义行复制。正确做法是：先停止本地周衡；停止状态下，在**定义窗口**（Agent instructions）的末尾另起一行，粘贴 `zhouheng-prompt-rule.md` 的内容并保存；然后启动。详见「定义行与本地实例行」。运行中保存会触发 `auto_restart_on_config_change`，这时按 R 的情况 3 处理。
+
 4. 改后核对（只读）：`bash verify.sh --relays local --expect new --prompt present --compare-state $D/state-before.json --restarted > $D/05-verify-new.txt`，必须 PASS。该检查要求：
    - 本地 relay 恰有一个**新 pid** 的周衡进程；
    - 本地另外 8 个席位的 pid 不变；
@@ -146,9 +153,74 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 | e | 本地 relay 60 秒内没有 ESTABLISHED | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
 | f | 本地周衡 prompt 规则计数不是 1 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
 
-**回滚 R：**
-1. 只要 apply 已执行或新文件可能已存在，立即执行 `ISSUE57_I_UNDERSTAND_LIVE=yes bash rollback.sh`（输出必须是 sha256 `9e087351…`，`_load_policy` 通过）；
-2. 如果本地周衡已经以新策略重启，peng 在 UI 里停止本地周衡，恢复后再启动一次本地周衡；元宝不操作。
-3. `bash verify.sh --relays local --expect old --prompt absent --compare-state $D/state-before.json --restarted` 必须 PASS。
+**回滚 R（三种情况；Knox 2026-09-30 14:38 定，15:30 细化）：**
 
-未取得同意时不要执行 apply，也不需要 rollback；备份不可用时用 `rollback.sh --from-template`。
+任何停止条件触发后，都先做第 1 步，再按当时所处的情况做第 2、3 步。
+
+1. **所有情况都先回滚策略**：只要 apply 已执行，或新文件可能已经存在，立即执行 `ISSUE57_I_UNDERSTAND_LIVE=yes bash rollback.sh`。输出必须显示 sha256 为 `9e087351…`，`_load_policy` 通过；确认 sha 之后才进入下一步。备份不可用时用 `rollback.sh --from-template`。
+2. **按情况处理周衡**（只操作本地周衡，元宝不操作）：
+
+   | 情况 | 当时状态 | 第 2 步 | 第 3 步 verify |
+   |---|---|---|---|
+   | 1 | apply 之后中止，周衡**从未停止** | 不操作周衡 | 不带 `--restarted` |
+   | 2 | 周衡**已停止**，规则**未粘贴** | peng 启动周衡 | 带 `--restarted` |
+   | 3 | 规则**已粘贴**（不论周衡是否已启动） | 周衡若在运行，peng 先停止它。停止状态下，在**定义窗口**（Agent instructions）删掉规则行并保存，然后启动 | 带 `--restarted` |
+
+   情况 3 的这次停、启同时满足 Knox P3「如果周衡已经以新策略启动过，回滚后要重启一次」。只能停止后再保存，原因见「定义行与本地实例行」。
+3. **只读核对**，必须 VERIFY PASS：
+   - 情况 1：`bash verify.sh --relays local --expect old --prompt absent --compare-state $D/state-before.json`
+   - 情况 2、3：`bash verify.sh --relays local --expect old --prompt absent --compare-state $D/state-before.json --restarted`
+
+**verify 出现任何 FAIL：停止，照实报 Jenny，不即兴处理**（不 kill、不退出 Desktop、不动其他席位、不重复停启）。
+
+未取得同意时不要执行 apply，也不需要 rollback。
+
+## 定义行与本地实例行（prompt 唯一来源）
+
+- 本地周衡 prompt 的**唯一来源是定义行**：`managed-agents.json` row 9，slug `zhufeng-pj`。
+- 本地 row 15（`relay_url=ws://127.0.0.1:3000`）是链接到定义行的实例，**启动时从定义行复制 prompt**。引用这个定义行的只有 row 15。
+- 编辑 prompt 只在 Desktop 的**定义窗口**（Agent instructions）里做，不在实例 row 上改。官方 CLI 不能单独停、启一个席位，停、启都在 Desktop UI 里做。
+- **只能在周衡停止时保存。** 运行中保存会触发 `auto_restart_on_config_change`，周衡会被自动重启，这时按 R 的情况 3 处理。
+- 上面的 row 编号只是提示，不能作为定位依据。定位看 slug 和 `relay_url`（verify/snapshot 就是这样找 row 的）。
+
+## 窗口后 `managed-agents.json` 允许的差异
+
+窗口结束后，把现役 `managed-agents.json` 和窗口前的副本分别用 `jq -S .` 规范化，再做 diff。只允许下面这些差异：
+
+- row 9（定义行）的 prompt 只多出规则行，且恰好一次；
+- row 15（本地实例）的 prompt 与 row 9 的新 prompt 完全相同；
+- 时间戳字段；
+- `persona_source_version`：用改前、改后两份 prompt 各自重算一次，结果要分别对得上。可以用 Hogan 的 pshash 脚本取证；
+- 运行状态字段，例如 `last_exit_code`。
+
+除此之外，任何 row 只要有其他字节变化，就判 FAIL。回滚后同样按这个口径检查：row 9、row 15 的 prompt 要回到改前内容。
+
+## Desktop 重启后的基线变体（peng 2026-09-30 22:41）
+
+如果窗口前后 Desktop 重启过（例如 Mac 睡眠或电池模式下退出后重新打开），重启后的 pid 全部是新的，不能再用 `state-before.json` 比对 pid。改用下面的基线：
+
+1. 重启方式：只用终端带六个代理变量打开，不加 `-n`：
+   `X=http://127.0.0.1:9567; open -a Buzz --env HTTP_PROXY=$X --env HTTPS_PROXY=$X --env ALL_PROXY=$X --env http_proxy=$X --env https_proxy=$X --env all_proxy=$X`
+2. 重启后先取快照：`bash snapshot.sh --out $D/state-relaunch.json > $D/state-relaunch.txt`。
+3. `bash verify.sh --relays local --expect new --prompt present`，**不带** `--restarted`，也不带 `--compare-state`，必须 PASS。
+4. 另外逐项确认，任一不符就停止并报 Jenny：
+   - 本地 row 的 `rule_count=1`；
+   - 周衡策略 sha 与重启前一致（仍为 `8b402ff8…`）；
+   - 另外 8 个席位的策略 sha 与 `$D/state-before.json` 的 `policies` 一致（pid 不比对）；
+   - 本地周衡的环境变量和六个代理变量正确；
+   - 本地 relay `:3000` 为 ESTABLISHED；
+   - row 9 与 row 15 的 prompt 完全相同（快照里两行的 `system_prompt_sha256` 相等）；
+   - Mac 接着电源（`pmset -g batt` 显示 `AC Power`）。
+
+## 证据规则（Knox 2026-10-01）
+
+沙箱相关验收**不能用「Sandbox 日志或统一日志里查不到拒绝」作证据**，因为 seatbelt 写拒绝不进统一日志，见 #63。只能用 run 日志加 probe 对照：`probe.sh` 的预期 EPERM 必须全部触发。
+
+## #57 收尾结论（2026-10-01）
+
+- **peng 00:35 选择 B**：#57 按本票范围判通过、关闭，`human:required`。验收口径是在看到结果后调整的，已获 peng 同意。
+- **Knox 00:40 最终裁定：PASS**（`human:required`，范围只限本票）。
+  - 代码：daf05e3，合入提交 cc39f8d。
+  - 证据：`$D/11-*`、`$D/12-*`、`$D/13-*`，其中 `$D` = `~/lab/buzz/evidence/issue57-live-20260930-151341`。
+  - 依据：在策略 `8b402ff8…` 下，RUN1、RUN2 退出码 0 且写出 notes；`~/kairo` 下写拒绝 0 次；策略 diff 只新增写入路径。
+- **RUN3 不计入通过证据。** RUN3（`20260930 093139.m4a`）没有退出，也没有写出 notes。原因是 buzz-acp 的 idle pool teardown 杀掉了席位的后台长任务。席位长任务还受 buzz-acp 另外几道时限约束，这些都转到 runtime 单 #64 处理。
