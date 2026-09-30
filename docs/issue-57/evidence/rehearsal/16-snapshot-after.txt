@@ -1,4 +1,4 @@
-# issue57 snapshot 2026-09-30 13:49:46 CST
+# issue57 snapshot 2026-09-30 14:31:04 CST
 # buzz-acp processes: 18
 relay	seat	pid	lstart	BUZZ_ACP_AGENT_COMMAND	BUZZ_TEAM_POLICY_PATH	KAIRO_PROVIDER	proxies(6)	relay_state	grok_children
 local	fangwei	56581	Sat Sep 26 21:26:14 2026	/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin	/Users/xupeng/lab/buzz/policies/fangwei-seatbelt.json	grok	HTTP_PROXY=http://127.0.0.1:9567,HTTPS_PROXY=http://127.0.0.1:9567,ALL_PROXY=socks5://127.0.0.1:9567,http_proxy=http://127.0.0.1:9567,https_proxy=http://127.0.0.1:9567,all_proxy=socks5://127.0.0.1:9567	ESTABLISHED :3000	56582,56583

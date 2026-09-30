@@ -34,26 +34,26 @@ live_state "$E/02-live-before.txt"
 bash "$ISSUE57_DIR/snapshot.sh" --out "$W/snapshot-before.json" > "$E/03-snapshot-before.txt"
 
 echo "== 1. live pre-state verify (read-only, expect old)"
-bash "$ISSUE57_DIR/verify.sh" --expect old --prompt absent > "$E/04-verify-live-pre-old.txt" 2>&1 || true
+bash "$ISSUE57_DIR/verify.sh" --relays local --expect old --prompt absent > "$E/04-verify-live-pre-old.txt" 2>&1 || true
 
 echo "== 2. temp copies"
 mkdir "$C"; chmod 700 "$C"
 cp -p "$LIVE"/*.json "$C/"
 cp -p "$INVENTORY" "$MA"; chmod 600 "$MA"
 { echo "## copy policies"; print_policy_hashes "$C"; echo "managed-agents.json copy $(sha256_of "$MA")"; } > "$E/05-copy-before.txt"
-bash "$ISSUE57_DIR/verify.sh" --target "$C" --expect old --static-only --inventory "$MA" --prompt absent > "$E/06-verify-copy-0-old.txt" 2>&1 || true
+bash "$ISSUE57_DIR/verify.sh" --relays local --target "$C" --expect old --static-only --inventory "$MA" --prompt absent > "$E/06-verify-copy-0-old.txt" 2>&1 || true
 
 echo "== 3. apply on copy"
 [ "$C" != "$LIVE" ] || die "refusing: target is live"
 bash "$ISSUE57_DIR/apply.sh" --target "$C" --inventory "$MA" > "$E/07-apply.txt" 2>&1
-bash "$ISSUE57_DIR/verify.sh" --target "$C" --expect new --static-only --inventory "$MA" --prompt present > "$E/08-verify-copy-1-new.txt" 2>&1 || true
+bash "$ISSUE57_DIR/verify.sh" --relays local --target "$C" --expect new --static-only --inventory "$MA" --prompt present > "$E/08-verify-copy-1-new.txt" 2>&1 || true
 
 echo "== 4. sandbox probe with the applied copy"
 bash "$ISSUE57_DIR/probe.sh" --policy "$C/$POLICY_NAME" --workdir "$W/probe" --out "$E/09-probe" > /dev/null 2>&1 || true
 
 echo "== 5. rollback (backup) on copy"
 bash "$ISSUE57_DIR/rollback.sh" --target "$C" --inventory "$MA" > "$E/10-rollback.txt" 2>&1
-bash "$ISSUE57_DIR/verify.sh" --target "$C" --expect old --static-only --inventory "$MA" --prompt absent > "$E/11-verify-copy-2-old.txt" 2>&1 || true
+bash "$ISSUE57_DIR/verify.sh" --relays local --target "$C" --expect old --static-only --inventory "$MA" --prompt absent > "$E/11-verify-copy-2-old.txt" 2>&1 || true
 { echo "## copy after rollback"; print_policy_hashes "$C"; echo "managed-agents.json copy $(sha256_of "$MA")"
   echo "## live"; print_policy_hashes "$LIVE"; echo "managed-agents.json live $(sha256_of "$INVENTORY")"
   cmp "$C/$POLICY_NAME" "$LIVE/$POLICY_NAME" && echo "zhouheng policy: copy byte-identical to live (9e087351)"
@@ -84,7 +84,7 @@ for p in procs:
         p["env"]["GROK_HOME"] = p["env"].get("GROK_HOME", "")
 json.dump(procs, open(sys.argv[2], "w"))
 PY
-  ISSUE57_TEST_PS_FIXTURE="$W/fixture-missing-policy.json" bash "$ISSUE57_DIR/verify.sh" --expect old 2>&1 | grep -E "NOTE|FAIL|VERIFY" || true
+  ISSUE57_TEST_PS_FIXTURE="$W/fixture-missing-policy.json" bash "$ISSUE57_DIR/verify.sh" --relays local --expect old 2>&1 | grep -E "NOTE|FAIL|VERIFY" || true
 } > "$E/14-negatives.txt" 2>&1
 
 echo "== 8. live after"

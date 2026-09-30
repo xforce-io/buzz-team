@@ -8,7 +8,7 @@
     "url": "file:///Users/xupeng/lab/buzz/evidence/release-53/cb63521aa8572831691e823c4745b34c2bb6a696/buzz_team-0.1.0-py3-none-any.whl",
     "package_sha": "cb63521aa8572831691e823c4745b34c2bb6a696"
   },
-  "policy": "/Users/xupeng/scout57-rehearsal-20260930/run/probe/policy/zhouheng-seatbelt.json",
+  "policy": "/Users/xupeng/bt57-r3-work/probe/policy/zhouheng-seatbelt.json",
   "policy_sha256": "8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d",
   "policy_mode": "0o600",
   "grok_home": "/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e/grok",

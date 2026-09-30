@@ -1,19 +1,19 @@
-date: 2026-09-30 13:49:20 CST
-repo_sha: c7a016b6cc831ba30aed4fcfae8371df380122c8
+date: 2026-09-30 14:30:32 CST
+repo_sha: bf5fddc76068df48dc2322c8602363d12605a759
 ProductName:  macOS
 ProductVersion:  26.6.2
 BuildVersion:  25G83
-workdir: /Users/xupeng/scout57-rehearsal-20260930/run
+workdir: /Users/xupeng/bt57-r3-work
 thin python: /Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python (3.14.0)
 git blob ids of the rehearsed files:
   43e95213bc5d4f6f5b02da837380123375405e75  common.sh
   b03b43cbab9719c5768eb38ac72d3f04dc7b5c34  apply.sh
   23be19b8da7cc251c171761fcc9072c4eee7384d  rollback.sh
-  409ac5e71944ff8303adda97b858963096376bd5  verify.sh
+  afd07396784edd97f13d40df50715fdb7d1b4254  verify.sh
   e7de03d6c7fc16698b526dbb4bb1dcbfcb674097  snapshot.sh
   1e9c799704038c5d5a4cd31b4db644429416dda5  probe.sh
-  462cd7dfa4012c148e92c608499fbd5df4486b8c  rehearse.sh
-  922aeb5445bdec3eaeb9b6fbac3739dbc661f8cf  issue57.py
+  181a510b94a66d7c7c270b53e952ecdf45f061b6  rehearse.sh
+  ce54c61773f17ed634bb96b121512756c3d65c21  issue57.py
   664c95aad8c57d23a5d4bab405edc0ab88ce84c3  zhouheng-seatbelt.json
   5e13d140a0481d76b33a8efd0eaba49ff4c4af1f  zhouheng-seatbelt.before.json
   2f9c2f2e70d75b82ceb9daa9ab479a0cfa218007  zhouheng-prompt-rule.md

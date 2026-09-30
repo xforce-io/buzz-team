@@ -1,4 +1,4 @@
-issue57: target=/Users/xupeng/scout57-rehearsal-20260930/run/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
+issue57: target=/Users/xupeng/bt57-r3-work/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
 before:
   af0cf59d0cafe925161618d43be369d17c9b5febff8c9e13b47a95b7cc7cf22d  fangwei-seatbelt.json
   9085ca476e62c3e529f4a2f07210e52802b2ab2eee034a6f76ca6b041c742e17  hanchuan-seatbelt.json

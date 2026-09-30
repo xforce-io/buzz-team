@@ -252,6 +252,8 @@ def verify(args) -> int:
             fails.append(text)
 
     print(f"issue57 verify: expect={args.expect} policies={policies} expected 周衡 sha256={expected_sha}")
+    if args.relays == "local":
+        print("relays=local (yuanbao recorded, not gated; peng 2026-09-30 14:21)")
     shas = policy_shas(policies)
     check(shas.get(POLICY_NAME) == expected_sha, f"{POLICY_NAME} sha256 {shas.get(POLICY_NAME)}")
     for name, digest in baseline.items():
@@ -266,18 +268,41 @@ def verify(args) -> int:
     if rule and args.prompt != "skip":
         want = 1 if args.prompt == "present" else 0
         rows = prompt_rows(Path(args.inventory), rule)
-        check(len(rows) == 2, f"2 周衡 managed-agents rows in {args.inventory} ({[r['index'] for r in rows]})")
-        for row in rows:
-            check(row["rule_count"] == want, f"row {row['index']} prompt rule count {row['rule_count']} (want {want})")
+        if args.relays == "all":
+            check(len(rows) == 2, f"2 周衡 managed-agents rows in {args.inventory} ({[r['index'] for r in rows]})")
+            for row in rows:
+                check(row["rule_count"] == want, f"row {row['index']} prompt rule count {row['rule_count']} (want {want})")
+        else:
+            local_rows = [r for r in rows if r["relay_url"].rstrip("/") == RELAYS["local"]]
+            check(len(local_rows) == 1,
+                  f"1 local 周衡 managed-agents row in {args.inventory} ({[r['index'] for r in local_rows]})")
+            for row in rows:
+                if row in local_rows:
+                    check(row["rule_count"] == want, f"row {row['index']} prompt rule count {row['rule_count']} (want {want})")
+                else:
+                    print(f"INFO prompt row {row['index']} relay={row['relay_url'] or '<definition>'} rule_count={row['rule_count']} (not gated)")
 
     if not args.static_only:
         snap = snapshot(policies, Path(args.inventory), rule, args.ps_fixture)
         procs = snap["processes"]
         if snap["fixture"]:
             print("NOTE processes come from a TEST FIXTURE")
-        check(len(procs) == 18, f"18 buzz-acp processes ({len(procs)})")
-        for relay in RELAYS:
+        if args.relays == "all":
+            check(len(procs) == 18, f"18 buzz-acp processes ({len(procs)})")
+        else:
+            local_procs = [p for p in procs if relay_of(p) == "local"]
+            yuanbao_procs = [p for p in procs if relay_of(p) == "yuanbao"]
+            check(len(local_procs) == 9, f"9 local buzz-acp processes ({len(local_procs)})")
+            print(f"INFO [yuanbao] buzz-acp processes recorded ({len(yuanbao_procs)}) (not gated)")
+        relays = RELAYS if args.relays == "all" else {"local": RELAYS["local"]}
+        for relay in relays:
             mine = [p for p in procs if is_zhouheng(p) and relay_of(p) == relay]
+            if args.relays == "local":
+                recorded = [p for p in procs if is_zhouheng(p) and relay_of(p) == "yuanbao"]
+                for p in recorded:
+                    path = p["env"].get("BUZZ_TEAM_POLICY_PATH", "")
+                    digest = sha256_file(Path(path)) if path and Path(path).is_file() else "unreadable"
+                    print(f"INFO [yuanbao] pid {p['pid']} BUZZ_TEAM_POLICY_PATH={path or '<missing>'} policy-in-env sha256 {digest} relay state {relay_state(p)} (not gated)")
             check(len(mine) == 1, f"[{relay}] exactly one 周衡 buzz-acp ({[p['pid'] for p in mine]})")
             for p in mine:
                 env = p["env"]
@@ -302,7 +327,14 @@ def verify(args) -> int:
             before = json.loads(Path(args.compare_state).read_text())
             old = {(relay_of(p), seat_of(p)): p["pid"] for p in before["processes"]}
             new = {(relay_of(p), seat_of(p)): p["pid"] for p in procs}
-            for key in sorted(set(old) | set(new)):
+            if args.relays == "all":
+                keys = sorted(set(old) | set(new))
+            else:
+                keys = sorted(k for k in set(old) | set(new) if k[0] == "local")
+                old_yh, new_yh = old.get(("yuanbao", "zhouheng")), new.get(("yuanbao", "zhouheng"))
+                if old_yh != new_yh:
+                    print(f"WARN [yuanbao] 周衡 pid changed {old_yh} -> {new_yh}; now running unverified new policy")
+            for key in keys:
                 if key[1] == "zhouheng":
                     if args.restarted:
                         check(new.get(key) not in (None, old.get(key)), f"[{key[0]}] 周衡 new pid {old.get(key)} -> {new.get(key)}")
@@ -380,6 +412,7 @@ def main(argv=None) -> int:
     v.add_argument("--inventory", default=str(INVENTORY))
     v.add_argument("--rule")
     v.add_argument("--prompt", choices=("present", "absent", "skip"), default="skip")
+    v.add_argument("--relays", choices=("local", "all"), default="all")
     v.add_argument("--thin-python")
     v.add_argument("--static-only", action="store_true")
     v.add_argument("--old-sha", default=OLD_SHA)

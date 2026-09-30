@@ -9,7 +9,7 @@
 # must show no thin launch failure ("BUZZ_TEAM_POLICY_PATH must be an absolute path", exit 126).
 #
 # Usage: verify.sh [--target POLICY_DIR] --expect old|new [--static-only] [--inventory FILE]
-#                  [--prompt present|absent|skip] [--save-state FILE] [--compare-state FILE [--restarted]]
+#                  [--prompt present|absent|skip] [--relays local|all] [--save-state FILE] [--compare-state FILE [--restarted]]
 set -euo pipefail
 source "$(cd "$(dirname "$0")" && pwd)/common.sh"
 
@@ -17,7 +17,7 @@ T=""; ARGS=(); SAVE=""; INV="$INVENTORY"
 while [ $# -gt 0 ]; do
   case "$1" in
     --target) T="$2"; shift 2 ;;
-    --expect|--prompt|--compare-state) ARGS+=("$1" "$2"); shift 2 ;;
+    --expect|--prompt|--relays|--compare-state) ARGS+=("$1" "$2"); shift 2 ;;
     --inventory) INV="$2"; shift 2 ;;
     --static-only|--restarted) ARGS+=("$1"); shift ;;
     --save-state) SAVE="$2"; shift 2 ;;

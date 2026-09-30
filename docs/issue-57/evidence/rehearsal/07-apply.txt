@@ -1,4 +1,4 @@
-issue57: target=/Users/xupeng/scout57-rehearsal-20260930/run/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
+issue57: target=/Users/xupeng/bt57-r3-work/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
 issue57: staged new policy passes thin._load_policy
 before:
   af0cf59d0cafe925161618d43be369d17c9b5febff8c9e13b47a95b7cc7cf22d  fangwei-seatbelt.json
@@ -10,7 +10,7 @@ before:
   7086c4509877558b94b6ecc3deea0f85d8a62b72a32c08bfaf11136186332add  suqing-seatbelt.json
   e2d35950dc7cdc3ea3d6f3aca2bada8cc41ed5c461b00dfc55ed31c41c57148e  weiping-seatbelt.json
   9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23  zhouheng-seatbelt.json
-issue57: backup /Users/xupeng/scout57-rehearsal-20260930/run/policies/zhouheng-seatbelt.json.issue57-20260930-134930.bak (+ /Users/xupeng/scout57-rehearsal-20260930/run/backups/issue57-20260930-134930)
+issue57: backup /Users/xupeng/bt57-r3-work/policies/zhouheng-seatbelt.json.issue57-20260930-143044.bak (+ /Users/xupeng/bt57-r3-work/backups/issue57-20260930-143044)
 issue57: installed policy passes thin._load_policy: PRECHECK PASS policy_sha256=8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d profile_sha256=478b02f3e96aa3a029e56676fdd8b9f820f815b4a0a2578a6b8e66ef007f0a80
 issue57: rule inserted into managed-agents rows [9, 15]
 after:
@@ -24,4 +24,4 @@ after:
   e2d35950dc7cdc3ea3d6f3aca2bada8cc41ed5c461b00dfc55ed31c41c57148e  weiping-seatbelt.json
   8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d  zhouheng-seatbelt.json
 issue57: other 8 policies unchanged
-issue57: applied 8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d. Rollback: /Users/xupeng/scout57-rehearsal-20260930/code/issue-57/rollback.sh --target /Users/xupeng/scout57-rehearsal-20260930/run/policies --inventory /Users/xupeng/scout57-rehearsal-20260930/run/managed-agents.json
+issue57: applied 8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d. Rollback: /Users/xupeng/bt57-r3-code/docs/issue-57/rollback.sh --target /Users/xupeng/bt57-r3-work/policies --inventory /Users/xupeng/bt57-r3-work/managed-agents.json

@@ -1,6 +1,6 @@
 # #57 周衡 seatbelt 放行 Kairo 必需子目录
 
-依据：Issue #57 L1 评论 5871019270。peng 2026-09-28 21:19（北京时间）授权范围；2026-09-30 13:39 经 Jenny 批准设计（peng 在 Jenny 处给出，原文记录在 Scout 职务说明），附两项安全措施；最终放行为 peng 手动合入（见「两项安全措施」）。合入后的生效（重启周衡在本地和元宝两个 relay 上的进程）需要 peng 另行同意，由 Jenny 取得，Hogan 执行。
+依据：Issue #57 L1 评论 5871019270。peng 2026-09-28 21:19（北京时间）授权范围；2026-09-30 13:39 经 Jenny 批准设计（peng 在 Jenny 处给出，原文记录在 Scout 职务说明），附两项安全措施；最终放行为 peng 手动合入（见「两项安全措施」）。合入后的生效只重启周衡的本地 relay 进程（`ws://127.0.0.1:3000`），需要 peng 另行同意，由 Jenny 取得，Hogan 执行；元宝周衡不重启、不改 prompt，也不作为验收条件。
 
 范围限制：不开放整个 `~/kairo`，不开放 `/private/tmp`；不改另外 8 个席位的 `write_paths`、档位和 prompt；不动 thin-bin pin、runtime/ACP、thin 代码（`src/` 未改），也不改上游 block/buzz。
 
@@ -36,6 +36,12 @@
 - 周衡定义行的 `auto_restart_on_config_change=true` 意味着，若新策略文件留在现役目录，保存周衡配置、Desktop 重启或 Mac 重启都可能使它绕过同意门槛而生效；因此同意必须先于 apply，窗口中止或验收失败必须立即回滚到 `9e087351`。
 - **Knox P3 已知项（本轮不改，以保持 rehearsal blob ids 对齐）**：`apply.sh` 在最后“另外 8 份策略 sha”检查退出非 0 时不会自动恢复周衡策略文件，操作者必须立即运行 `rollback.sh` 并确认 `9e087351`；`rollback.sh` 使用裸 `sed`，运行时应确保 PATH 中 `/usr/bin` 优先（或显式记录这一点）。
 
+## 元宝 relay 不再管理（peng 2026-09-30 14:21）
+
+本轮 live window 只管理周衡的本地 relay 进程（`ws://127.0.0.1:3000`）：peng 只在本地周衡 row 的 `relay_url=ws://127.0.0.1:3000` 上粘贴规则并保存，然后只停、启本地周衡。定义 row（`relay_url` 为空）和任何非本地 row 只记录，不作为通过/失败或停止条件；不能按 row index 选本地 row。
+
+策略文件由两个周衡进程共享（相同的 `BUZZ_TEAM_POLICY_PATH`）。apply 后，元宝周衡会在自己的下一次重启（Desktop 重启、保存配置触发的 auto restart，或 Mac 重启）前继续在内存中使用旧策略；下一次重启后会加载新的 write_paths，但没有验收。rollback 同样只有在元宝下一次重启后才到达元宝。若要分离，需要通过 `managed-agents.json` 指向单独策略文件，超出本单范围。元宝状态仍记录在 evidence 中，但永远不是 pass/fail 或 stop condition。
+
 ## 与 L1 文字的差异
 
 1. **周衡 prompt 的现役落点改由 Desktop UI 编辑，不由 apply.sh 写 `managed-agents.json`。** L1 原计划让 apply.sh 往两条 system_prompt 插入规则。但 #38 已实测：Desktop 启动 agent 时会重写 `managed-agents.json`（A6），并且可能用内存中的旧值覆盖（A11，未排除）。本单又不能退出 Desktop（退出会丢掉 `KAIRO_PROVIDER` 和 9567 代理变量），所以在 Desktop 运行时直接写文件，改动可能被悄悄覆盖。现做法：
@@ -61,6 +67,7 @@
 - (a) 待定点 1 放开 `~/kairo/.kairo` 即放开整个 global-home，含 1.3G uploads、其他全局 ref、constitution.yaml、projects/、review-work/。
 - (b) 这些内容由 8787 的 `kairo serve`（pid 76501）直接对外提供，写坏立即可见——L1 未写。
 - (c) 回滚只收回写权限，收不回已写入内容——L1 未写。
+- (d) 共享策略文件意味着元宝周衡会在自己的下一次重启时拾取新 write_paths，但没有验收；窗口内回滚同样要等它下一次重启才到达元宝；分离需要通过 managed-agents.json 使用单独策略文件，超出范围。当前暴露面较小：元宝 relay 目前 403 / CLOSED、没有 inbound messages（`evidence/rehearsal/03-snapshot-before.txt` 记录 CLOSED 与 403 重连；无 inbound messages 为 Knox 观察）。**peng 2026-09-30 14:26 经 Jenny 已接受**。
 
 ## 两项安全措施（peng 2026-09-30 13:39）
 
@@ -103,46 +110,45 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 原则：只停、启周衡，不退出 Desktop，不 kill 任何进程（Desktop 不会拉起被 kill 的 agent，#38 已实测）。出现任何停止条件，照实报 Jenny，不即兴处理。
 
 0. 准备：`D=~/issue57-$(date +%Y%m%d-%H%M%S); mkdir -m 700 $D; git -C <仓库> archive <合入 SHA> docs/issue-57 | tar -x -C $D; cd $D/docs/issue-57`。确认周衡没有进行中的任务（问 peng 或看周衡最近一次回复）。
-1. 改前快照（只读）：`bash snapshot.sh --out $D/state-before.json > $D/01-snapshot-before.txt`，然后 `bash verify.sh --expect old --prompt absent > $D/01-verify-old.txt`，必须是 VERIFY PASS，否则停止。
-2. **报 Jenny，取得 peng 对重启周衡（本地和元宝各一个进程）的同意。** 未获同意就停在这里；此时只做过只读检查，现役策略目录未被写入。
+1. 改前快照（只读）：`bash snapshot.sh --out $D/state-before.json > $D/01-snapshot-before.txt`，然后 `bash verify.sh --relays local --expect old --prompt absent > $D/01-verify-old.txt`，必须是 VERIFY PASS，否则停止；元宝只记录，不作为门禁。
+2. **报 Jenny，取得 peng 对重启周衡本地 relay 进程（`ws://127.0.0.1:3000`）的同意。** 未获同意就停在这里；此时只做过只读检查，现役策略目录未被写入。元宝周衡不重启、不改 prompt。
 3. **只在已获同意的窗口内连续落位并重启：**
    1. 执行 `ISSUE57_I_UNDERSTAND_LIVE=yes bash apply.sh > $D/02-apply.txt 2>&1`，不带 `--inventory`。若退出码非 0（尤其是最后的“另外 8 份策略 sha”检查），立即执行 R 并确认 sha256 回到 `9e087351`，不进入下一步；成功后不得把新文件留给后续重启。
-   2. 立即在 Desktop 里只操作周衡：停止周衡；在 System prompt 末尾（最后一条「完成标准是获得退出结果……」之后）另起一行，粘贴 `zhouheng-prompt-rule.md` 的内容并保存；启动周衡。
+   2. 立即在 Desktop 里只操作本地社区的周衡：停止本地周衡；在 managed-agents.json 中 `relay_url=ws://127.0.0.1:3000` 的周衡 row（当前 index 15 仅作提示，不作为定位依据）的 System prompt 末尾（最后一条「完成标准是获得退出结果……」之后）另起一行，粘贴 `zhouheng-prompt-rule.md` 的内容并保存；启动本地周衡。不要改 `relay_url` 为空的定义 row，也不要改任何元宝 row。
 
-   本地社区、元宝社区各做一次。Hogan 同时看 `ps -p 56568`（本地）和 `ps -p 56430`（元宝）确认旧进程退出，并看 `agents/logs/51fb6cd8…__*.log` 出现 `=== starting 周衡 … ===`。先停再改 prompt，这样即使定义行设置了 `auto_restart_on_config_change` 引发重启，也会用新 prompt 启动。apply 或停、启操作中止时，立即执行 R 并确认旧 sha 后才停止。
-4. 改后核对（只读）：`bash verify.sh --expect new --prompt present --compare-state $D/state-before.json --restarted > $D/05-verify-new.txt`，必须 PASS。该检查要求：
-   - 两个 relay 各有一个**新 pid** 的周衡进程；
-   - 环境变量、策略 sha（`8b402ff8…`）、`KAIRO_PROVIDER=grok`、六个 9567 代理变量都正确；
-   - 有经 thin 启动的 grok 子进程；
-   - 本地 relay 为 ESTABLISHED；
-   - 另外 16 个 buzz-acp 的 pid 不变；
-   - 周衡日志没有 thin 启动失败；
-   - 两条 system_prompt 各含规则一次。
+   Hogan 看本地周衡旧进程退出并出现新的本地启动日志；不操作元宝周衡。先停再改 prompt，这样即使定义行设置了 `auto_restart_on_config_change` 引发重启，也会用新 prompt 启动。apply 或停、启操作中止时，立即执行 R 并确认旧 sha 后才停止。
+4. 改后核对（只读）：`bash verify.sh --relays local --expect new --prompt present --compare-state $D/state-before.json --restarted > $D/05-verify-new.txt`，必须 PASS。该检查要求：
+   - 本地 relay 恰有一个**新 pid** 的周衡进程；
+   - 本地另外 8 个席位的 pid 不变；
+   - 本地周衡环境变量、策略 sha（`8b402ff8…`）、`KAIRO_PROVIDER=grok`、六个 9567 代理变量都正确；
+   - 有经 thin 启动的 grok 子进程，本地 relay 为 ESTABLISHED；
+   - 周衡日志没有 thin 启动失败；本地 row 含规则一次；
+   - 元宝 pid、策略路径/sha、relay state 只记录，任何差异不 FAIL。
 
    另跑一次 `bash snapshot.sh > $D/05-snapshot-after.txt`。
 5. 在同一窗口内执行 seatbelt 复测：`cp ~/lab/buzz/policies/zhouheng-seatbelt.json $D/copy.json && bash probe.sh --policy $D/copy.json --workdir $D/probe --out $D/06-probe`，结果必须是 PROBE PASS。
-6. 现役验收（S1/S2/S4 复测）：
-   - peng 在真实会话里请周衡登记 `20260928 140109.m4a`（→ 能源梳理）、`20260928 150601.m4a`（→ ai-native）和 `20260930 093139.m4a`（→ 能源梳理，标题「刚总沟通」），各跑一次 `cd ~/kairo/<主题> && kairo run --ref <rid>`；
-   - 核对 CLI 输出无 EPERM/PermissionError，`ref-catalog.json` 里有三条 ref，会话 `updates.jsonl` 中写 `/tmp` 的尝试为 0；
+6. 现役验收（S1/S2/S4 复测，在本地社区 session 内）：
+   - peng 在本地周衡真实会话里请周衡登记 `20260928 140109.m4a`（→ 能源梳理）、`20260928 150601.m4a`（→ ai-native）和 `20260930 093139.m4a`（→ 能源梳理，标题「刚总沟通」），各跑一次 `cd ~/kairo/<主题> && kairo run --ref <rid>`；
+   - 核对本地 CLI 输出无 EPERM/PermissionError，`ref-catalog.json` 里有三条 ref，会话 `updates.jsonl` 中写 `/tmp` 的尝试为 0；
    - 记录核验：周衡 9/30 11:18 选择的 `20260929 090208.m4a` 实为「算法例会-260928」，经 Jenny 查 Voice Memos 核实为错误选择，不计入验收；两条 9/28 录音的标题已由 Jenny 核对正确。
 
-   第 4–6 步的任一验收或核对失败，立即执行 R 并确认 sha256 回到 `9e087351` 后才停止；不得把新文件留给后续重启。
+   第 4–6 步的任一本地验收或核对失败，立即执行 R 并确认 sha256 回到 `9e087351` 后才停止；元宝侧差异不触发停止；不得把新文件留给后续重启。
 7. 收尾：`rm -rf $D`，先把证据拷走。备份留在 `~/lab/buzz/policies/zhouheng-seatbelt.json.issue57-<ts>.bak` 和 `~/lab/buzz/backups/issue57-<ts>/`。
 
-**停止条件（任一出现：停止当前窗口，报 Jenny；立即执行 R 并确认旧 sha 后才停止；不 kill、不退出 Desktop、不动其他席位）：**
+**停止条件（任一出现：停止当前本地窗口，报 Jenny；立即执行 R 并确认旧 sha 后才停止；不 kill、不退出 Desktop、不动其他席位；元宝侧任何状态不触发停止）：**
 
 | # | 现象 | 处理 |
 |---|---|---|
-| a | 第 3 步启动后 60 秒内，某个 relay 没有新的周衡 buzz-acp（verify「exactly one 周衡」FAIL，或 pid 未变） | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny；不得保留新文件 |
-| b | 周衡日志出现 `buzz-team-thin: …`，尤其是 `BUZZ_TEAM_POLICY_PATH must be an absolute path`（thin 退出 126），或周衡进程没有 grok 子进程 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
-| c | 另外 8 个席位中有 pid 变化，或 buzz-acp 总数不是 18 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny；不去碰那些席位 |
-| d | 新周衡进程缺 `BUZZ_TEAM_POLICY_PATH`、`KAIRO_PROVIDER` 或任一 9567 代理变量（缺值即 FAIL） | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
+| a | 第 3 步启动后 60 秒内，本地 relay 没有新的周衡 buzz-acp（verify「exactly one 周衡」FAIL，或 pid 未变） | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny；不得保留新文件 |
+| b | 本地周衡日志出现 `buzz-team-thin: …`，尤其是 `BUZZ_TEAM_POLICY_PATH must be an absolute path`（thin 退出 126），或本地周衡没有 grok 子进程 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
+| c | 本地另外 8 个席位中有 pid 变化，或本地 buzz-acp 总数不是 9 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny；不去碰其他席位 |
+| d | 本地周衡进程缺 `BUZZ_TEAM_POLICY_PATH`、`KAIRO_PROVIDER` 或任一 9567 代理变量（缺值即 FAIL） | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
 | e | 本地 relay 60 秒内没有 ESTABLISHED | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
-| f | system_prompt 规则计数不是 1/1 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
+| f | 本地周衡 prompt 规则计数不是 1 | 立即执行 R，确认 sha256 = `9e087351`，报 Jenny |
 
 **回滚 R：**
 1. 只要 apply 已执行或新文件可能已存在，立即执行 `ISSUE57_I_UNDERSTAND_LIVE=yes bash rollback.sh`（输出必须是 sha256 `9e087351…`，`_load_policy` 通过）；
-2. 如已改过 prompt，peng 在 UI 里停止周衡，删除规则行，再启动（两个 relay 各一次）；
-3. `bash verify.sh --expect old --prompt absent --compare-state $D/state-before.json --restarted` 必须 PASS。
+2. 如果本地周衡已经以新策略重启，peng 在 UI 里停止本地周衡，恢复后再启动一次本地周衡；元宝不操作。
+3. `bash verify.sh --relays local --expect old --prompt absent --compare-state $D/state-before.json --restarted` 必须 PASS。
 
 未取得同意时不要执行 apply，也不需要 rollback；备份不可用时用 `rollback.sh --from-template`。

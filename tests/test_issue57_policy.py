@@ -125,6 +125,9 @@ class Env:
         return json.dumps({"version": 1, "grok_home": str(self.identity / "grok"), "grok_executable": str(self.grok),
                            "mode": "business", "write_paths": paths}, indent=2)
 
+    def write_inventory_rows(self, rows):
+        self.inventory.write_text(json.dumps(rows, ensure_ascii=False, indent=2))
+
     def processes(self, seed=100):
         procs, pid = [], seed
         thin_cmd = str(self.home / "lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin")
@@ -233,6 +236,74 @@ class ScriptTests(unittest.TestCase):
 
     def verify_live(self, procs, *args):
         return self.run_script("verify.sh", "--expect", "old", *args, ISSUE57_TEST_PS_FIXTURE=self.fixture(procs))
+
+    def local_verify(self, procs, *args):
+        return self.run_script("verify.sh", "--expect", "old", "--relays", "local", *args,
+                               ISSUE57_TEST_PS_FIXTURE=self.fixture(procs))
+
+    def test_verify_local_ignores_unmanaged_yuanbao_row_but_all_gates_it(self):
+        rows = json.loads(self.env.inventory.read_text())
+        rows[1]["system_prompt"] += RULE
+        rows.append({"name": "周衡", "persona_id": "zhufeng-pj", "relay_url": RELAYS["yuanbao"], "system_prompt": ""})
+        self.env.write_inventory_rows(rows)
+        local = self.local_verify(self.env.processes(), "--inventory", str(self.env.inventory), "--prompt", "present")
+        self.assertEqual(local.returncode, 0, local.stdout + local.stderr)
+        self.assertIn("INFO prompt row", local.stdout)
+        all_mode = self.run_script("verify.sh", "--expect", "old", "--relays", "all", "--inventory", str(self.env.inventory),
+                                   "--prompt", "present", ISSUE57_TEST_PS_FIXTURE=self.fixture(self.env.processes()))
+        self.assertEqual(all_mode.returncode, 1, all_mode.stdout)
+
+    def test_verify_local_fails_missing_zhouheng_policy_value(self):
+        procs = self.env.processes()
+        for proc in procs:
+            if proc["env"].get("GROK_HOME") and proc["env"]["BUZZ_RELAY_URL"] == RELAYS["local"]:
+                proc["env"].pop("BUZZ_TEAM_POLICY_PATH")
+        result = self.local_verify(procs)
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("[local] pid", result.stdout)
+        self.assertIn("BUZZ_TEAM_POLICY_PATH=<missing>", result.stdout)
+
+    def test_verify_local_fails_missing_local_prompt_rule(self):
+        result = self.local_verify(self.env.processes(), "--inventory", str(self.env.inventory), "--prompt", "present")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("prompt rule count 0 (want 1)", result.stdout)
+
+    def test_verify_local_warns_on_yuanbao_pid_change(self):
+        state = self.env.home / "state-local.json"
+        before = self.env.processes()
+        saved = self.run_script("snapshot.sh", "--out", str(state), ISSUE57_TEST_PS_FIXTURE=self.fixture(before))
+        self.assertEqual(saved.returncode, 0, saved.stderr)
+        after = self.env.processes()
+        for proc in after:
+            if proc["env"].get("GROK_HOME"):
+                proc["pid"] += 500
+        result = self.local_verify(after, "--compare-state", str(state), "--restarted")
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("WARN [yuanbao] 周衡 pid changed", result.stdout)
+        self.assertIn("now running unverified new policy", result.stdout)
+
+    def test_verify_local_fails_when_local_other_seat_pid_changes(self):
+        state = self.env.home / "state-local-seat.json"
+        before = self.env.processes()
+        saved = self.run_script("snapshot.sh", "--out", str(state), ISSUE57_TEST_PS_FIXTURE=self.fixture(before))
+        self.assertEqual(saved.returncode, 0, saved.stderr)
+        after = self.env.processes()
+        for proc in after:
+            if proc["env"].get("GROK_HOME"):
+                proc["pid"] += 500
+            if proc["env"]["BUZZ_RELAY_URL"] == RELAYS["local"] and not proc["env"].get("GROK_HOME"):
+                proc["pid"] += 999
+                break
+        result = self.local_verify(after, "--compare-state", str(state), "--restarted")
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("[local]", result.stdout)
+        self.assertIn("pid unchanged", result.stdout)
+
+    def test_verify_local_passes_without_yuanbao_process(self):
+        procs = [p for p in self.env.processes() if p["env"]["BUZZ_RELAY_URL"] != RELAYS["yuanbao"]]
+        result = self.local_verify(procs)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn("INFO [yuanbao] buzz-acp processes recorded (0)", result.stdout)
 
     def test_verify_per_relay_env_pass(self):
         r = self.verify_live(self.env.processes())

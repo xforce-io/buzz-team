@@ -1,8 +1,8 @@
-date: 2026-09-30 13:49:32 CST
-policy copy: /Users/xupeng/scout57-rehearsal-20260930/run/probe/policy/zhouheng-seatbelt.json sha256 8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d
-profile: /Users/xupeng/scout57-rehearsal-20260930/run/evidence/09-probe/profile.sb sha256 478b02f3e96aa3a029e56676fdd8b9f820f815b4a0a2578a6b8e66ef007f0a80
+date: 2026-09-30 14:30:47 CST
+policy copy: /Users/xupeng/bt57-r3-work/probe/policy/zhouheng-seatbelt.json sha256 8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d
+profile: /Users/xupeng/bt57-r3-work/evidence/09-probe/profile.sb sha256 478b02f3e96aa3a029e56676fdd8b9f820f815b4a0a2578a6b8e66ef007f0a80
 rendered by: /Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/lib/python3.14/site-packages/buzz_team/thin.py thin.py sha256 7bbc026d79a5a839f0402b0605163aae8fded26cde9e905052850dae91f9d180 package cb63521aa8572831691e823c4745b34c2bb6a696 | thin.command(env, ['agent','stdio'])[2] (== thin._profile(roots))
-probe name: .scout57-probe-20260930134932-58573
+probe name: .scout57-probe-20260930143047-73135
 ## allowed (policy write_paths + identity tmp control)
 PASS allow /Users/xupeng/kairo/.kairo => created+deleted
 PASS allow /Users/xupeng/kairo/能源梳理/.kairo => created+deleted
@@ -11,10 +11,10 @@ PASS allow /Users/xupeng/kairo/ai-native/.kairo => created+deleted
 PASS allow /Users/xupeng/kairo/ai-native/references => created+deleted
 PASS allow /Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e/tmp => created+deleted
 ## denied (must stay EPERM)
-PASS deny  /Users/xupeng/kairo => sh: /Users/xupeng/kairo/.scout57-probe-20260930134932-58573: Operation not permitted
-PASS deny  /Users/xupeng/kairo/能源梳理 => sh: /Users/xupeng/kairo/能源梳理/.scout57-probe-20260930134932-58573: Operation not permitted
-PASS deny  /Users/xupeng/kairo/ai-native => sh: /Users/xupeng/kairo/ai-native/.scout57-probe-20260930134932-58573: Operation not permitted
-PASS deny  /Users/xupeng/.config/kairo => sh: /Users/xupeng/.config/kairo/.scout57-probe-20260930134932-58573: Operation not permitted
-PASS deny  /private/tmp => sh: /private/tmp/.scout57-probe-20260930134932-58573: Operation not permitted
+PASS deny  /Users/xupeng/kairo => sh: /Users/xupeng/kairo/.scout57-probe-20260930143047-73135: Operation not permitted
+PASS deny  /Users/xupeng/kairo/能源梳理 => sh: /Users/xupeng/kairo/能源梳理/.scout57-probe-20260930143047-73135: Operation not permitted
+PASS deny  /Users/xupeng/kairo/ai-native => sh: /Users/xupeng/kairo/ai-native/.scout57-probe-20260930143047-73135: Operation not permitted
+PASS deny  /Users/xupeng/.config/kairo => sh: /Users/xupeng/.config/kairo/.scout57-probe-20260930143047-73135: Operation not permitted
+PASS deny  /private/tmp => sh: /private/tmp/.scout57-probe-20260930143047-73135: Operation not permitted
 leftover probe files: 0
 PROBE PASS

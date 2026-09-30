@@ -2,7 +2,7 @@
 
 冻结 head `2ea50404327bdc9c4a50f89c0662f4f9816d3d35`；CI Tests run 36675648114 success。Refs #57（现役验收完成后关闭）。L1：评论 5871019270。授权：peng 2026-09-28 21:19 划定范围；2026-09-30 13:39 经 Jenny 批准设计（peng 在 Jenny 处给出，原文记录在 Scout 职务说明），附两项安全措施；最终放行为 peng 手动合入。**审查：Knox 按「扩大沙箱写入边界」标 `human:required`；合入由 peng 手动完成。**
 
-**合入前结论最高只能是 `PASS human:required`，现役验收待完成。** 现役验收指：生效后，周衡在真实会话里登记 `20260928 140109.m4a`（→ 能源梳理）、`20260928 150601.m4a`（→ ai-native）和 `20260930 093139.m4a`（→ 能源梳理，标题「刚总沟通」），并完成三次 run，全程无 EPERM。周衡在 9/30 11:18 选择的 `20260929 090208.m4a` 实为「算法例会-260928」，经 Jenny 查 Voice Memos 核实为错误选择，不计入验收；两条 9/28 录音的标题已由 Jenny 核对正确。生效需要重启周衡在本地和元宝上的两个进程，这一步要 peng 另行同意（由 Jenny 取得），由 Hogan 执行。本 PR 没有对现役做任何改动。
+**合入前结论最高只能是 `PASS human:required`，现役验收待完成。** 现役验收指：生效后，周衡在真实会话里登记 `20260928 140109.m4a`（→ 能源梳理）、`20260928 150601.m4a`（→ ai-native）和 `20260930 093139.m4a`（→ 能源梳理，标题「刚总沟通」），并完成三次 run，全程无 EPERM。周衡在 9/30 11:18 选择的 `20260929 090208.m4a` 实为「算法例会-260928」，经 Jenny 查 Voice Memos 核实为错误选择，不计入验收；两条 9/28 录音的标题已由 Jenny 核对正确。生效只重启周衡的本地 relay 进程（`ws://127.0.0.1:3000`），这一步要 peng 另行同意（由 Jenny 取得），由 Hogan 执行；元宝周衡不重启、不改 prompt，也不作为验收条件。本 PR 没有对现役做任何改动。
 
 ## 改动
 
@@ -65,6 +65,13 @@
 - 原因：周衡定义行有 `auto_restart_on_config_change=true`；若新策略留在现役目录，保存配置、Desktop 重启或 Mac 重启都可能绕过同意门槛而激活它。
 - **Knox P3 已知项（本轮不改，以保持 rehearsal blob ids 对齐）**：`apply.sh` 在最后“另外 8 份策略 sha”检查退出非 0 时不会自动恢复周衡策略文件，操作者必须立即运行 `rollback.sh` 并确认 `9e087351`；`rollback.sh` 使用裸 `sed`，运行时应确保 PATH 中 `/usr/bin` 优先（或显式记录这一点）。
 
+## r3 修订（peng 14:21 元宝不再管理）
+
+- live window 只停、启本地周衡（`ws://127.0.0.1:3000`），只编辑 `relay_url=ws://127.0.0.1:3000` 的周衡 row（当前 index 15 仅提示，按 relay 字段定位）；定义 row 和元宝状态只记录，不作为 pass/fail 或 stop condition。
+- `verify.sh --relays local` 门禁 9 个本地 buzz-acp、本地周衡新 pid、本地另外 8 个席位 pid 不变、本地 prompt 规则一次、策略/环境/日志检查；元宝缺失或变化不 FAIL，变化会显式 WARN。
+- 本地验收：verify PASS、probe PASS；本地社区 session 内登记三条录音并完成三次 run；本地 CLI 无 EPERM/PermissionError，会话写 `/tmp` 次数为 0。
+- 共享策略文件意味着元宝周衡会在自己的下一次重启时拾取新 write_paths，但没有验收；回滚同样要等元宝下一次重启才到达元宝；分离需要 managed-agents.json 指向单独策略文件，超出范围。**peng 2026-09-30 14:26 经 Jenny 已接受**。当前元宝 relay 403 / CLOSED、无 inbound messages（CLOSED/403 重连见 `evidence/rehearsal/03-snapshot-before.txt`；无 inbound messages 为 Knox 观察）。
+
 ## 验收表
 
 新跑，均在冻结候选的干净树上：单测在 box 上跑，Mac 演练用的是同一批 blob。
@@ -106,6 +113,7 @@ S5: pass / pending-live  docs/issue-57/README.md + rehearse.sh  落位、备份�
 - 元宝 relay 目前 403、连接 CLOSED：只记录，不作为通过条件，但周衡在元宝上的进程也会按 relay 核对环境变量和策略。
 - UI 编辑 System prompt 实际改的是定义行还是实例行尚不确定；verify 两行都查，不一致时按停止条件 f 处理。
 - 周衡定义行的 `auto_restart_on_config_change=true` 意味着，若新策略文件留在现役目录，保存周衡配置、Desktop 重启或 Mac 重启都可能使它绕过同意门槛而生效；因此同意必须先于 apply，窗口中止或验收失败必须立即回滚到 `9e087351`。
+- (d) 共享策略文件意味着元宝周衡会在自己的下一次重启时拾取新 write_paths，但没有验收；窗口内回滚同样只有在元宝下一次重启后才到达元宝；分离需改 managed-agents.json，超出范围。当前元宝 relay 403 / CLOSED、无 inbound messages（CLOSED/403 重连见 `evidence/rehearsal/03-snapshot-before.txt`；无 inbound messages 为 Knox 观察）。**peng 2026-09-30 14:26 经 Jenny 已接受**。
 - 功能地图 README 与 #59（#58）都在末尾加了一行，先合入的一方之后另一方需要简单 rebase。
 
 ## 落位与回退（Hogan，peng 同意后）
