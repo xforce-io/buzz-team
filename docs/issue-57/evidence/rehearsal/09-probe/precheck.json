@@ -1,0 +1,26 @@
+{
+  "thin_module": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/lib/python3.14/site-packages/buzz_team/thin.py",
+  "thin_py_sha256": "7bbc026d79a5a839f0402b0605163aae8fded26cde9e905052850dae91f9d180",
+  "rendered_by": "thin.command(env, ['agent','stdio'])[2] (== thin._profile(roots))",
+  "python": "3.14.0",
+  "package": {
+    "dist_info": "buzz_team-0.1.0.dist-info",
+    "url": "file:///Users/xupeng/lab/buzz/evidence/release-53/cb63521aa8572831691e823c4745b34c2bb6a696/buzz_team-0.1.0-py3-none-any.whl",
+    "package_sha": "cb63521aa8572831691e823c4745b34c2bb6a696"
+  },
+  "policy": "/Users/xupeng/bt57-r3-work/probe/policy/zhouheng-seatbelt.json",
+  "policy_sha256": "8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d",
+  "policy_mode": "0o600",
+  "grok_home": "/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e/grok",
+  "grok_executable": "/Users/xupeng/.grok/downloads/grok-1.0.41-macos-aarch64",
+  "roots": [
+    "/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e",
+    "/Users/xupeng/kairo/.kairo",
+    "/Users/xupeng/kairo/能源梳理/.kairo",
+    "/Users/xupeng/kairo/能源梳理/references",
+    "/Users/xupeng/kairo/ai-native/.kairo",
+    "/Users/xupeng/kairo/ai-native/references"
+  ],
+  "tmpdir": "/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e/tmp/",
+  "profile_sha256": "478b02f3e96aa3a029e56676fdd8b9f820f815b4a0a2578a6b8e66ef007f0a80"
+}

@@ -1,0 +1,33 @@
+issue57 verify: expect=old policies=/Users/xupeng/lab/buzz/policies expected 周衡 sha256=9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23
+relays=local (yuanbao recorded, not gated; peng 2026-09-30 14:21)
+PASS zhouheng-seatbelt.json sha256 9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23
+PASS fangwei-seatbelt.json unchanged vs baseline-before (af0cf59d0caf)
+PASS hanchuan-seatbelt.json unchanged vs baseline-before (9085ca476e62)
+PASS lushen-seatbelt.json unchanged vs baseline-before (7125d513f552)
+PASS peizhao-seatbelt.json unchanged vs baseline-before (da6c411e556a)
+PASS qinmu-seatbelt.json unchanged vs baseline-before (9bd3d3a3e50a)
+PASS shenyu-seatbelt.json unchanged vs baseline-before (8bf475730ba1)
+PASS suqing-seatbelt.json unchanged vs baseline-before (7086c4509877)
+PASS weiping-seatbelt.json unchanged vs baseline-before (e2d35950dc7c)
+PASS 9 policy files present (9)
+PASS thin._load_policy precheck PRECHECK PASS policy_sha256=9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23 profile_sha256=daa3984c3686a2cc980f5695235703df4cf98164ce2288845e8f
+PASS 1 local 周衡 managed-agents row in /Users/xupeng/Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json ([15])
+INFO prompt row 9 relay=<definition> rule_count=0 (not gated)
+PASS row 15 prompt rule count 0 (want 0)
+PASS 9 local buzz-acp processes (9)
+INFO [yuanbao] buzz-acp processes recorded (9) (not gated)
+INFO [yuanbao] pid 56430 BUZZ_TEAM_POLICY_PATH=/Users/xupeng/lab/buzz/policies/zhouheng-seatbelt.json policy-in-env sha256 9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23 relay state 198.18.0.1:63203->198.18.0.17:443 (CLOSED) (not gated)
+PASS [local] exactly one 周衡 buzz-acp ([56568])
+PASS [local] pid 56568 BUZZ_ACP_AGENT_COMMAND=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin
+PASS [local] pid 56568 BUZZ_TEAM_POLICY_PATH=/Users/xupeng/lab/buzz/policies/zhouheng-seatbelt.json
+PASS [local] pid 56568 policy-in-env sha256 9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23
+PASS [local] pid 56568 KAIRO_PROVIDER=grok
+PASS [local] pid 56568 HTTP_PROXY=http://127.0.0.1:9567
+PASS [local] pid 56568 HTTPS_PROXY=http://127.0.0.1:9567
+PASS [local] pid 56568 ALL_PROXY=socks5://127.0.0.1:9567
+PASS [local] pid 56568 http_proxy=http://127.0.0.1:9567
+PASS [local] pid 56568 https_proxy=http://127.0.0.1:9567
+PASS [local] pid 56568 all_proxy=socks5://127.0.0.1:9567
+PASS [local] pid 56568 grok child launched through thin (TMPDIR=identity tmp/, GROK_SANDBOX=off): [56569, 56570]
+PASS [local] pid 56568 relay ESTABLISHED :3000
+VERIFY PASS

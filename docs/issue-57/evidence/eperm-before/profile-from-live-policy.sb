@@ -1,0 +1,3 @@
+(version 1)
+(allow default)
+(deny file-write* (require-all (require-not (subpath "/Users/xupeng/.local/share/buzz/agent-runtime/identities/a558771623f29898/51fb6cd8eb6a72674998d5be5b1e8e826e2d60c870337cffc3278225e4297d9e")) (require-not (literal "/dev/null"))))

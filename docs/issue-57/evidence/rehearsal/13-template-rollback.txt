@@ -1,0 +1,51 @@
+issue57: target=/Users/xupeng/bt57-r3-work/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
+issue57: staged new policy passes thin._load_policy
+before:
+  af0cf59d0cafe925161618d43be369d17c9b5febff8c9e13b47a95b7cc7cf22d  fangwei-seatbelt.json
+  9085ca476e62c3e529f4a2f07210e52802b2ab2eee034a6f76ca6b041c742e17  hanchuan-seatbelt.json
+  7125d513f55238a20a83c807025058be0cdb70bf50a3ca9f63e94717be5b8c68  lushen-seatbelt.json
+  da6c411e556ac7d6f82967ea5baadf1b82ffb76fa2d5547ecb67d1dedbdbc5bf  peizhao-seatbelt.json
+  9bd3d3a3e50aa7e7fcc9427c440f22b739ced8a7e277fffc6cba41855d8ca5d6  qinmu-seatbelt.json
+  8bf475730ba1ded718808e9fadfa3630a0aa5941304400def5472b327b6e88c7  shenyu-seatbelt.json
+  7086c4509877558b94b6ecc3deea0f85d8a62b72a32c08bfaf11136186332add  suqing-seatbelt.json
+  e2d35950dc7cdc3ea3d6f3aca2bada8cc41ed5c461b00dfc55ed31c41c57148e  weiping-seatbelt.json
+  9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23  zhouheng-seatbelt.json
+issue57: backup /Users/xupeng/bt57-r3-work/policies/zhouheng-seatbelt.json.issue57-20260930-143056.bak (+ /Users/xupeng/bt57-r3-work/backups/issue57-20260930-143056)
+issue57: installed policy passes thin._load_policy: PRECHECK PASS policy_sha256=8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d profile_sha256=478b02f3e96aa3a029e56676fdd8b9f820f815b4a0a2578a6b8e66ef007f0a80
+after:
+  af0cf59d0cafe925161618d43be369d17c9b5febff8c9e13b47a95b7cc7cf22d  fangwei-seatbelt.json
+  9085ca476e62c3e529f4a2f07210e52802b2ab2eee034a6f76ca6b041c742e17  hanchuan-seatbelt.json
+  7125d513f55238a20a83c807025058be0cdb70bf50a3ca9f63e94717be5b8c68  lushen-seatbelt.json
+  da6c411e556ac7d6f82967ea5baadf1b82ffb76fa2d5547ecb67d1dedbdbc5bf  peizhao-seatbelt.json
+  9bd3d3a3e50aa7e7fcc9427c440f22b739ced8a7e277fffc6cba41855d8ca5d6  qinmu-seatbelt.json
+  8bf475730ba1ded718808e9fadfa3630a0aa5941304400def5472b327b6e88c7  shenyu-seatbelt.json
+  7086c4509877558b94b6ecc3deea0f85d8a62b72a32c08bfaf11136186332add  suqing-seatbelt.json
+  e2d35950dc7cdc3ea3d6f3aca2bada8cc41ed5c461b00dfc55ed31c41c57148e  weiping-seatbelt.json
+  8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d  zhouheng-seatbelt.json
+issue57: other 8 policies unchanged
+issue57: applied 8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d. Rollback: /Users/xupeng/bt57-r3-code/docs/issue-57/rollback.sh --target /Users/xupeng/bt57-r3-work/policies
+issue57: target=/Users/xupeng/bt57-r3-work/policies live=no thin_python=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/python
+before:
+  af0cf59d0cafe925161618d43be369d17c9b5febff8c9e13b47a95b7cc7cf22d  fangwei-seatbelt.json
+  9085ca476e62c3e529f4a2f07210e52802b2ab2eee034a6f76ca6b041c742e17  hanchuan-seatbelt.json
+  7125d513f55238a20a83c807025058be0cdb70bf50a3ca9f63e94717be5b8c68  lushen-seatbelt.json
+  da6c411e556ac7d6f82967ea5baadf1b82ffb76fa2d5547ecb67d1dedbdbc5bf  peizhao-seatbelt.json
+  9bd3d3a3e50aa7e7fcc9427c440f22b739ced8a7e277fffc6cba41855d8ca5d6  qinmu-seatbelt.json
+  8bf475730ba1ded718808e9fadfa3630a0aa5941304400def5472b327b6e88c7  shenyu-seatbelt.json
+  7086c4509877558b94b6ecc3deea0f85d8a62b72a32c08bfaf11136186332add  suqing-seatbelt.json
+  e2d35950dc7cdc3ea3d6f3aca2bada8cc41ed5c461b00dfc55ed31c41c57148e  weiping-seatbelt.json
+  8b402ff8063fe761af8db1cef4fb5979a8320c097b64de2da53d77408ca0868d  zhouheng-seatbelt.json
+issue57: zhouheng-seatbelt.json restored, sha256 9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23 (rollback point)
+after:
+  af0cf59d0cafe925161618d43be369d17c9b5febff8c9e13b47a95b7cc7cf22d  fangwei-seatbelt.json
+  9085ca476e62c3e529f4a2f07210e52802b2ab2eee034a6f76ca6b041c742e17  hanchuan-seatbelt.json
+  7125d513f55238a20a83c807025058be0cdb70bf50a3ca9f63e94717be5b8c68  lushen-seatbelt.json
+  da6c411e556ac7d6f82967ea5baadf1b82ffb76fa2d5547ecb67d1dedbdbc5bf  peizhao-seatbelt.json
+  9bd3d3a3e50aa7e7fcc9427c440f22b739ced8a7e277fffc6cba41855d8ca5d6  qinmu-seatbelt.json
+  8bf475730ba1ded718808e9fadfa3630a0aa5941304400def5472b327b6e88c7  shenyu-seatbelt.json
+  7086c4509877558b94b6ecc3deea0f85d8a62b72a32c08bfaf11136186332add  suqing-seatbelt.json
+  e2d35950dc7cdc3ea3d6f3aca2bada8cc41ed5c461b00dfc55ed31c41c57148e  weiping-seatbelt.json
+  9e08735172c519e25a44c2ee92479a1fcedd9b031adfbd98c10336b005a13c23  zhouheng-seatbelt.json
+issue57: other 8 policies unchanged
+issue57: restored policy passes thin._load_policy
+issue57: rolled back. Restart 周衡 (README step R) so the seats load it again.
