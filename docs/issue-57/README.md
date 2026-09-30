@@ -118,7 +118,7 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 2. **报 Jenny，取得 peng 对重启周衡本地 relay 进程（`ws://127.0.0.1:3000`）的同意。** 未获同意就停在这里；此时只做过只读检查，现役策略目录未被写入。元宝周衡不重启、不改 prompt。
 3. **只在已获同意的窗口内连续落位并重启：**
    1. 执行 `ISSUE57_I_UNDERSTAND_LIVE=yes bash apply.sh > $D/02-apply.txt 2>&1`，不带 `--inventory`。若退出码非 0（尤其是最后的“另外 8 份策略 sha”检查），立即执行 R 并确认 sha256 回到 `9e087351`，不进入下一步；成功后不得把新文件留给后续重启。
-   2. 立即在 Desktop 里只操作本地社区的周衡：停止本地周衡；在 managed-agents.json 中 `relay_url=ws://127.0.0.1:3000` 的周衡 row（当前 index 15 仅作提示，不作为定位依据）的 System prompt 末尾（最后一条「完成标准是获得退出结果……」之后）另起一行，粘贴 `zhouheng-prompt-rule.md` 的内容并保存；启动本地周衡。不要改 `relay_url` 为空的定义 row，也不要改任何元宝 row。
+   2. （已作废，见下方更正）立即在 Desktop 里只操作本地社区的周衡：停止本地周衡；在 managed-agents.json 中 `relay_url=ws://127.0.0.1:3000` 的周衡 row（当前 index 15 仅作提示，不作为定位依据）的 System prompt 末尾（最后一条「完成标准是获得退出结果……」之后）另起一行，粘贴 `zhouheng-prompt-rule.md` 的内容并保存；启动本地周衡。不要改 `relay_url` 为空的定义 row，也不要改任何元宝 row。
 
    Hogan 看本地周衡旧进程退出并出现新的本地启动日志；不操作元宝周衡。先停再改 prompt，这样即使定义行设置了 `auto_restart_on_config_change` 引发重启，也会用新 prompt 启动。apply 或停、启操作中止时，立即执行 R 并确认旧 sha 后才停止。
 
@@ -185,15 +185,15 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 
 ## 窗口后 `managed-agents.json` 允许的差异
 
-窗口结束后，把现役 `managed-agents.json` 和窗口前的副本分别用 `jq -S .` 规范化，再做 diff。只允许下面这些差异：
+窗口结束后，把现役 `managed-agents.json` 和窗口前的副本分别用 `jq -S .` 规范化，再做 diff。只允许下面这些差异，且**只限 row 9（定义行 `zhufeng-pj`）和 row 15（本地实例）**：
 
-- row 9（定义行）的 prompt 只多出规则行，且恰好一次；
-- row 15（本地实例）的 prompt 与 row 9 的新 prompt 完全相同；
-- 时间戳字段；
-- `persona_source_version`：用改前、改后两份 prompt 各自重算一次，结果要分别对得上。可以用 Hogan 的 pshash 脚本取证；
-- 运行状态字段，例如 `last_exit_code`。
+- row 9 的 prompt 只多出规则行，且恰好一次；
+- row 15 的 prompt 与 row 9 的新 prompt 完全相同；
+- row 9、row 15 的时间戳字段；
+- row 9、row 15 的 `persona_source_version`：用改前、改后两份 prompt 各自重算一次，结果要分别对得上。可以用 Hogan 的 pshash 脚本取证；
+- row 9、row 15 的运行状态字段，例如 `last_exit_code`。
 
-除此之外，任何 row 只要有其他字节变化，就判 FAIL。回滚后同样按这个口径检查：row 9、row 15 的 prompt 要回到改前内容。
+同步类字段两边值相同即算未变。其他任何 row 只要有任何字节变化，就判 FAIL；row 9、row 15 上除上述以外的字节变化同样判 FAIL。回滚后同样按这个口径检查：row 9、row 15 的 prompt 要回到改前内容。
 
 ## Desktop 重启后的基线变体（peng 2026-09-30 22:41）
 
@@ -212,9 +212,11 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
    - row 9 与 row 15 的 prompt 完全相同（快照里两行的 `system_prompt_sha256` 相等）；
    - Mac 接着电源（`pmset -g batt` 显示 `AC Power`）。
 
+本变体对 `managed-agents.json` 只比对 row 9 与 row 15 的 prompt：两者必须完全相同，只允许时间戳、`persona_source_version` 和运行状态字段不同；**不做**上节「窗口后 `managed-agents.json` 允许的差异」的全表 diff。
+
 ## 证据规则（Knox 2026-10-01）
 
-沙箱相关验收**不能用「Sandbox 日志或统一日志里查不到拒绝」作证据**，因为 seatbelt 写拒绝不进统一日志，见 #63。只能用 run 日志加 probe 对照：`probe.sh` 的预期 EPERM 必须全部触发。
+沙箱相关验收**不能用「Sandbox 日志或统一日志里查不到拒绝」作证据**，因为按 #63 目前结果，seatbelt 写拒绝不进统一日志。只能用 run 日志加 probe 对照：`probe.sh` 的预期 EPERM 必须全部触发。
 
 ## #57 收尾结论（2026-10-01）
 
@@ -222,5 +224,5 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 - **Knox 00:40 最终裁定：PASS**（`human:required`，范围只限本票）。
   - 代码：daf05e3，合入提交 cc39f8d。
   - 证据：`$D/11-*`、`$D/12-*`、`$D/13-*`，其中 `$D` = `~/lab/buzz/evidence/issue57-live-20260930-151341`。
-  - 依据：在策略 `8b402ff8…` 下，RUN1、RUN2 退出码 0 且写出 notes；`~/kairo` 下写拒绝 0 次；策略 diff 只新增写入路径。
+  - 依据：在策略 `8b402ff8…` 下，RUN1、RUN2 退出码 0 且写出 notes；`~/kairo` 下写拒绝 0 次（依据是 run 日志加 probe 对照，不是 Sandbox 日志或统一日志）；策略 diff 只新增写入路径。
 - **RUN3 不计入通过证据。** RUN3（`20260930 093139.m4a`）没有退出，也没有写出 notes。原因是 buzz-acp 的 idle pool teardown 杀掉了席位的后台长任务。席位长任务还受 buzz-acp 另外几道时限约束，这些都转到 runtime 单 #64 处理。
