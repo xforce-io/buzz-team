@@ -1,0 +1,26 @@
+# 2026-09-30 13:12:45 CST
+## ls -l ~/lab/buzz/bin
+total 96
+-rwx------  1 xupeng  staff  196 Sep 30 08:59 agent-executor
+-rwx------  1 xupeng  staff  196 Sep 23 14:26 agent-executor.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  196 Sep 23 22:26 agent-executor.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  195 Sep 30 08:59 agent-harness
+-rwx------  1 xupeng  staff  195 Sep 23 14:26 agent-harness.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  195 Sep 23 22:26 agent-harness.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  187 Sep 30 08:59 agent-worktree
+-rwx------  1 xupeng  staff  187 Sep 23 14:26 agent-worktree.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  187 Sep 23 22:26 agent-worktree.bak-pin-20260923-222646
+-rwx------  1 xupeng  staff  185 Sep 30 08:59 buzz
+-rwx------  1 xupeng  staff  185 Sep 23 14:26 buzz.bak-pin-20260923-142658
+-rwx------  1 xupeng  staff  185 Sep 23 22:26 buzz.bak-pin-20260923-222646
+## sha256 live entries + README
+819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31  bin/buzz
+60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f  bin/agent-executor
+fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c  bin/agent-harness
+73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23  bin/agent-worktree
+<absent>  bin/buzz-health
+31e0b91dfd88e1236c3829fb8a56f28590dceb58dab995afc12f1f316b0b12da  README.md
+## buzz-acp pids (18)
+56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632 
+## managed-agents.json sha256
+f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7

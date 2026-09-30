@@ -1,0 +1,18 @@
+issue58 verify: target=/private/tmp/buzz58-rehearsal-20260930-130602/final/instance expect=new
+  buzz 94781f89e8f25d1a31e84f2a19c7641a85fb1190b8505691ab4754d0ba2e92c7
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness <absent>
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health 591c81b54fad166e548bb5d74b0a35abc38566e7a73c190571b13e1a5efed53d
+PASS bin/buzz is the #58 entry
+PASS bin/buzz-health is the #58 entry
+PASS agent-harness retired
+PASS agent-executor unchanged (595c0cfe)
+PASS agent-worktree unchanged (595c0cfe)
+PASS bin/buzz --help rc=0
+PASS buzz-health ok (exit 0) -> /private/tmp/buzz58-rehearsal-20260930-130602/final/evidence/health-1-new.json
+buzz-acp pids (18): 56427 56430 56443 56445 56459 56461 56476 56483 56496 56565 56568 56581 56584 56597 56610 56613 56626 56632
+managed-agents.json sha256: f78d98cda0da7b37b3ca1d7b11fdf2740ed73ad72fd003c1c77a78a5c29f3cb7
+PASS buzz-acp pid set unchanged
+PASS managed-agents.json unchanged
+VERIFY PASS

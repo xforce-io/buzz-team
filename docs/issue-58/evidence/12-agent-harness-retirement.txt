@@ -1,0 +1,10 @@
+buzz-acp processes: 18
+  BUZZ_ACP_AGENT_COMMAND=/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin: 18
+  pointing at agent-harness: 0
+  pointing at lab/buzz/bin/*: 0
+grep -c agent-harness managed-agents.json: 0
+grep -c agent-harness custom_harnesses/grok.json: 0
+grep -c agent-harness custom_harnesses/seatbelt-grok-f66ef5e.json: 0
+grep -c agent-harness custom_harnesses/seatbelt-grok-medium-preview.json: 0
+lab/buzz/bin/* in managed-agents.json:  9 lab/buzz/bin/agent-executor;
+processes whose command line names lab/buzz/bin (excluding this probe): 0

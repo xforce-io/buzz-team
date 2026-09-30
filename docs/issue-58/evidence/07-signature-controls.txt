@@ -1,0 +1,38 @@
+### live  /Applications/Buzz.app/Contents/MacOS/buzz
+sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+codesign --verify --strict: rc=0
+Identifier=buzz
+TeamIdentifier=EYF346PHUG
+bin/buzz --help: rc=0 stderr=<empty>
+buzz-health: exit=0 ok=True failures=[] test_hooks=[]
+  official_buzz: verify=pass team=EYF346PHUG id=buzz version=0.5.25 updated=False problems=[]
+### official-copy  /private/tmp/buzz58-rehearsal-20260930-130602/final/neg/official-copy/buzz
+sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+codesign --verify --strict: rc=0
+Identifier=buzz
+TeamIdentifier=EYF346PHUG
+bin/buzz --help: rc=0 stderr=<empty>
+buzz-health: exit=0 ok=True failures=[] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=pass team=EYF346PHUG id=buzz version=None updated=True problems=[]
+### adhoc  /private/tmp/buzz58-rehearsal-20260930-130602/final/neg/adhoc/buzz
+sha256=405677e90cd9826d353dd5fe6984909f4193419ec202487c4567ea1cc948ba1c
+codesign --verify --strict: rc=0
+Identifier=buzz-555549440728b0ca3857357198a54bc92e96dd57
+Signature=adhoc
+TeamIdentifier=not set
+bin/buzz --help: rc=3 stderr=bin/buzz: refused, nothing sent: /private/tmp/buzz58-rehearsal-20260930-130602/final/neg/adhoc/buzz: TeamIdentifier 'not set' is not EYF346PHUG
+buzz-health: exit=2 ok=False failures=['official buzz signature check failed'] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=pass team=not set id=buzz-555549440728b0ca3857357198a54bc92e96dd57 version=None updated=True problems=["TeamIdentifier 'not set' is not EYF346PHUG", "Identifier 'buzz-555549440728b0ca3857357198a54bc92e96dd57' is not buzz"]
+### modified  /private/tmp/buzz58-rehearsal-20260930-130602/final/neg/modified/buzz
+sha256=8c0a8dfd78f6ecd5392e6ac5f945c2bb92aaeb6757e69d30fc5254467d2bfece
+codesign --verify --strict: rc=1
+Identifier=buzz
+TeamIdentifier=EYF346PHUG
+bin/buzz --help: rc=3 stderr=bin/buzz: refused, nothing sent: /private/tmp/buzz58-rehearsal-20260930-130602/final/neg/modified/buzz: codesign --verify --strict failed
+buzz-health: exit=2 ok=False failures=['official buzz signature check failed'] test_hooks=['BUZZ58_TEST_OFFICIAL_BUZZ']
+  official_buzz: verify=fail team=EYF346PHUG id=buzz version=None updated=True problems=['codesign --verify --strict failed']
+
+### addendum (r2, 2026-09-30): this file is the r1 run of the pre-r2 gate (plain `--verify --strict` + TeamIdentifier/
+### Identifier parsed from `codesign -dv`). Knox r2 P2: the ad-hoc copy above already shows `--verify --strict` rc=0, and
+### -dv fields are self-asserted. r2 replaces the decision with `codesign --verify --strict -R '<requirement>'`; the rerun
+### of these four cases is in 19-rehearsal-r2.txt (section 07), the self-signed OU=EYF346PHUG case in 18.

@@ -1,0 +1,8 @@
+## official path facts
+~/.local/bin/buzz -> /Applications/Buzz.app/Contents/MacOS/buzz
+CFBundleIdentifier=xyz.block.buzz.app
+CFBundleShortVersionString=0.5.25
+CFBundleExecutable=buzz-desktop
+sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+updater: tauri-plugin-updater/2.10.1; endpoint https://github.com/block/buzz/releases/download/buzz-desktop-latest/latest.json
+sparkle framework: absent

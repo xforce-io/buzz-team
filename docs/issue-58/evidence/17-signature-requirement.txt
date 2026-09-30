@@ -1,0 +1,29 @@
+# 2026-09-30 13:56:13 CST  macOS 26.6.2 (25G83)
+binary: /Applications/Buzz.app/Contents/MacOS/buzz  sha256=bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba
+requirement (bin/buzz, common.sh ISSUE58_REQUIREMENT, buzz-health REQUIREMENT): =anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"
+
+## -R quoting on macOS codesign (the argument is '=' + requirement text)
+A  codesign --verify --strict -R '=<req>' <bin>        (used): rc=0
+B  codesign --verify --strict -R='=<req>' <bin>        (as written in review): rc=1  | error: invalid or corrupted code requirement(s) Requirement syntax error(s): line 1:1: unexpected token: = 
+C  codesign --verify --strict -R='<req>' <bin>: rc=0
+D  codesign --verify --strict --test-requirement='=<req>' <bin>: rc=0
+
+## requirement is discriminating (official binary)
+wrong OU XXXXXXXXXX: rc=3  | test-requirement: code failed to satisfy specified code requirement(s) 
+wrong identifier buzz-acp: rc=3  | test-requirement: code failed to satisfy specified code requirement(s) 
+buzz-acp binary against our requirement: rc=3  | test-requirement: code failed to satisfy specified code requirement(s) 
+
+## official binary: own designated requirement and -dv (record only)
+designated => identifier buzz and anchor apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] /* exists */ and certificate leaf[subject.OU] = EYF346PHUG
+Identifier=buzz
+Format=Mach-O thin (x86_64)
+TeamIdentifier=EYF346PHUG
+Authority=Developer ID Application: Block, Inc. (EYF346PHUG)
+Authority=Developer ID Certification Authority
+Authority=Apple Root CA
+
+## r2 gates on the official binary
+common.sh official_signature_ok: rc=0
+r2 bin/buzz --help (default official path): rc=0 stderr=
+r2 bin/buzz --help (BUZZ58_TEST_OFFICIAL_BUZZ=/Applications/Buzz.app/Contents/MacOS/buzz): rc=0 stderr=
+buzz-health interpreter: /usr/bin/python3 3.9.6

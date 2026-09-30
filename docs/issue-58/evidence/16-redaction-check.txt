@@ -1,0 +1,2 @@
+files scanned: 37
+matches for PRIVATE_KEY|nsec1|BUZZ_PRIVATE: 0

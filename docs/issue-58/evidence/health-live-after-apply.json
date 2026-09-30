@@ -1,0 +1,496 @@
+{
+ "ok": true,
+ "failures": [],
+ "inputs": {
+  "inventory": "/Users/xupeng/Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json",
+  "policies": "/Users/xupeng/lab/buzz/policies",
+  "harnesses": "/Users/xupeng/Library/Application Support/xyz.block.buzz.app/custom_harnesses",
+  "local_relay": "ws://127.0.0.1:3000",
+  "doctor": [
+   "/Users/xupeng/.local/share/buzz-team/releases/cb63521aa8572831691e823c4745b34c2bb6a696/bin/buzz-team",
+   "doctor",
+   "--inventory",
+   "/Users/xupeng/Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json",
+   "--policies",
+   "/Users/xupeng/lab/buzz/policies"
+  ]
+ },
+ "doctor": {
+  "exit_code": 0,
+  "ok": true,
+  "launch_identities": 11,
+  "result": {
+   "ok": true,
+   "checks": [
+    {
+     "name": "desktop_inventory",
+     "status": "pass",
+     "detail": "11 launch identities checked"
+    },
+    {
+     "name": "fangwei-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "hanchuan-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "lushen-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "peizhao-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "qinmu-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "shenyu-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "suqing-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "weiping-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    },
+    {
+     "name": "zhouheng-seatbelt.json",
+     "status": "pass",
+     "detail": "Seatbelt policy valid"
+    }
+   ]
+  }
+ },
+ "identities": {
+  "local_count": 9,
+  "other_relay_count": 2,
+  "reconciliation": {
+   "doctor_launch_identities": 11,
+   "local": 9,
+   "other_relay": 2,
+   "unresolved": [],
+   "ok": true
+  },
+  "local": [
+   {
+    "index": 14,
+    "name": "卫平",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/weiping-seatbelt.json",
+    "policy_source": "definition_row_3",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 15,
+    "name": "周衡",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/zhouheng-seatbelt.json",
+    "policy_source": "definition_row_9",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 16,
+    "name": "方维",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/fangwei-seatbelt.json",
+    "policy_source": "definition_row_8",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 17,
+    "name": "沈予",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/shenyu-seatbelt.json",
+    "policy_source": "definition_row_11",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 18,
+    "name": "秦牧",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/qinmu-seatbelt.json",
+    "policy_source": "definition_row_2",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 19,
+    "name": "苏晴",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/suqing-seatbelt.json",
+    "policy_source": "definition_row_10",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 20,
+    "name": "裴昭",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/peizhao-seatbelt.json",
+    "policy_source": "definition_row_0",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 21,
+    "name": "陆深",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/lushen-seatbelt.json",
+    "policy_source": "definition_row_7",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   },
+   {
+    "index": 22,
+    "name": "韩川",
+    "runtime": "seatbelt-grok-f66ef5e",
+    "policy": "/Users/xupeng/lab/buzz/policies/hanchuan-seatbelt.json",
+    "policy_source": "definition_row_1",
+    "expected_agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "command_source": "custom_harnesses/seatbelt-grok-f66ef5e.json"
+   }
+  ],
+  "other_relay": [
+   {
+    "index": 12,
+    "name": "Fizz",
+    "relay": "wss://yuanbao.communities.buzz.xyz"
+   },
+   {
+    "index": 13,
+    "name": "Pollen",
+    "relay": "wss://yuanbao.communities.buzz.xyz"
+   }
+  ],
+  "skipped_definition_rows": [
+   {
+    "index": 0,
+    "name": "裴昭"
+   },
+   {
+    "index": 1,
+    "name": "韩川"
+   },
+   {
+    "index": 2,
+    "name": "秦牧"
+   },
+   {
+    "index": 3,
+    "name": "卫平"
+   },
+   {
+    "index": 4,
+    "name": "Pollen"
+   },
+   {
+    "index": 5,
+    "name": "Fizz"
+   },
+   {
+    "index": 6,
+    "name": "Honey"
+   },
+   {
+    "index": 7,
+    "name": "陆深"
+   },
+   {
+    "index": 8,
+    "name": "方维"
+   },
+   {
+    "index": 9,
+    "name": "周衡"
+   },
+   {
+    "index": 10,
+    "name": "苏晴"
+   },
+   {
+    "index": 11,
+    "name": "沈予"
+   }
+  ]
+ },
+ "policies": {
+  "dir": "/Users/xupeng/lab/buzz/policies",
+  "files": 9,
+  "per_identity": [
+   {
+    "identity": "卫平",
+    "policy": "/Users/xupeng/lab/buzz/policies/weiping-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "周衡",
+    "policy": "/Users/xupeng/lab/buzz/policies/zhouheng-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "方维",
+    "policy": "/Users/xupeng/lab/buzz/policies/fangwei-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "沈予",
+    "policy": "/Users/xupeng/lab/buzz/policies/shenyu-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "秦牧",
+    "policy": "/Users/xupeng/lab/buzz/policies/qinmu-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "苏晴",
+    "policy": "/Users/xupeng/lab/buzz/policies/suqing-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "裴昭",
+    "policy": "/Users/xupeng/lab/buzz/policies/peizhao-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "陆深",
+    "policy": "/Users/xupeng/lab/buzz/policies/lushen-seatbelt.json",
+    "ok": true,
+    "problems": []
+   },
+   {
+    "identity": "韩川",
+    "policy": "/Users/xupeng/lab/buzz/policies/hanchuan-seatbelt.json",
+    "ok": true,
+    "problems": []
+   }
+  ],
+  "shared": {},
+  "ok": true
+ },
+ "processes": {
+  "local": [
+   {
+    "pid": 56565,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/weiping-seatbelt.json",
+    "identity": "卫平",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56568,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/zhouheng-seatbelt.json",
+    "identity": "周衡",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56581,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/fangwei-seatbelt.json",
+    "identity": "方维",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56584,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/shenyu-seatbelt.json",
+    "identity": "沈予",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56597,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/qinmu-seatbelt.json",
+    "identity": "秦牧",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56610,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/suqing-seatbelt.json",
+    "identity": "苏晴",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56613,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/peizhao-seatbelt.json",
+    "identity": "裴昭",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56626,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/lushen-seatbelt.json",
+    "identity": "陆深",
+    "valid": true,
+    "reasons": []
+   },
+   {
+    "pid": 56632,
+    "relay": "ws://127.0.0.1:3000",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/hanchuan-seatbelt.json",
+    "identity": "韩川",
+    "valid": true,
+    "reasons": []
+   }
+  ],
+  "other_relay": [
+   {
+    "pid": 56427,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/weiping-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56430,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/zhouheng-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56443,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/fangwei-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56445,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/shenyu-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56459,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/qinmu-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56461,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/suqing-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56476,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/peizhao-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56483,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/lushen-seatbelt.json",
+    "counted": false
+   },
+   {
+    "pid": 56496,
+    "relay": "wss://yuanbao.communities.buzz.xyz",
+    "agent_command": "/Users/xupeng/lab/buzz/evidence/f66ef5e-preview/venv/bin/buzz-team-thin",
+    "policy": "/Users/xupeng/lab/buzz/policies/hanchuan-seatbelt.json",
+    "counted": false
+   }
+  ],
+  "per_identity": {
+   "卫平#14": [
+    56565
+   ],
+   "周衡#15": [
+    56568
+   ],
+   "方维#16": [
+    56581
+   ],
+   "沈予#17": [
+    56584
+   ],
+   "秦牧#18": [
+    56597
+   ],
+   "苏晴#19": [
+    56610
+   ],
+   "裴昭#20": [
+    56613
+   ],
+   "陆深#21": [
+    56626
+   ],
+   "韩川#22": [
+    56632
+   ]
+  },
+  "identities_without_valid_process": [],
+  "invalid_local_pids": [],
+  "valid_local": 9,
+  "other_relay_recorded": 9,
+  "ok": true
+ },
+ "official_buzz": {
+  "path": "/Applications/Buzz.app/Contents/MacOS/buzz",
+  "codesign_verify": "pass",
+  "team_identifier": "EYF346PHUG",
+  "identifier": "buzz",
+  "sha256": "bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba",
+  "version": "0.5.25",
+  "recorded": {
+   "sha256": "bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba",
+   "version": "0.5.25"
+  },
+  "updated": false,
+  "problems": [],
+  "ok": true
+ },
+ "test_hooks": []
+}
