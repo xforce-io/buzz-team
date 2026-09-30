@@ -64,8 +64,8 @@
 新跑，均在冻结候选的干净树上：单测在 box 上跑，Mac 演练用的是同一批 blob。
 
 ```
-S1: pending-live  README 第 6 步（真实会话登记两条录音）  合入前代理证据：09-probe 中 ~/kairo/.kairo（global-home/uploads 所在目录）在新 profile 下可写
-S2: pending-live  README 第 6 步（两个 topic 各跑一次 run）  合入前代理证据：09-probe 中两个 topic 的 .kairo 和 references 可写
+S1: pending-live  README 第 6 步（真实会话登记三条录音）  合入前代理证据：09-probe 中 ~/kairo/.kairo（global-home/uploads 所在目录）在新 profile 下可写
+S2: pending-live  README 第 6 步（三条录音各跑一次 run：能源梳理两次、ai-native一次）  合入前代理证据：09-probe 中两个 topic 的 .kairo 和 references 可写
 S3: pass          bash docs/issue-57/rehearse.sh（Mac 临时副本）+ python -m unittest tests.test_issue57_policy  profile 由现役 venv 的 buzz_team.thin.command 生成（cb63521，profile sha256 478b02f3…）；5/5 新目录建探针、删探针成功；~/kairo、两个 topic 根目录、~/.config/kairo、/private/tmp 5/5 EPERM；遗留探针 0；另外 8 份 sha256 = baseline-before，演练前后现役 IDENTICAL；_load_policy 通过。生效后需对现役文件副本再跑一次 probe.sh
 S4: pass / pending-live  tests.test_issue57_policy（pj.md 含规则一次，覆盖 $TMPDIR/heredoc/cd/KAIRO_PROVIDER）+ 副本 verify --prompt present（两条库存行各一次）  真实会话中写 /tmp 次数为 0 待生效后核对
 S5: pass / pending-live  docs/issue-57/README.md + rehearse.sh  落位、备份、预检、回滚、停止条件都写明；副本 apply→verify→rollback→verify 全部 PASS，回滚后 sha256 = 9e087351，与现役逐字节一致；--from-template 也回到 9e087351；各拒绝路径生效；现役 verify --expect old PASS。「重启前由 Jenny 取得 peng 同意」和重启本身待合入后执行
