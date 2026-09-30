@@ -1,12 +1,19 @@
 #!/bin/bash
 # shellcheck disable=SC2015  # ok() always returns 0, so "A && ok || bad" is a safe if/else
-# Issue #61 rehearsal on a synthetic instance (never the live file): builds an instance.local.json
-# with the live structure (same 9 identity keys; placeholders for every unrelated value; 沈予 has
-# the two keys), a fake HOME, and runs apply / verify / rollback plus negative cases.
-# The status step uses the real buzz_team source at 595c0cfe (git archive from this repo, or
-# ISSUE61_REHEARSE_SRC=<dir containing buzz_team/>). If lsof is missing (Linux) a no-op stub is used.
+# Issue #61 rehearsal (never the live file). Runs apply / verify / rollback plus negative cases
+# under a fake HOME inside EMPTY_DIR; every backup stays inside EMPTY_DIR.
+#   default : synthetic instance.local.json with the live structure (same 9 identity keys,
+#             placeholders for every unrelated value; 沈予 has the two keys) + synthetic
+#             managed-agents.json.
+#   ISSUE61_REHEARSE_FROM=<COPY of the live instance.local.json> : rehearse on that copy (the
+#             copy's .desktop.managed_agents is only read, for sha checks and status). Adds an
+#             L-block that runs the scripts with their live defaults against an exact copy at
+#             $HOME/lab/buzz/instance.local.json of the fake HOME (pre-change sha 5e372c4d…).
+# status uses ISSUE61_REHEARSE_PY (a python with buzz_team 595c0cf, e.g. the release bin/python),
+# else the buzz_team source at 595c0cfe (git archive from this repo, or ISSUE61_REHEARSE_SRC=<dir
+# containing buzz_team/>) under python3. If lsof is missing (Linux) a no-op stub is used.
 #
-# Usage: rehearse.sh [EMPTY_DIR]      (default: mktemp -d)
+# Usage: [ISSUE61_REHEARSE_FROM=FILE] [ISSUE61_REHEARSE_PY=PY] rehearse.sh [EMPTY_DIR]   (default: mktemp -d)
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 R="${1:-$(mktemp -d)}"
@@ -25,22 +32,36 @@ expect_rc() { # expect_rc NAME WANT CMD...
 same() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1 ($2 != $3)"; fi; }
 sha() { if command -v shasum >/dev/null 2>&1; then shasum -a 256 "$1" | awk '{print $1}'; else sha256sum "$1" | awk '{print $1}'; fi; }
 
-# ---- 595c0cf source + python wrapper
-SRC="${ISSUE61_REHEARSE_SRC:-}"
-if [ -z "$SRC" ]; then
-  mkdir -p "$R/src595"
-  git -C "$(git -C "$HERE" rev-parse --show-toplevel)" archive 595c0cfe43253b58087906a8bedc8d31388e3b5b src/buzz_team | tar -x -C "$R/src595"
-  SRC="$R/src595/src"
+FROM="${ISSUE61_REHEARSE_FROM:-}"
+if [ -n "$FROM" ]; then
+  [ -f "$FROM" ] || { echo "rehearse: $FROM missing" >&2; exit 2; }
+  case "$(cd "$(dirname "$FROM")" && pwd -P)/$(basename "$FROM")" in
+    */lab/buzz/instance.local.json) echo "rehearse: pass a COPY, not the live file" >&2; exit 2 ;;
+  esac
 fi
+echo "bash: $BASH_VERSION ($BASH)" | tee -a "$LOG"
+
+# ---- python that has buzz_team 595c0cf
 mkdir -p "$R/bin"
-printf '#!/bin/sh\nPYTHONPATH="%s" exec python3 "$@"\n' "$SRC" > "$R/bin/python"; chmod +x "$R/bin/python"
+PY="${ISSUE61_REHEARSE_PY:-}"
+if [ -z "$PY" ]; then
+  SRC="${ISSUE61_REHEARSE_SRC:-}"
+  if [ -z "$SRC" ]; then
+    mkdir -p "$R/src595"
+    git -C "$(git -C "$HERE" rev-parse --show-toplevel)" archive 595c0cfe43253b58087906a8bedc8d31388e3b5b src/buzz_team | tar -x -C "$R/src595"
+    SRC="$R/src595/src"
+  fi
+  printf '#!/bin/sh\nPYTHONPATH="%s" exec python3 "$@"\n' "$SRC" > "$R/bin/python"; chmod +x "$R/bin/python"
+  PY="$R/bin/python"
+fi
+[ -x "$PY" ] || { echo "rehearse: python $PY not executable" >&2; exit 2; }
 if ! command -v lsof >/dev/null 2>&1; then
   printf '#!/bin/sh\nexit 0\n' > "$R/bin/lsof"; chmod +x "$R/bin/lsof"
   echo "NOTE lsof missing: using no-op stub (desktop_pids will be empty)" | tee -a "$LOG"
 fi
 export PATH="$R/bin:$PATH"
 
-# ---- synthetic instance: $R/syn/lab/buzz/instance.local.json (+ managed-agents.json)
+# ---- instance: $R/inst/lab/buzz/instance.local.json (synthetic, or a copy of FROM)
 gen() { python3 - "$1" <<'PY'
 import hashlib, json, os, sys
 root = sys.argv[1]; relay = "ws://127.0.0.1:3000"
@@ -79,19 +100,28 @@ rows.append({"name": "shenyu-definition", "pubkey": "", "relay_url": "", "env_va
 open(f"{root}/desktop/managed-agents.json", "w").write(json.dumps(rows, indent=2, ensure_ascii=False) + "\n")
 PY
 }
-gen "$R/syn"
-T="$R/syn/lab/buzz/instance.local.json"
+T="$R/inst/lab/buzz/instance.local.json"
+if [ -n "$FROM" ]; then
+  mkdir -p "$R/inst/lab/buzz"; cp -p "$FROM" "$T"
+  MA=$(jq -r '.desktop.managed_agents' "$T")
+  echo "source: copy of live instance.local.json; managed-agents.json (read-only): $MA" | tee -a "$LOG"
+else
+  gen "$R/inst"
+  MA="$R/inst/desktop/managed-agents.json"
+  echo "source: synthetic instance.local.json" | tee -a "$LOG"
+fi
 cp -p "$T" "$R/original.json"
-OLD=$(sha "$T"); MA_SHA=$(sha "$R/syn/desktop/managed-agents.json")
-jq . "$T" | cmp -s - "$T" && ok "synthetic file is jq-canonical like the live file (jq . reproduces it byte-for-byte)" || bad "synthetic not jq-canonical"
-echo "synthetic sha256 $OLD" | tee -a "$LOG"
+OLD=$(sha "$T"); MA_SHA=$(sha "$MA")
+jq . "$T" | cmp -s - "$T" && ok "rehearsal file is jq-canonical like the live file (jq . reproduces it byte-for-byte)" || bad "rehearsal file not jq-canonical"
+echo "rehearsal source sha256 $OLD" | tee -a "$LOG"
 
-# fake HOME: the "live" path inside it holds a copy whose sha differs from 5e372c4d…
+# fake HOME: the "live" path inside it holds a copy with one extra newline, so its sha differs from 5e372c4d…
 export HOME="$R/home"; mkdir -p "$HOME/lab/buzz"; cp -p "$T" "$HOME/lab/buzz/instance.local.json"
+printf '\n' >> "$HOME/lab/buzz/instance.local.json"
 LIVE_COPY_SHA=$(sha "$HOME/lab/buzz/instance.local.json")
 unset ISSUE61_TARGET ISSUE61_EXPECT_OLD_SHA ISSUE61_BACKUP_ROOT ISSUE61_I_UNDERSTAND_LIVE ISSUE61_FORCE_ROLLBACK
 E="$R/evidence"
-run_env=(env ISSUE61_TARGET="$T" ISSUE61_EXPECT_OLD_SHA="$OLD" ISSUE61_PY="$R/bin/python")
+run_env=(env ISSUE61_TARGET="$T" ISSUE61_EXPECT_OLD_SHA="$OLD" ISSUE61_PY="$PY")
 gated=("${run_env[@]}" ISSUE61_I_UNDERSTAND_LIVE=yes)
 
 echo "== negatives before apply" | tee -a "$LOG"
@@ -103,11 +133,11 @@ expect_rc "N3 live path: ISSUE61_EXPECT_OLD_SHA override refused" 2 env ISSUE61_
 expect_rc "N4 live path: /tmp backup root refused" 2 env ISSUE61_I_UNDERSTAND_LIVE=yes ISSUE61_BACKUP_ROOT=/tmp/issue61-bk "$HERE/apply.sh"
 same "N3/N4 live-path copy unchanged" "$(sha "$HOME/lab/buzz/instance.local.json")" "$LIVE_COPY_SHA"
 expect_rc "N5 rehearsal target with wrong expected sha -> exit 3" 3 env ISSUE61_TARGET="$T" ISSUE61_EXPECT_OLD_SHA="$(printf '0%.0s' {1..64})" ISSUE61_I_UNDERSTAND_LIVE=yes "$HERE/apply.sh"
-ln -s "$T" "$R/syn/lab/buzz/link.json"
-expect_rc "N6 symlink target refused" 3 env ISSUE61_TARGET="$R/syn/lab/buzz/link.json" ISSUE61_EXPECT_OLD_SHA="$OLD" ISSUE61_I_UNDERSTAND_LIVE=yes "$HERE/apply.sh"
-rm "$R/syn/lab/buzz/link.json"
+ln -s "$T" "$R/inst/lab/buzz/link.json"
+expect_rc "N6 symlink target refused" 3 env ISSUE61_TARGET="$R/inst/lab/buzz/link.json" ISSUE61_EXPECT_OLD_SHA="$OLD" ISSUE61_I_UNDERSTAND_LIVE=yes "$HERE/apply.sh"
+rm "$R/inst/lab/buzz/link.json"
 same "N5/N6 target unchanged" "$(sha "$T")" "$OLD"
-[ ! -e "$R/syn/lab/buzz/backups" ] && ok "N5/N6 no backup dir created" || bad "N5/N6 backup dir created"
+[ ! -e "$R/inst/lab/buzz/backups" ] && ok "N5/N6 no backup dir created" || bad "N5/N6 backup dir created"
 
 echo "== verify old" | tee -a "$LOG"
 expect_rc "V1 verify --expect old" 0 "${run_env[@]}" "$HERE/verify.sh" --expect old --evidence "$E"
@@ -117,7 +147,7 @@ expect_rc "V2 verify --expect new before apply fails" 1 "${run_env[@]}" "$HERE/v
 
 echo "== apply" | tee -a "$LOG"
 expect_rc "A1 apply" 0 "${gated[@]}" "$HERE/apply.sh"
-B=$(find "$R/syn/lab/buzz/backups" -maxdepth 1 -type d -name '*-issue61' | head -n 1)
+B=$(find "$R/inst/lab/buzz/backups" -maxdepth 1 -type d -name '*-issue61' 2>/dev/null | head -n 1 || true)
 NEW=$(sha "$T")
 same "A1 backup sha == original" "$(sha "$B/instance.local.json")" "$OLD"
 same "A1 manifest new_sha256 == target sha" "$(sed -n 's/^new_sha256=//p' "$B/manifest.txt")" "$NEW"
@@ -126,8 +156,8 @@ same "A1 backup dir mode 700" "$(stat -c %a "$B" 2>/dev/null || stat -f %Lp "$B"
 same "A1 raw diff = exactly 2 lines removed + 1 comma change" \
   "$(grep -c '^-[^-]' "$B/raw.diff")/$(grep -c '^+[^+]' "$B/raw.diff")" "3/1"
 grep -E '^[-+][^-+]' "$B/raw.diff" | tee -a "$LOG"
-[ -z "$(find "$R/syn/lab/buzz" -maxdepth 1 -name '.instance.local.json.issue61.*')" ] && ok "A1 no temp file left" || bad "A1 temp file left"
-same "A1 managed-agents.json untouched" "$(sha "$R/syn/desktop/managed-agents.json")" "$MA_SHA"
+[ -z "$(find "$R/inst/lab/buzz" -maxdepth 1 -name '.instance.local.json.issue61.*')" ] && ok "A1 no temp file left" || bad "A1 temp file left"
+same "A1 managed-agents.json untouched" "$(sha "$MA")" "$MA_SHA"
 expect_rc "A2 second apply refused (sha now new)" 3 "${gated[@]}" "$HERE/apply.sh"
 same "A2 target unchanged" "$(sha "$T")" "$NEW"
 
@@ -160,7 +190,24 @@ sleep 1
 expect_rc "A3 apply again" 0 "${gated[@]}" "$HERE/apply.sh"
 same "A3 same new sha as first apply (deterministic)" "$(sha "$T")" "$NEW"
 expect_rc "V6 verify --expect new (newest backup)" 0 "${run_env[@]}" "$HERE/verify.sh" --expect new --evidence "$E"
-same "managed-agents.json untouched throughout" "$(sha "$R/syn/desktop/managed-agents.json")" "$MA_SHA"
+same "managed-agents.json untouched throughout" "$(sha "$MA")" "$MA_SHA"
+
+if [ -n "$FROM" ]; then
+  echo "== L: live defaults (no ISSUE61_TARGET / EXPECT override) on an exact copy at the fake-HOME live path" | tee -a "$LOG"
+  LT="$HOME/lab/buzz/instance.local.json"
+  cp -p "$R/original.json" "$LT"
+  same "L0 fake-HOME live-path copy sha == hard-coded 5e372c4d…" "$(sha "$LT")" 5e372c4da16b6221dc6b959fd170e15bbbbee381d6d8bd9ff443874d26cef3b2
+  expect_rc "L1 apply with live defaults" 0 env ISSUE61_I_UNDERSTAND_LIVE=yes "$HERE/apply.sh"
+  LB=$(find "$HOME/lab/buzz/backups" -maxdepth 1 -type d -name '*-issue61' 2>/dev/null | head -n 1 || true)
+  [ -n "$LB" ] && ok "L1 backup under \$HOME/lab/buzz/backups ($LB)" || bad "L1 no backup under \$HOME/lab/buzz/backups"
+  same "L1 same new sha as the main block" "$(sha "$LT")" "$NEW"
+  expect_rc "L2 verify --expect new with live defaults" 0 env ISSUE61_PY="$PY" "$HERE/verify.sh" --expect new --evidence "$E/live"
+  grep -h "status exit" "$E"/live/*-verify-new/summary.txt | tee -a "$LOG"
+  expect_rc "L3 rollback with live defaults" 0 env ISSUE61_I_UNDERSTAND_LIVE=yes "$HERE/rollback.sh"
+  same "L3 back to 5e372c4d…" "$(sha "$LT")" 5e372c4da16b6221dc6b959fd170e15bbbbee381d6d8bd9ff443874d26cef3b2
+  expect_rc "L4 verify --expect old with live defaults" 0 env ISSUE61_PY="$PY" "$HERE/verify.sh" --expect old --evidence "$E/live"
+  same "L managed-agents.json untouched" "$(sha "$MA")" "$MA_SHA"
+fi
 
 echo "== summary: PASS $PASSN FAIL $FAILN (log $LOG)" | tee -a "$LOG"
 [ "$FAILN" = 0 ]
