@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # #62 本地全流程测试：临时 PostgreSQL 集群 + 生产结构（schema.sql）+ 生产快照数据（fixture.sql），
-# 经 run.sh 跑 backup → verify-before → rehearse → apply → verify-after → rollback，并做反例。
+# 经 run.sh 跑 backup → verify-before → rehearse → apply → verify-after → visible → rollback，并做反例。
 # 用法：docs/issue-62/test/local-test.sh      （需要 initdb/pg_ctl/psql；PGBIN 可覆盖）
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -72,6 +72,12 @@ S1="$(state)"
 "$RUN" verify-after > "$TMP/va.log" 2>&1 || { cat "$TMP/va.log"; fail verify-after; }
 grep -q 'VERIFY-AFTER PASS' "$TMP/va.log" || fail "verify-after marker"
 ok "verify-after PASS"
+"$RUN" visible > "$TMP/vis.log" 2>&1 || { cat "$TMP/vis.log"; fail visible; }
+grep -q 'VISIBLE CHECK PASS' "$TMP/vis.log" || fail "visible marker"
+[ "$(grep -c '^(8 rows)$' "$TMP/vis.log")" = 2 ] || { cat "$TMP/vis.log"; fail "visible: expected 8 workflow rows and 8 visible 30620 rows listed"; }
+grep -q '^ buzz *| buzz *| .* CST | on$' "$TMP/vis.log" || { cat "$TMP/vis.log"; fail "visible: not read-only"; }
+[ "$(state)" = "$S1" ] || fail "visible changed state"
+ok "visible (read-only psql, no signing identity): 8 workflow rows + 8 visible 30620, 1:1, targets not visible"
 expect_fail "run.sh apply refuses second attempt" "apply already attempted" "$RUN" apply
 expect_fail "apply.sql re-run aborts" "#62 abort: workflows=8 before" apply_direct
 [ "$(state)" = "$S1" ] || fail "failed re-run changed state"; ok "failed re-run left state unchanged"
@@ -97,6 +103,8 @@ grep -q 'rollback OK' "$TMP/rb.log" || fail "rollback marker"
 ok "rollback: full-row restore, database byte-identical to before (md5 of all rows), counts $(counts)"
 mv "$R62_EVIDENCE/verify-before.log" "$TMP/vb1.log"
 "$RUN" verify-before > /dev/null 2>&1 || fail "verify-before after rollback"; ok "verify-before PASS again after rollback"
+expect_fail "visible check fails on pre-apply state" "VISIBLE CHECK FAIL: workflows=9" "$RUN" visible
+[ "$(state)" = "$S0" ] || fail "visible negative changed state"
 
 # ---- 反例：每个都必须中止且库不变 ----
 inject() { q "$1" >/dev/null; }

@@ -160,7 +160,7 @@ BEGIN
   END IF;
 END
 $state$;
-\echo '== live kind:30620 per channel (what `buzz workflows list --channel` should show) =='
+\echo '== live kind:30620 per channel (list data source; see visible.sql) =='
 SELECT e.channel_id, count(*) AS live, string_agg(left(e.d_tag, 8), ',' ORDER BY e.d_tag) AS d_tags
   FROM events e WHERE e.community_id = current_setting('r62.community')::uuid AND e.kind = 30620 AND e.deleted_at IS NULL
  GROUP BY e.channel_id ORDER BY 1;

@@ -1,7 +1,7 @@
 """Issue #62: leftover workflow cleanup SQL (docs/issue-62).
 
 Static checks on the target manifest and scripts, shellcheck, and the full local
-PostgreSQL run (backup -> verify -> rehearse -> apply -> verify -> rollback + negatives).
+PostgreSQL run (backup -> verify -> rehearse -> apply -> verify -> visible -> rollback + negatives).
 """
 import json
 import os
@@ -87,6 +87,25 @@ class ScriptShapeTest(unittest.TestCase):
         self.assertIn("default_transaction_read_only=on", run)
         self.assertIn("REHEARSAL PASS", run)
 
+    def test_no_signing_identity(self):
+        # Jenny 2026-10-01 00:52: #62 has no authorized signing identity; the post-apply list check is read-only psql.
+        for path in sorted(ISSUE.rglob("*")):
+            if path.is_file():
+                text = path.read_text()
+                self.assertNotIn("BUZZ_PRIVATE_KEY", text, path)
+                self.assertNotIn("run.sh list", text, path)
+                self.assertNotRegex(text, r"(?m)^[^#\n]*\$\{?BUZZ_BIN", path)
+        run = (ISSUE / "run.sh").read_text()
+        self.assertNotIn("workflows list", run)
+        self.assertNotRegex(run, r"(?m)^\s*list\)")
+        self.assertIn('inline "$HERE/visible.sql" | psql_run ro -f -', run)
+        visible = (ISSUE / "visible.sql").read_text()
+        code = "\n".join(l for l in visible.splitlines() if not l.lstrip().startswith("--"))
+        self.assertIn("BEGIN READ ONLY;", code)
+        self.assertRegex(code, r"ROLLBACK;\s*$")
+        self.assertNotRegex(code, r"(?i)\b(INSERT|UPDATE|DELETE|COMMIT)\b")
+        self.assertIn("VISIBLE CHECK PASS", code)
+
     @unittest.skipUnless(shutil.which("shellcheck"), "shellcheck not installed")
     def test_shellcheck(self):
         subprocess.run(["shellcheck", str(ISSUE / "run.sh"), str(ISSUE / "test" / "local-test.sh")], check=True)
@@ -100,7 +119,7 @@ class LocalPostgresTest(unittest.TestCase):
                 self.fail("CI must run the #62 PostgreSQL test: " + proc.stdout)
             self.skipTest(proc.stdout.strip())
         self.assertEqual(proc.returncode, 0, proc.stdout[-4000:] + proc.stderr[-4000:])
-        self.assertIn("ALL 24 CHECKS PASSED", proc.stdout)
+        self.assertIn("ALL 26 CHECKS PASSED", proc.stdout)
 
 
 if __name__ == "__main__":

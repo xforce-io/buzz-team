@@ -8,6 +8,7 @@
   > 2026-10-01 00:05 peng 授权（仅限两项实例清理，一次性）：……(2) 残留 workflow 037a83e7…、107226dd…：peng 同意清理——Scout 开票，先只读核对它们确实已失效且无任务引用，把要删的具体记录与回滚方式贴进票，经 Knox 审后由 Hogan 执行删除并留证。限制：不碰其他席位、thin-bin pin、managed-agents.json、channel_wake、代理与 upstream block/buzz；不在 #57 续跑期间做活机改动（等 Jenny 通知 #57 结束）。
 - **peng 2026-10-01 00:35 CST（经 Jenny）扩大范围**：#62 列出的另外 7 条孤儿定义（秦牧 3、周衡 #38 smoke 3、方维旧站会唤醒 1）一并清理，同一 PR，全部满足 Knox 的 P2 要求。
 - **Knox 00:40 补充**：每个目标同时按 id 和 owner pubkey 精确匹配；总数断言 workflows 9 → 8、可见 30620 17 → 8，剩下 8 条必须恰为 8 个保留 workflow 的定义。
+- **#62 未授权任何签名身份（Jenny 2026-10-01 00:52 定）**：不用 peng 的键或 CLI_PRIVATE_KEY，也不另申请身份。原 Knox P3 的执行后列表核对（`buzz workflows list`）改为 psql 只读查询 `visible.sql`（`run.sh visible`），不需要任何私钥。
 - #57 已结束（verdict B，Knox PASS），不再等待。执行仍需：**Knox 对本 PR PASS → peng 合入 → Hogan 按下文执行**。Scout 不执行 apply/rehearse。
 
 ## 目标（唯一来源：`targets.sql`）
@@ -48,6 +49,7 @@ community `14a17e2d-40ae-4182-86c1-7dde01da0f03`。9 个 d_tag 都没有 workflo
 - `rollback.sql`：`INSERT … SELECT * FROM json_populate_record(NULL::workflows, <备份行>)`；事件行 `UPDATE events SET (<全部非生成列>) = (SELECT … FROM json_populate_record(NULL::events, <备份行>))`（列清单取自 information_schema；search_tsv 为生成列由库重算）。每行还原后与备份逐列比较（`ROW(x.*) IS NOT DISTINCT FROM ROW(p.*)`），数量不符即中止。
 - `rehearse.sql`：`BEGIN` → temp 表快照 → 校验 backup.json 与现状全行一致 → `\ir apply.sql` → `\ir rollback.sql` → 按 information_schema 列清单对 workflows 全表、社区内全部 30620 行逐列 `IS DISTINCT FROM` 比较 → `ROLLBACK`。真实触发器、约束、READ COMMITTED 下运行（开头断言 isolation、`session_replication_role=origin`、非只读）。
 - `verify.sql`：只读；`phase=before` / `after` 两套断言（见文件头）+ 外键 / workflow 列引用检查（证据表 + 0 行断言）。
+- `visible.sql`：执行后可见性核对，只读（`BEGIN READ ONLY … ROLLBACK`，run.sh 另加 `default_transaction_read_only=on`）。直接查列表的数据源：列出剩余 workflows 行（id、name、owner、频道、status、enabled）和社区内可见（`deleted_at IS NULL`）的 kind:30620（d_tag、event id、owner、频道、是否为对应 workflow 自己的定义），以及按频道汇总；断言 workflows = 8、可见 30620 = 8 且与 8 行一一对应（d_tag = id、pubkey = owner），9 个目标 d_tag 不可见、目标 workflow 行不存在 → `VISIBLE CHECK PASS`。
 - `run.sh`：执行入口。内联 `\ir`，经 `docker exec -i buzz-prod-postgres-1 psql -U buzz -d buzz -X -v ON_ERROR_STOP=1` 送入；只读步骤加 `PGOPTIONS=-c default_transaction_read_only=on`；每步日志带 CST 时间、脚本 sha256、backup.json sha256，SQL 输出里有 `current_user`。`apply` 只有在同一份 backup.json 上 verify-before 与 rehearse 都通过后才会运行，且不允许重复运行。
 
 ## Hogan 执行顺序（在已合入 main 的 buzz-team 检出目录，Mac 上）
@@ -61,10 +63,12 @@ cd <buzz-team 检出>/docs/issue-62
 ./run.sh rehearse        # 彩排：apply → rollback → 逐列比对 → ROLLBACK → REHEARSAL PASS
 ./run.sh apply           # 真执行：psql -1，全部计数断言 → "#62 apply OK"
 ./run.sh verify-after    # 只读：8/8、一一对应、目标消失、非目标逐列不变 → VERIFY-AFTER PASS
-./run.sh list            # 官方只读检查：buzz workflows list（炼丹房应 1 条，秘书处应 7 条，目标 0）
+./run.sh visible         # 只读 psql 可见性核对：剩余 8 个 workflow 行 + 8 条可见 30620，一一对应，目标 0 → VISIBLE CHECK PASS
 ```
 
-rehearse 与 apply 之间不要做别的事，也不要间隔太久；中途任何步骤失败都不要继续。`list` 需要能读这两个频道的身份：与 #38 smoke 相同的方式设置 `BUZZ_PRIVATE_KEY`（`BUZZ_RELAY_URL` 默认 `ws://127.0.0.1:3000`），只运行 `list`，不写。
+rehearse 与 apply 之间不要做别的事，也不要间隔太久；中途任何步骤失败都不要继续。全部步骤只用 psql（role `buzz`），不需要任何签名身份或私钥：#62 未授权任何签名身份（Jenny 2026-10-01 00:52 定），不用 peng 的键或 CLI_PRIVATE_KEY，列表核对改为 psql 只读查询（`run.sh visible`）。
+
+等价的只读裸命令：`docker exec -i -e PGOPTIONS='-c default_transaction_read_only=on' buzz-prod-postgres-1 psql -U buzz -d buzz -X -v ON_ERROR_STOP=1 -f - < visible（\ir targets.sql 已内联）`。
 
 等价的裸命令（不用 run.sh 时；SQL 文件需先把 `\ir` 内联，run.sh 已做）：`docker exec -i buzz-prod-postgres-1 psql -U buzz -d buzz -X -v ON_ERROR_STOP=1 -1 -f - < apply（已内联）`。
 
@@ -74,7 +78,7 @@ rehearse 与 apply 之间不要做别的事，也不要间隔太久；中途任�
 - `rehearse` 不是 `REHEARSAL PASS`（包括 community_write_fence 拒绝、isolation 不是 READ COMMITTED、任一列比对不同）。**彩排不通过，不做真删除。**
 - `apply` 报 `#62 abort`：事务已整体回滚，库不变；不要重试，先回报。
 - `verify-after` 不 PASS：立即 `./run.sh rollback`，再 `./run.sh verify-before`（用同一份 backup.json，`run.sh` 会把旧日志覆盖，请先另存）确认恢复，回报。
-- `list` 仍列出目标：**不重启 relay/colima**，如实回报（relay 查询直接读库，仍列出说明有未预期的缓存或数据，需要另查）。
+- `visible` 不是 `VISIBLE CHECK PASS`（目标仍可见、总数不是 8/8、或可见定义与 workflow 行不一一对应）：**不重启 relay/colima**，如实回报。
 
 ## 回滚
 
@@ -86,7 +90,7 @@ rehearse 与 apply 之间不要做别的事，也不要间隔太久；中途任�
 
 ## 留证（存 `~/lab/buzz/evidence/issue-62/`，在 #62 回帖摘要）
 
-- `before/backup.json` 与 `backup.json.sha256`；`backup.log`、`verify-before.log`、`rehearse.log`、`apply.log`、`verify-after.log`、`list.log`、`after/list-<channel>.json`。
+- `before/backup.json` 与 `backup.json.sha256`；`backup.log`、`verify-before.log`、`rehearse.log`、`apply.log`、`verify-after.log`、`visible.log`。
 - 每个日志头有开始时间（CST）、主机、操作者、脚本 sha256、backup.json sha256；SQL 输出里有 psql role（`current_user` / `session_user`）、事务 isolation 和执行时间（CST）。回帖时写明 role 和 apply 的 CST 时间。
 - S3：执行后下一次到期的定时任务（如 `7c3362d0…` 每日 08:45 CST）在 `workflow_runs` 有新记录。
 
@@ -98,4 +102,4 @@ rehearse 与 apply 之间不要做别的事，也不要间隔太久；中途任�
 
 ## 测试
 
-`test/local-test.sh`：临时 PostgreSQL 集群，`test/schema.sql`（生产 workflows/events/引用表的列、约束、触发器与真实 fence 函数）+ `test/fixture.sql`（10 条目标行为生产只读快照原样；总数同生产 9/17），经 `run.sh` 跑完整流程与反例（改动中途拒绝、计数不符、fence、isolation、过期备份、重复执行等），共 24 项检查，最后库回到初始状态（全部行 md5 一致）。`tests/test_issue62_sql.py` 在 CI（`.github/workflows/test.yml` 的 unittest）中运行：清单与 lock key 复算、脚本形状、shellcheck、以及上述本地 PostgreSQL 全流程（CI 上找不到 initdb 时判失败，不跳过）。
+`test/local-test.sh`：临时 PostgreSQL 集群，`test/schema.sql`（生产 workflows/events/引用表的列、约束、触发器与真实 fence 函数）+ `test/fixture.sql`（10 条目标行为生产只读快照原样；总数同生产 9/17），经 `run.sh` 跑完整流程与反例（改动中途拒绝、计数不符、fence、isolation、过期备份、重复执行等），共 26 项检查（含 `run.sh visible` 只读可见性核对及其反例），最后库回到初始状态（全部行 md5 一致）。`tests/test_issue62_sql.py` 在 CI（`.github/workflows/test.yml` 的 unittest）中运行：清单与 lock key 复算、脚本形状、shellcheck、以及上述本地 PostgreSQL 全流程（CI 上找不到 initdb 时判失败，不跳过）。

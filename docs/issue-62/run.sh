@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # #62 执行入口（Hogan 在 peng 的 Mac 上运行）。每步输出 tee 到 $R62_EVIDENCE/<step>.log，带 CST 时间与 psql role。
-#   run.sh backup | verify-before | rehearse | apply | verify-after | list | rollback
+#   run.sh backup | verify-before | rehearse | apply | verify-after | visible | rollback
 # 默认连 docker 容器 buzz-prod-postgres-1（psql -U buzz -d buzz）；SQL 经 stdin 送入，\ir 由本脚本先行内联。
 # 测试时用 R62_PSQL 覆盖为本地 psql 命令（如 "psql -h /tmp/pg -p 55432 -d buzz"）。
 set -euo pipefail
@@ -44,7 +44,7 @@ psql_run() {
 
 header() {
   echo "# #62 $STEP  start $(cst)  host $(hostname -s 2>/dev/null || hostname)  operator ${USER:-?}"
-  echo "# scripts: $(cd "$HERE" && sha targets.sql backup.sql verify.sql rehearse.sql apply.sql rollback.sql | awk '{printf "%s=%s ", $2, substr($1,1,12)}')"
+  echo "# scripts: $(cd "$HERE" && sha targets.sql backup.sql verify.sql rehearse.sql apply.sql rollback.sql visible.sql | awk '{printf "%s=%s ", $2, substr($1,1,12)}')"
   [ -f "$BACKUP" ] && echo "# backup.json sha256 $(sha "$BACKUP" | awk '{print $1}')"
   return 0
 }
@@ -90,31 +90,11 @@ case "$STEP" in
     { header; inline "$HERE/rollback.sql" | psql_run rw -1 -v backup="$(cat "$BACKUP")" -f - 2>&1; echo "# end $(cst)"; } \
       | tee "$EV/rollback.log"
     ;;
-  list)
-    # 官方只读检查：buzz workflows list（两个频道）。仍列出时不重启 relay，如实回报。
-    BUZZ_BIN="${BUZZ_BIN:-$HOME/lab/buzz/bin/buzz}"
-    export BUZZ_RELAY_URL="${BUZZ_RELAY_URL:-ws://127.0.0.1:3000}"
-    [ -x "$BUZZ_BIN" ] || die "BUZZ_BIN not executable: $BUZZ_BIN"
-    { header
-      for ch in 9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3 dba84516-ed4d-4ae2-bd54-5a9a65527324; do
-        "$BUZZ_BIN" workflows list --channel "$ch" > "$EV/after/list-$ch.json"
-        echo "# list $ch saved"
-      done
-      python3 - "$HERE/targets.sql" "$EV/after" <<'PY'
-import json, re, sys
-targets = set(re.findall(r'"d_tag":"([0-9a-f-]{36})"', open(sys.argv[1]).read()))
-want = {"9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3": 1, "dba84516-ed4d-4ae2-bd54-5a9a65527324": 7}
-ok = True
-for ch, n in want.items():
-    ids = [w.get("workflow_id") for w in json.load(open(f"{sys.argv[2]}/list-{ch}.json"))]
-    leaked = sorted(set(ids) & targets)
-    print(f"list {ch}: {len(ids)} workflows (want {n}); targets still listed: {leaked or 'none'}")
-    ok &= len(ids) == n and not leaked
-print("LIST CHECK PASS" if ok else "LIST CHECK MISMATCH (do not restart relay; report as-is)")
-PY
-      echo "# end $(cst)"; } 2>&1 | tee "$EV/list.log"
+  visible)
+    # 执行后可见性核对：只读 psql（BEGIN READ ONLY + default_transaction_read_only=on），代替原 CLI 列表核对；#62 未授权任何签名身份
+    { header; inline "$HERE/visible.sql" | psql_run ro -f - 2>&1; echo "# end $(cst)"; } | tee "$EV/visible.log"
     ;;
   *)
-    die "usage: run.sh backup|verify-before|rehearse|apply|verify-after|list|rollback"
+    die "usage: run.sh backup|verify-before|rehearse|apply|verify-after|visible|rollback"
     ;;
 esac
