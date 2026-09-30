@@ -1,0 +1,15 @@
+date: 2026-09-30 13:12:45 CST
+repo_sha: a6a1a729790efe8c76b15c08e5161969af2458a8
+ProductName:  macOS
+ProductVersion:  26.6.2
+BuildVersion:  25G83
+workdir: /private/tmp/buzz58-rehearsal-20260930-130602/final
+git blob ids of the rehearsed files:
+  9e8653fe1fa27e9c9bd4809da51ff2ca122e6be6  common.sh
+  653e4d13d3aa11cc5dc000a2f74d447da41a88ee  apply.sh
+  29984018da1773c2c517d499e05dca77a5504971  rollback.sh
+  43d3badbeb29b617f7d1f9d5a889a91992752ed4  verify.sh
+  6831fa26f781c383143f3eed71a6268493d5fbab  rehearse.sh
+  72a8e8cdd9ea2d8c2e8fd9a81721df88c8c62929  instance-readme-line.md
+  8376adc6e3070aa4e972708afc260122c7c2880c  bin/buzz
+  de9c2a13fcabbbf25e98e65781b6b378b2ede48f  bin/buzz-health

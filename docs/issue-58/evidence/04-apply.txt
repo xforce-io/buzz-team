@@ -1,0 +1,16 @@
+issue58: target=/private/tmp/buzz58-rehearsal-20260930-130602/final/instance live=no
+issue58: official buzz CLI signature OK (codesign --strict, TeamIdentifier EYF346PHUG)
+issue58: backup /private/tmp/buzz58-rehearsal-20260930-130602/final/instance/backups/20260930-131247-issue58
+before:
+  buzz 819c2e12c7d0da77b02540b78ab8727ba7bf16258bcfe210d01329f9acb17c31
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness fe5681bae6c58323dcc03ed74d76dae066960120fdea3569178ce53ab8a4287c
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health <absent>
+after:
+  buzz 94781f89e8f25d1a31e84f2a19c7641a85fb1190b8505691ab4754d0ba2e92c7
+  agent-executor 60a780997cd5bdbd7afb5ff8781314e6da1a1371c3d6da3a98e45684de1a3b2f
+  agent-harness <absent>
+  agent-worktree 73ec3806dd4da0fecb6ccbcaf3b32fd8337f3791a0370ca5326136dd9ac5bb23
+  buzz-health 591c81b54fad166e548bb5d74b0a35abc38566e7a73c190571b13e1a5efed53d
+issue58: applied. Rollback: /tmp/buzz58-rehearsal-20260930-130602/scripts/rollback.sh --target /private/tmp/buzz58-rehearsal-20260930-130602/final/instance --backup /private/tmp/buzz58-rehearsal-20260930-130602/final/instance/backups/20260930-131247-issue58

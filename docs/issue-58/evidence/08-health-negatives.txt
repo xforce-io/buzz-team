@@ -1,0 +1,18 @@
+### control-live-ps-fixture: exit=0 ok=True failures=[] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=9 other_relay_recorded=9 without_valid=[] invalid=[]
+### env-missing: exit=2 ok=False failures=['local identity without a valid buzz-acp process'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=8 other_relay_recorded=9 without_valid=['陆深#21'] invalid=[(56626, ['BUZZ_TEAM_POLICY_PATH missing'])]
+### env-wrong: exit=2 ok=False failures=['local identity without a valid buzz-acp process'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=8 other_relay_recorded=9 without_valid=['陆深#21'] invalid=[(56626, ['BUZZ_ACP_AGENT_COMMAND differs from custom harness command'])]
+### non-local-relay: exit=2 ok=False failures=['local identity without a valid buzz-acp process'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=11 local=9 other_relay=2 unresolved=[] ok=True
+  processes: valid_local=8 other_relay_recorded=10 without_valid=['陆深#21'] invalid=[]
+### recon-doctor-12: exit=2 ok=False failures=['doctor launch identities != local identities + other-relay rows'] test_hooks=['BUZZ58_TEST_DOCTOR_FIXTURE', 'BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=12 local=9 other_relay=2 unresolved=[] ok=False
+  processes: valid_local=9 other_relay_recorded=9 without_valid=[] invalid=[]
+### recon-inventory-relay-blank: exit=2 ok=False failures=['doctor launch identities != local identities + other-relay rows'] test_hooks=['BUZZ58_TEST_PS_FIXTURE']
+  reconciliation: doctor=None local=9 other_relay=1 unresolved=[{'index': 12, 'name': 'Fizz', 'reason': 'launch row without relay_url'}] ok=False
+  processes: valid_local=9 other_relay_recorded=9 without_valid=[] invalid=[]

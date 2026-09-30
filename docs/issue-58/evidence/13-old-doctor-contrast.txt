@@ -1,0 +1,5 @@
+595c0cfe inventory_empty_pubkey:11 fail | inventory row 11 has empty pubkey on a launch row
+595c0cfe inventory_non_instance pass | reported 13 inventory row(s) outside this instance; not deleted
+row 11 沈予: slug=zhufeng-qa pubkey_empty=True agent_command='' env BUZZ_RUNTIME_ID set=True (is an instance identity key: True) definition_only=False
+health._read_desktop_proxy_maps: anomaly=True -> desktop_inventory fail: Desktop managed-agents inventory has instance anomalies
+desktop.selected_rows: 9 identities (no raise)
