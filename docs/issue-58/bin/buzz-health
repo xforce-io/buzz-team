@@ -8,12 +8,15 @@ Steps (L1 r2 K1-K4):
   c. read BUZZ_RELAY_URL / BUZZ_ACP_AGENT_COMMAND / BUZZ_TEAM_POLICY_PATH of every
      buzz-acp process (no other variable is kept or printed) and require >=1 valid
      process per local identity; other relays (yuanbao) are recorded only;
+     HTTP(S)_PROXY / http(s)_proxy are also read (reduced to scheme://host:port) and each
+     distinct endpoint gets one TCP connect; a local process whose proxy does not accept
+     connections is invalid, since every agent turn would fail behind it;
   d. `codesign --verify --strict -R <REQUIREMENT>` on the official buzz CLI (Apple-anchored
      chain, identifier "buzz", leaf subject OU EYF346PHUG); only its exit code decides.
      `codesign -dv` fields (self-asserted), sha256 and CFBundleShortVersionString are
      recorded only; a sha/version change is only reported.
 
-Writes nothing, contacts no relay, needs no private key. Exit 0 pass, 2 fail.
+Writes nothing, contacts no relay (only TCP-connects proxy endpoints), needs no private key. Exit 0 pass, 2 fail.
 Test-only hooks (reported under "test_hooks"): BUZZ58_TEST_OFFICIAL_BUZZ,
 BUZZ58_TEST_PS_FIXTURE, BUZZ58_TEST_DOCTOR_FIXTURE.
 """
@@ -27,8 +30,10 @@ from pathlib import Path
 import plistlib
 import re
 import shlex
+import socket
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 HOME = Path.home()
 DEFAULT_INVENTORY = HOME / "Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json"
@@ -47,6 +52,8 @@ REQUIREMENT = ('=anchor apple generic and identifier "' + SIGNING_IDENTIFIER
 RECORDED_SHA256 = "bbabc37d36907411e0b90a5789b2642ba4fcebb34bdd2ffff2414696d54052ba"
 RECORDED_VERSION = "0.5.25"
 ENV_KEYS = ("BUZZ_RELAY_URL", "BUZZ_ACP_AGENT_COMMAND", "BUZZ_TEAM_POLICY_PATH")
+PROXY_KEYS = ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy")
+PROXY_PROBE_TIMEOUT = 3.0
 LAUNCH_COUNT = re.compile(r"^(\d+) launch identities checked$")
 
 
@@ -207,37 +214,76 @@ def list_acp_pids(runner=subprocess.run) -> list[int]:
     return sorted(pids)
 
 
+def proxy_endpoint(value: str) -> str | None:
+    """Reduce a proxy URL to scheme://host:port (drops any credentials); None if unparseable."""
+    try:
+        parts = urlsplit(value if "://" in value else "http://" + value)
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        return None
+    if not host:
+        return None
+    scheme = parts.scheme or "http"
+    if port is None:
+        port = 443 if scheme == "https" else 80
+    return f"{scheme}://{host}:{port}"
+
+
 def read_process_env(pid: int, runner=subprocess.run) -> dict[str, str | None]:
-    """Return only ENV_KEYS for pid. The raw ps line (which carries secrets) is discarded here."""
+    """Return only ENV_KEYS and reduced PROXY_KEYS for pid. The raw ps line (which carries secrets) is discarded here."""
     proc = runner(["ps", "-E", "-ww", "-o", "command=", "-p", str(pid)], capture_output=True, text=True, timeout=20)
     raw = proc.stdout
     values: dict[str, str | None] = {}
-    for key in ENV_KEYS:
+    for key in ENV_KEYS + PROXY_KEYS:
         found = re.findall(r"(?:^|\s)" + key + r"=(\S*)", raw)
         values[key] = found[-1] if found and found[-1] else None
     del raw
+    for key in PROXY_KEYS:
+        if values[key] is not None:
+            values[key] = proxy_endpoint(values[key]) or "<unparseable>"
     return values
+
+
+def probe_tcp(endpoint: str) -> str | None:
+    """TCP-connect to scheme://host:port; return None on success, else the error class/text."""
+    parts = urlsplit(endpoint)
+    try:
+        with socket.create_connection((parts.hostname, parts.port), timeout=PROXY_PROBE_TIMEOUT):
+            return None
+    except OSError as exc:
+        return f"{type(exc).__name__}: {exc}"
 
 
 def collect_processes(runner=subprocess.run) -> list[dict]:
     return [{"pid": pid, "env": read_process_env(pid, runner)} for pid in list_acp_pids(runner)]
 
 
-def evaluate_processes(processes: list[dict], local: list[dict], local_relay: str) -> dict:
+def evaluate_processes(processes: list[dict], local: list[dict], local_relay: str, probe=probe_tcp) -> dict:
     by_policy = {identity["policy"]: identity for identity in local if identity["policy"]}
     local_url = _norm_relay(local_relay)
     per_identity = {identity["name"] + f"#{identity['index']}": [] for identity in local}
     local_rows, other_rows, invalid = [], [], []
+    probes: dict[str, str | None] = {}
     for item in processes:
-        env = {key: item.get("env", {}).get(key) for key in ENV_KEYS}
+        env = {key: item.get("env", {}).get(key) for key in ENV_KEYS + PROXY_KEYS}
         relay = _norm_relay(env["BUZZ_RELAY_URL"])
+        proxies = {key: env[key] for key in PROXY_KEYS if env[key] is not None}
         record = {"pid": item.get("pid"), "relay": env["BUZZ_RELAY_URL"],
-                  "agent_command": env["BUZZ_ACP_AGENT_COMMAND"], "policy": env["BUZZ_TEAM_POLICY_PATH"]}
+                  "agent_command": env["BUZZ_ACP_AGENT_COMMAND"], "policy": env["BUZZ_TEAM_POLICY_PATH"],
+                  "proxies": proxies}
         if relay and relay != local_url:
             record["counted"] = False
             other_rows.append(record)
             continue
         reasons = []
+        for key, endpoint in proxies.items():
+            if endpoint == "<unparseable>":
+                reasons.append(f"{key} unparseable")
+                continue
+            if endpoint not in probes:
+                probes[endpoint] = probe(endpoint)
+            if probes[endpoint] is not None:
+                reasons.append(f"{key} {endpoint} unreachable")
         if not relay:
             reasons.append("BUZZ_RELAY_URL missing")
         identity = by_policy.get(env["BUZZ_TEAM_POLICY_PATH"]) if env["BUZZ_TEAM_POLICY_PATH"] else None
@@ -258,7 +304,10 @@ def evaluate_processes(processes: list[dict], local: list[dict], local_relay: st
         else:
             per_identity[identity["name"] + f"#{identity['index']}"].append(record["pid"])
     missing = sorted(name for name, pids in per_identity.items() if not pids)
+    unreachable = sorted(endpoint for endpoint, error in probes.items() if error is not None)
     return {"local": local_rows, "other_relay": other_rows, "per_identity": per_identity,
+            "proxy_probes": {endpoint: error or "ok" for endpoint, error in sorted(probes.items())},
+            "unreachable_proxies": unreachable,
             "identities_without_valid_process": missing, "invalid_local_pids": invalid,
             "valid_local": sum(len(p) for p in per_identity.values()),
             "other_relay_recorded": len(other_rows), "ok": bool(local) and not missing}
@@ -313,7 +362,7 @@ def check_signature(path: str, runner=subprocess.run) -> dict:
 # ------------------------------------------------------------------ main
 
 def evaluate(*, inventory: Path, policies: Path, harnesses: Path, local_relay: str,
-             doctor: dict, processes: list[dict], signature: dict) -> dict:
+             doctor: dict, processes: list[dict], signature: dict, probe=probe_tcp) -> dict:
     failures = []
     try:
         rows = json.loads(inventory.read_text())
@@ -337,7 +386,9 @@ def evaluate(*, inventory: Path, policies: Path, harnesses: Path, local_relay: s
     policy_check = check_policies(local, policies, doctor_policy_status(doctor.get("result")))
     if not policy_check["ok"]:
         failures.append("policy cross-check failed")
-    process_check = evaluate_processes(processes, local, local_relay)
+    process_check = evaluate_processes(processes, local, local_relay, probe)
+    if process_check["unreachable_proxies"]:
+        failures.append("buzz-acp proxy unreachable: " + ", ".join(process_check["unreachable_proxies"]))
     if not process_check["ok"]:
         failures.append("local identity without a valid buzz-acp process")
     if not signature["ok"]:

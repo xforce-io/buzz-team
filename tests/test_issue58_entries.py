@@ -92,11 +92,11 @@ class BuzzHealthTests(unittest.TestCase):
         self.addCleanup(temp.cleanup)
         self.fx = Fixture(Path(temp.name))
 
-    def evaluate(self, doctor=None, processes=None, signature=None):
+    def evaluate(self, doctor=None, processes=None, signature=None, probe=None):
         return health.evaluate(inventory=self.fx.inventory, policies=self.fx.policies, harnesses=self.fx.harnesses,
                                local_relay=LOCAL, doctor=doctor or self.fx.doctor(),
                                processes=self.fx.processes() if processes is None else processes,
-                               signature=signature or GOOD_SIGNATURE)
+                               signature=signature or GOOD_SIGNATURE, probe=probe or health.probe_tcp)
 
     def test_live_shape_passes_and_lists_skipped_rows(self):
         report = self.evaluate()
@@ -207,8 +207,65 @@ class BuzzHealthTests(unittest.TestCase):
                                     f"BUZZ_ACP_AGENT_COMMAND={THIN} BUZZ_TEAM_POLICY_PATH={self.fx.policy('alpha')}\n")
         procs = health.collect_processes(runner)
         self.assertEqual([p["pid"] for p in procs], [100])
-        self.assertEqual(set(procs[0]["env"]), set(health.ENV_KEYS))
+        self.assertEqual(set(procs[0]["env"]), set(health.ENV_KEYS + health.PROXY_KEYS))
         self.assertNotIn("SECRET", json.dumps(self.evaluate(processes=procs)))
+
+    def with_proxy(self, value, pids=(100, 101, 102, 200)):
+        procs = self.fx.processes()
+        for proc in procs:
+            if proc["pid"] in pids:
+                proc["env"]["HTTPS_PROXY"] = value
+        return procs
+
+    def test_unreachable_proxy_fails_and_is_probed_once(self):
+        calls = []
+        def probe(endpoint):
+            calls.append(endpoint)
+            return "ConnectionRefusedError: refused"
+        report = self.evaluate(processes=self.with_proxy("http://127.0.0.1:6478"), probe=probe)
+        self.assertFalse(report["ok"])
+        self.assertEqual(calls, ["http://127.0.0.1:6478"])
+        self.assertIn("buzz-acp proxy unreachable: http://127.0.0.1:6478", report["failures"])
+        self.assertEqual(report["processes"]["identities_without_valid_process"], ["alpha#6", "beta#7", "gamma#8"])
+
+    def test_reachable_proxy_passes(self):
+        report = self.evaluate(processes=self.with_proxy("http://127.0.0.1:9567"), probe=lambda endpoint: None)
+        self.assertTrue(report["ok"], report["failures"])
+        self.assertEqual(report["processes"]["proxy_probes"], {"http://127.0.0.1:9567": "ok"})
+
+    def test_other_relay_proxy_is_not_probed(self):
+        def probe(endpoint):
+            raise AssertionError("must not probe")
+        report = self.evaluate(processes=self.with_proxy("http://127.0.0.1:6478", pids=(200,)), probe=probe)
+        self.assertTrue(report["ok"], report["failures"])
+
+    def test_unparseable_proxy_fails(self):
+        report = self.evaluate(processes=self.with_proxy("<unparseable>", pids=(100,)), probe=lambda endpoint: None)
+        self.assertFalse(report["ok"])
+        self.assertEqual(report["processes"]["identities_without_valid_process"], ["alpha#6"])
+
+    def test_proxy_credentials_are_dropped(self):
+        def runner(argv, **_):
+            if "comm=" in argv:
+                return completed(stdout="  100 /Applications/Buzz.app/Contents/MacOS/buzz-acp\n")
+            return completed(stdout=f"/x/buzz-acp HTTPS_PROXY=http://user:hunter2@10.0.0.1:8080 "
+                                    f"http_proxy=127.0.0.1:9567 BUZZ_RELAY_URL={LOCAL}\n")
+        env = health.collect_processes(runner)[0]["env"]
+        self.assertEqual(env["HTTPS_PROXY"], "http://10.0.0.1:8080")
+        self.assertEqual(env["http_proxy"], "http://127.0.0.1:9567")
+        self.assertIsNone(env["HTTP_PROXY"])
+        self.assertNotIn("hunter2", json.dumps(env))
+
+    def test_probe_tcp_reports_refused_port(self):
+        import socket
+        with socket.socket() as sock:
+            sock.bind(("127.0.0.1", 0))
+            port = sock.getsockname()[1]
+        self.assertIsNotNone(health.probe_tcp(f"http://127.0.0.1:{port}"))
+        with socket.socket() as server:
+            server.bind(("127.0.0.1", 0))
+            server.listen(1)
+            self.assertIsNone(health.probe_tcp(f"http://127.0.0.1:{server.getsockname()[1]}"))
 
 
 REQUIREMENT = '=anchor apple generic and identifier "buzz" and certificate leaf[subject.OU] = "EYF346PHUG"'
