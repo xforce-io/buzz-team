@@ -7,6 +7,8 @@
 # thin. Missing = wrong = FAIL. Local relay must be ESTABLISHED; yuanbao state is recorded only.
 # --compare-state: other seats' pids unchanged; with --restarted 周衡 pids must be new; 周衡 logs
 # must show no thin launch failure ("BUZZ_TEAM_POLICY_PATH must be an absolute path", exit 126).
+# This script does not query the Sandbox unified log. Write-deny acceptance is the run/session
+# log plus probe.sh (see docs/issue-63); a missing unified-log deny is not pass/fail.
 #
 # Usage: verify.sh [--target POLICY_DIR] --expect old|new [--static-only] [--inventory FILE]
 #                  [--prompt present|absent|skip] [--relays local|all] [--save-state FILE] [--compare-state FILE [--restarted]]
