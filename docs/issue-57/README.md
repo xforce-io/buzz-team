@@ -216,7 +216,7 @@ profile 生成方式：`issue57.py precheck` 由 `~/lab/buzz/evidence/f66ef5e-pr
 
 ## 证据规则（Knox 2026-10-01）
 
-沙箱相关验收**不能用「Sandbox 日志或统一日志里查不到拒绝」作证据**，因为按 #63 目前结果，seatbelt 写拒绝不进统一日志。只能用 run 日志加 probe 对照：`probe.sh` 的预期 EPERM 必须全部触发。
+沙箱相关验收**不能用「Sandbox 日志或统一日志里查不到拒绝」作证据**（不得据此证明拒绝未发生，也不得据此判 pass/fail）。受理证据 = run/会话日志中的 EPERM（或等价）+ `probe.sh` 式 sandbox-exec 对照。统一日志缺写拒绝的根因仍为**未知**，见 [docs/issue-63/README.md](../issue-63/README.md)。
 
 ## #57 收尾结论（2026-10-01）
 

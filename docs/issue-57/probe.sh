@@ -5,6 +5,8 @@
 #   allowed: each write_path of the policy + 周衡 identity tmp/ (positive control) ->
 #            create a uniquely named probe file and delete it at once, inside the sandbox;
 #   denied:  ~/kairo, ~/kairo/<topic> roots, ~/.config/kairo, /private/tmp -> must be EPERM.
+# Acceptance is this script's allow/deny result plus the run/session log. Do not query the
+# macOS unified log; a missing Sandbox deny line is not pass/fail (see docs/issue-63).
 # Nothing else is written. A probe that survives (or an unexpected success) is removed at once
 # and reported. Output: <out>/profile.sb, precheck.json, probe.txt.
 #
