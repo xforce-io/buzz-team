@@ -2,7 +2,7 @@ name: 站会开窗唤醒
 description: 工作日 01:00 UTC（Asia/Shanghai 09:00）唤醒项目经理发开窗帖。不发摘要。
 trigger:
   on: schedule
-  cron: "0 1 * * 1-5"
+  cron: "0 1 * * MON-FRI"
 steps:
   - id: wake_pj
     action: send_message

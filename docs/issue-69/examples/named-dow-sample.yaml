@@ -1,0 +1,10 @@
+name: named-dow-sample
+description: Fixture for the #69 checker. Named DOW must produce 0 warnings.
+trigger:
+  on: schedule
+  cron: "0 1 * * MON-FRI"
+steps:
+  - id: noop
+    action: send_message
+    text: "named DOW sample — do not apply"
+    reply_in_thread: false

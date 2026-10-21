@@ -1,0 +1,10 @@
+name: numeric-dow-sample
+description: Fixture for the #69 checker. Not a live template. DOW 1-5 is Sunday–Thursday under cron 0.16.
+trigger:
+  on: schedule
+  cron: "0 1 * * 1-5"
+steps:
+  - id: noop
+    action: send_message
+    text: "numeric DOW sample — do not apply"
+    reply_in_thread: false
