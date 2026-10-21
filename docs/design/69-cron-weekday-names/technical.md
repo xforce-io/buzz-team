@@ -89,6 +89,17 @@ SQL **不**写签名 30620，也 **不**作为活机 apply/rollback。rehearse �
 - 既有 `tests/test_doctor.py` 保持绿色。
 - `docs/issue-69/test/local-test.sh`：有 `initdb` 时跑 SQL backup/verify/rehearse；CI 无 postgres 时不作为本票必过项（与 #62 全量库测分离）。
 
-## 8. 安全边界
+## 8. 功能地图（L2.8）
+
+keel-verify 功能文件：[`.agents/skills/verify-buzz-team/features/cron-weekday-names.md`](../../.agents/skills/verify-buzz-team/features/cron-weekday-names.md)。地图索引：[`features/README.md`](../../.agents/skills/verify-buzz-team/features/README.md) 的 #69 行。
+
+| ID | 入口 | 环境 |
+|---|---|---|
+| S1.A1、S1.A4、S2.A1–A4、S3.A3（dry-run）、S3.A5 | `cron-weekday-names.md`「仓库可证」 | 本仓测试 / checker / dry-run；有 `initdb` 时 `local-test.sh` |
+| S1.A2、S1.A3、S2 活机 list、S3.A1–A4（生产 backup/rehearse/apply/rollback） | 同上「活机」+ [`docs/issue-69/README.md`](../../issue-69/README.md) | ACP≥9 后 Hogan；当前 Desktop/ACP 0/9 标 **blocked**，不得写成 skip |
+
+对不上该行不得进 review。
+
+## 9. 安全边界
 
 脚本不内嵌私钥。live apply 要求调用方已导出 `BUZZ_PRIVATE_KEY`（周衡 owner）。本 PR 不读 `agents.env`、不连生产库、不启动 Desktop。SQL 走 docker `buzz-prod-postgres-1` 的路径仅供 Hogan 在 Mac 上使用，且 backup/verify 强制 `default_transaction_read_only=on`。
