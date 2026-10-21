@@ -36,9 +36,19 @@ state() {
   "${P[@]}" -d buzz -At -c "SELECT md5((SELECT string_agg(row_to_json(w.*)::text, ',' ORDER BY id) FROM workflows w))"
 }
 BEFORE=$(state)
-"$ISSUE/run.sh" backup >/dev/null
-"$ISSUE/run.sh" verify-before | grep -q 'VERIFY-BEFORE PASS'
-"$ISSUE/run.sh" rehearse | grep -q 'REHEARSAL PASS'
+"$ISSUE/run.sh" backup >"$TMP/backup.out"
+"$ISSUE/run.sh" verify-before >"$TMP/verify-before.out"
+grep -q 'VERIFY-BEFORE PASS' "$TMP/verify-before.out" || {
+  echo "FAIL: verify-before" >&2
+  tail -50 "$TMP/verify-before.out" >&2
+  exit 1
+}
+"$ISSUE/run.sh" rehearse >"$TMP/rehearse.out"
+grep -q 'REHEARSAL PASS' "$TMP/rehearse.out" || {
+  echo "FAIL: rehearse" >&2
+  tail -50 "$TMP/rehearse.out" >&2
+  exit 1
+}
 AFTER=$(state)
 [ "$BEFORE" = "$AFTER" ] || { echo "FAIL: rehearse left the database changed" >&2; exit 1; }
 echo "ALL #69 SQL CHECKS PASSED"
