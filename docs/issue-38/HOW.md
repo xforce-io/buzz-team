@@ -14,7 +14,7 @@
 
 | Story | 事实源 | 路径 | 仓库跟踪？ |
 |---|---|---|---|
-| **S1** workflow 文案 | Relay DB / `buzz workflows` | id `f5cc62c0-3756-419e-8a3f-8e694df2e93e`；channel `9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3`（炼丹房）；owner pubkey `51fb6cd8…7d9e`（周衡）；cron `0 1 * * 1-5` | **live-only**（证据见 `evidence/issue-34-standup-owner-zhouheng/`） |
+| **S1** workflow 文案 | Relay DB / `buzz workflows` | id `f5cc62c0-3756-419e-8a3f-8e694df2e93e`；channel `9bdc9fa2-48b7-4352-8b1f-7baf70ba6bd3`（炼丹房）；owner pubkey `51fb6cd8…7d9e`（周衡）；**live cron 仍为 `0 1 * * 1-5`，直到 #69 Hogan apply**；仓库 `before/` `after/` 模板已改为 `0 1 * * MON-FRI`（#69） | **live-only**（证据见 `evidence/issue-34-standup-owner-zhouheng/`）；模板见本目录与 `docs/issue-69/` |
 | **S2** effort / idle | Desktop managed-agents | `~/Library/Application Support/xyz.block.buzz.app/agents/managed-agents.json` 中 **活跃** 周衡行（`idle_timeout_seconds=1500` 且 `env_vars.BUZZ_ACP_EFFORT_LEVEL=low`）；pid 旁路 `…/agents/agent-pids/51fb6cd8…json` | **live-only** |
 | **S3** prompt 栈 | 三层 | ① managed `system_prompt`（同上 JSON）；② lab 模板 `/Users/xupeng/lab/buzz-team/team/prompts/pj.md`（非 git）；③ 周衡身份 workspace `…/identities/a558771623f29898/51fb6cd8…/workspace/AGENTS.md`；另 `instance.local.json` → `private/instructions-1.md` | lab/身份为 **live-only**；本 PR 把 after 快照 + 模板纳入 `docs/issue-38/` 与 `team/prompts/pj.md` |
 

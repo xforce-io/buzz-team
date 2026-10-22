@@ -16,6 +16,8 @@ Python 3.11+。从本仓库构建普通 wheel 并安装到仓库外的固定位�
 
 `buzz-team doctor --inventory <Desktop 库存路径> --policies <策略目录>` 只读检查可识别的重复启动身份与本机策略。未知库存结构报告 `unverified`，不写 Desktop 数据。消息请直接使用官方 `buzz` CLI；身份启停在 Desktop 中操作。
 
+本机 relay 的日程用 cron 0.16：数字星期是 **1=周日 … 7=周六**，不是常见的 0/7=周日。工作日请写 `MON-FRI` 这类名称，不要写 `1-5`。数字星期的只读提示见 `docs/issue-69/check-numeric-dow.py`（warn，不让 doctor 失败）。
+
 ## 项目边界
 
 源码不含真实身份、公钥、凭据、生产路径或实例状态。上游版本和镜像 digest 写入部署记录，不作为本包启动门禁。历史设计和证据保留在 Git 历史；当前边界见 [#53 设计](docs/design/53-remove-acp-middle-layer.md)及[名词表](docs/glossary.md)。
