@@ -1,0 +1,15 @@
+git diff origin/main -- src/buzz_team/doctor.py
+git diff origin/main -- docs/issue-58/bin/buzz-health
+
+blobs equal doctor: 6317efec615d471bc9a7e387ffa2f04904c82ac3 == 6317efec615d471bc9a7e387ffa2f04904c82ac3
+blobs equal buzz-health: 8fa0e037f12f08d31adcf55b96eb68d8a7b6a51b == 8fa0e037f12f08d31adcf55b96eb68d8a7b6a51b
+
+doctor.py hits:
+(none)
+
+buzz-health hits:
+(none)
+
+buzz-health exit contract (docstring):
+19:Writes nothing, contacts no relay (only TCP-connects proxy endpoints), needs no private key. Exit 0 pass, 2 fail.
+456:    sys.exit(main())

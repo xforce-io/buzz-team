@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "cursor_before": "2026-09-30T00:50:00+00:00",
+  "cursor_after": "2026-09-30T09:38:00+00:00",
+  "now": "2026-09-30T09:40:00+00:00",
+  "grace_seconds": 120,
+  "counts": {
+    "fired_ok": 5,
+    "miss_sleep": 4,
+    "miss_awake": 0,
+    "miss_pmset_rolled": 0,
+    "skipped_not_due": 0
+  },
+  "misses": [
+    {
+      "definition_id": "97152434-1ec3-4b51-b55d-4159ecec4162",
+      "name": "能源线收集唤醒",
+      "owner_seat": "韩川",
+      "cron": "0 1,9 * * *",
+      "planned_at_cst": "2026-09-30T17:00:00+08:00",
+      "planned_at_utc": "2026-09-30T09:00:00+00:00",
+      "label": "未知（休眠）",
+      "display": "休眠期间",
+      "sleep_interval": "16:58:00 Maintenance Sleep → 17:16:32 Wake"
+    },
+    {
+      "definition_id": "cd608a18-6254-41cc-a0d7-c23879b1fe79",
+      "name": "技术线收集-1710",
+      "owner_seat": "秦牧",
+      "cron": "10 9 * * *",
+      "planned_at_cst": "2026-09-30T17:10:00+08:00",
+      "planned_at_utc": "2026-09-30T09:10:00+00:00",
+      "label": "未知（休眠）",
+      "display": "休眠期间",
+      "sleep_interval": "16:58:00 Maintenance Sleep → 17:16:32 Wake"
+    },
+    {
+      "definition_id": "2d75251c-48bc-46b7-9bec-8e06d2989c85",
+      "name": "中台PBU收集-0915-1715",
+      "owner_seat": "卫平",
+      "cron": "15 1,9 * * *",
+      "planned_at_cst": "2026-09-30T17:15:00+08:00",
+      "planned_at_utc": "2026-09-30T09:15:00+00:00",
+      "label": "未知（休眠）",
+      "display": "休眠期间",
+      "sleep_interval": "16:58:00 Maintenance Sleep → 17:16:32 Wake"
+    },
+    {
+      "definition_id": "50d27eb7-e768-4401-af80-8fc95b5f0bae",
+      "name": "事务秘书处当日简报-1730",
+      "owner_seat": "裴昭",
+      "cron": "30 9 * * *",
+      "planned_at_cst": "2026-09-30T17:30:00+08:00",
+      "planned_at_utc": "2026-09-30T09:30:00+00:00",
+      "label": "未知（休眠）",
+      "display": "休眠期间",
+      "sleep_interval": "17:17:44 Clamshell Sleep → 17:35:33 Wake"
+    }
+  ]
+}

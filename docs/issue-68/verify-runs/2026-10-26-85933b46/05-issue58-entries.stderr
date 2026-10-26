@@ -1,0 +1,47 @@
+test_apply_refuses_non_595_entries_without_changes (tests.test_issue58_entries.ApplyRollbackTests.test_apply_refuses_non_595_entries_without_changes) ... ok
+test_apply_then_rollback_is_byte_identical (tests.test_issue58_entries.ApplyRollbackTests.test_apply_then_rollback_is_byte_identical) ... ok
+test_apply_twice_refused (tests.test_issue58_entries.ApplyRollbackTests.test_apply_twice_refused) ... ok
+test_live_target_needs_ack_and_refuses_test_hooks (tests.test_issue58_entries.ApplyRollbackTests.test_live_target_needs_ack_and_refuses_test_hooks) ... ok
+test_rollback_from_template (tests.test_issue58_entries.ApplyRollbackTests.test_rollback_from_template) ... ok
+test_rollback_refuses_tampered_backup (tests.test_issue58_entries.ApplyRollbackTests.test_rollback_refuses_tampered_backup) ... ok
+test_template_matches_recorded_595_hashes (tests.test_issue58_entries.ApplyRollbackTests.test_template_matches_recorded_595_hashes) ... ok
+test_refuses_without_codesign_and_never_execs (tests.test_issue58_entries.BuzzEntryFailClosedTests.test_refuses_without_codesign_and_never_execs) ... ok
+test_definition_row_with_launch_command_is_not_skipped (tests.test_issue58_entries.BuzzHealthTests.test_definition_row_with_launch_command_is_not_skipped) ... ok
+test_doctor_not_ok_fails (tests.test_issue58_entries.BuzzHealthTests.test_doctor_not_ok_fails) ... ok
+test_extra_processes_cannot_cover_a_missing_identity (tests.test_issue58_entries.BuzzHealthTests.test_extra_processes_cannot_cover_a_missing_identity) ... ok
+test_identity_count_is_computed_not_hardcoded (tests.test_issue58_entries.BuzzHealthTests.test_identity_count_is_computed_not_hardcoded) ... ok
+test_launch_row_env_overrides_definition (tests.test_issue58_entries.BuzzHealthTests.test_launch_row_env_overrides_definition) ... ok
+test_live_shape_passes_and_lists_skipped_rows (tests.test_issue58_entries.BuzzHealthTests.test_live_shape_passes_and_lists_skipped_rows) ... ok
+test_missing_env_value_fails (tests.test_issue58_entries.BuzzHealthTests.test_missing_env_value_fails) ... ok
+test_missing_harness_fails (tests.test_issue58_entries.BuzzHealthTests.test_missing_harness_fails) ... ok
+test_non_local_relay_is_not_counted (tests.test_issue58_entries.BuzzHealthTests.test_non_local_relay_is_not_counted) ... ok
+test_other_relay_proxy_is_not_probed (tests.test_issue58_entries.BuzzHealthTests.test_other_relay_proxy_is_not_probed) ... ok
+test_policy_outside_directory_fails (tests.test_issue58_entries.BuzzHealthTests.test_policy_outside_directory_fails) ... ok
+test_probe_tcp_reports_refused_port (tests.test_issue58_entries.BuzzHealthTests.test_probe_tcp_reports_refused_port) ... ok
+test_proxy_credentials_are_dropped (tests.test_issue58_entries.BuzzHealthTests.test_proxy_credentials_are_dropped) ... ok
+test_reachable_proxy_passes (tests.test_issue58_entries.BuzzHealthTests.test_reachable_proxy_passes) ... ok
+test_reconciliation_mismatch_fails (tests.test_issue58_entries.BuzzHealthTests.test_reconciliation_mismatch_fails) ... ok
+test_report_never_contains_private_key (tests.test_issue58_entries.BuzzHealthTests.test_report_never_contains_private_key) ... ok
+test_shared_policy_fails (tests.test_issue58_entries.BuzzHealthTests.test_shared_policy_fails) ... ok
+test_signature_failure_fails (tests.test_issue58_entries.BuzzHealthTests.test_signature_failure_fails) ... ok
+test_unparseable_proxy_fails (tests.test_issue58_entries.BuzzHealthTests.test_unparseable_proxy_fails) ... ok
+test_unreachable_proxy_fails_and_is_probed_once (tests.test_issue58_entries.BuzzHealthTests.test_unreachable_proxy_fails_and_is_probed_once) ... ok
+test_wrong_env_value_fails (tests.test_issue58_entries.BuzzHealthTests.test_wrong_env_value_fails) ... ok
+test_yuanbao_never_counted_or_failing (tests.test_issue58_entries.BuzzHealthTests.test_yuanbao_never_counted_or_failing) ... ok
+test_bin_buzz_passes_and_execs_with_all_args (tests.test_issue58_entries.RequirementGateTests.test_bin_buzz_passes_and_execs_with_all_args) ... ok
+test_bin_buzz_refuses_missing_binary (tests.test_issue58_entries.RequirementGateTests.test_bin_buzz_refuses_missing_binary) ... ok
+test_bin_buzz_refuses_when_requirement_fails_even_if_dv_says_team (tests.test_issue58_entries.RequirementGateTests.test_bin_buzz_refuses_when_requirement_fails_even_if_dv_says_team) ... ok
+test_bin_buzz_uses_only_absolute_external_tools (tests.test_issue58_entries.RequirementGateTests.test_bin_buzz_uses_only_absolute_external_tools) ... ok
+test_official_signature_ok_uses_requirement (tests.test_issue58_entries.RequirementGateTests.test_official_signature_ok_uses_requirement) ... ok
+test_requirement_text_is_identical_in_all_three_checks (tests.test_issue58_entries.RequirementGateTests.test_requirement_text_is_identical_in_all_three_checks) ... ok
+test_dv_output_is_not_part_of_the_decision (tests.test_issue58_entries.SignatureTests.test_dv_output_is_not_part_of_the_decision) ... ok
+test_missing_binary_fails (tests.test_issue58_entries.SignatureTests.test_missing_binary_fails) ... ok
+test_missing_codesign_fails (tests.test_issue58_entries.SignatureTests.test_missing_codesign_fails) ... ok
+test_requirement_text_matches_knox_p2 (tests.test_issue58_entries.SignatureTests.test_requirement_text_matches_knox_p2) ... ok
+test_self_asserted_team_cannot_pass_without_requirement (tests.test_issue58_entries.SignatureTests.test_self_asserted_team_cannot_pass_without_requirement) ... ok
+test_valid_signature_passes_and_records_update (tests.test_issue58_entries.SignatureTests.test_valid_signature_passes_and_records_update) ... ok
+
+----------------------------------------------------------------------
+Ran 42 tests in 2.004s
+
+OK

@@ -1,0 +1,13 @@
+# Frozen L1 09-30 Sleep/Wake/DarkWake excerpt. Not live pmset. Do not recapture.
+# Horizon: 2026-09-30 08:34:14 +0800 Wake. DarkWake does not end a sleep interval.
+Total Sleep/Wakes since boot: 42
+2026-09-30 08:34:14 +0800 Wake                  Wake from Hibernate [CDN] : due to EC.LidOpen/Lid Open Using BATT (Charge:87%)
+2026-09-30 16:54:50 +0800 Sleep                 Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active Using AC (Charge:100%)
+2026-09-30 16:55:12 +0800 DarkWake              DarkWake from Deep Idle [CDN] : due to RTC Using AC (Charge:100%) 3 secs
+2026-09-30 16:55:15 +0800 Sleep                 Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using AC (Charge:100%)
+2026-09-30 16:56:40 +0800 DarkWake              DarkWake from Deep Idle [CDN] : due to RTC Using AC (Charge:100%) 2 secs
+2026-09-30 16:56:42 +0800 Sleep                 Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using AC (Charge:100%)
+2026-09-30 16:58:00 +0800 Sleep                 Entering Sleep state due to 'Maintenance Sleep':TCPKeepAlive=active Using AC (Charge:100%)
+2026-09-30 17:16:32 +0800 Wake                  Wake from Hibernate [CDN] : due to EC.LidOpen/Lid Open Using AC (Charge:100%)
+2026-09-30 17:17:44 +0800 Sleep                 Entering Sleep state due to 'Clamshell Sleep':TCPKeepAlive=active Using AC (Charge:100%)
+2026-09-30 17:35:33 +0800 Wake                  Wake from Hibernate [CDN] : due to EC.LidOpen/Lid Open Using AC (Charge:100%)

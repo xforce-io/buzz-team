@@ -1,0 +1,4 @@
+{
+  "ok": false,
+  "error": "fixture mode requires --workflows, --fires, and --pmset (missing --fires, --pmset); will not substitute live pmset or SQL"
+}

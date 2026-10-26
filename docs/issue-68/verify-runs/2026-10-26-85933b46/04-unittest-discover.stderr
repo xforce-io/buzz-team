@@ -1,0 +1,153 @@
+test_mon_fri_names_are_monday_through_friday (test_cron_dow.CstWeekdayTests.test_mon_fri_names_are_monday_through_friday) ... ok
+test_one_five_is_sunday_through_thursday (test_cron_dow.CstWeekdayTests.test_one_five_is_sunday_through_thursday) ... ok
+test_one_through_seven_is_every_day (test_cron_dow.CstWeekdayTests.test_one_through_seven_is_every_day) ... ok
+test_seven_is_saturday (test_cron_dow.CstWeekdayTests.test_seven_is_saturday) ... ok
+test_timezone_overlay_shifts_cst_weekday (test_cron_dow.CstWeekdayTests.test_timezone_overlay_shifts_cst_weekday) ... ok
+test_after_mon_fri_matches_issue_l1_section_3 (test_cron_dow.GoldenFireTests.test_after_mon_fri_matches_issue_l1_section_3) ... ok
+test_before_1_5_matches_issue_l1_section_3 (test_cron_dow.GoldenFireTests.test_before_1_5_matches_issue_l1_section_3) ... ok
+test_normalize_adds_seconds_and_year (test_cron_dow.NormalizeAndMapTests.test_normalize_adds_seconds_and_year) ... ok
+test_sunday_is_one (test_cron_dow.NormalizeAndMapTests.test_sunday_is_one) ... ok
+test_zero_and_eight_rejected (test_cron_dow.NormalizeAndMapTests.test_zero_and_eight_rejected) ... ok
+test_named_or_star_lists_zero_warnings (test_cron_dow.NumericWarnTests.test_named_or_star_lists_zero_warnings) ... ok
+test_numeric_sample_lists_one_warning (test_cron_dow.NumericWarnTests.test_numeric_sample_lists_one_warning) ... ok
+test_rejects_unexpected_current_cron (test_cron_dow.ReplaceCronTests.test_rejects_unexpected_current_cron) ... ok
+test_replaces_single_cron (test_cron_dow.ReplaceCronTests.test_replaces_single_cron) ... ok
+test_issue_38_and_69_templates_use_names (test_cron_dow.TemplateLintTests.test_issue_38_and_69_templates_use_names) ... ok
+test_lint_fails_when_numeric_dow_returns (test_cron_dow.TemplateLintTests.test_lint_fails_when_numeric_dow_returns) ... ok
+test_definition_only_row_is_ignored (test_doctor.InventoryTests.test_definition_only_row_is_ignored) ... ok
+test_duplicate_launch_identity_fails (test_doctor.InventoryTests.test_duplicate_launch_identity_fails) ... ok
+test_duplicate_override_launch_identity_fails (test_doctor.InventoryTests.test_duplicate_override_launch_identity_fails) ... ok
+test_empty_pubkey_fails (test_doctor.InventoryTests.test_empty_pubkey_fails) ... ok
+test_unknown_shape_is_unverified (test_doctor.InventoryTests.test_unknown_shape_is_unverified) ... ok
+test_valid_inventory (test_doctor.InventoryTests.test_valid_inventory) ... ok
+test_before_policy_is_the_rollback_point (test_issue57_policy.PolicyContentTests.test_before_policy_is_the_rollback_point) ... ok
+test_insert_rule_targets_last_section_once (test_issue57_policy.PolicyContentTests.test_insert_rule_targets_last_section_once) ... ok
+test_new_policy_adds_exactly_the_approved_paths (test_issue57_policy.PolicyContentTests.test_new_policy_adds_exactly_the_approved_paths) ... ok
+test_prompt_rule_in_repo_pj_md (test_issue57_policy.PolicyContentTests.test_prompt_rule_in_repo_pj_md) ... ok
+test_apply_refusals_leave_policy_untouched (test_issue57_policy.ScriptTests.test_apply_refusals_leave_policy_untouched) ... ok
+test_apply_verify_rollback_round_trip (test_issue57_policy.ScriptTests.test_apply_verify_rollback_round_trip) ... ok
+test_live_guard_and_test_hooks (test_issue57_policy.ScriptTests.test_live_guard_and_test_hooks) ... ok
+test_real_template_reproduces_9e087351 (test_issue57_policy.ScriptTests.test_real_template_reproduces_9e087351) ... ok
+test_rollback_from_template (test_issue57_policy.ScriptTests.test_rollback_from_template) ... ok
+test_snapshot_keeps_only_whitelisted_env (test_issue57_policy.ScriptTests.test_snapshot_keeps_only_whitelisted_env) ... ok
+test_thin_accepts_new_policy_and_profile_names_each_path (test_issue57_policy.ScriptTests.test_thin_accepts_new_policy_and_profile_names_each_path) ... ok
+test_verify_fails_without_process_or_thin_child_or_relay (test_issue57_policy.ScriptTests.test_verify_fails_without_process_or_thin_child_or_relay) ... ok
+test_verify_local_fails_missing_local_prompt_rule (test_issue57_policy.ScriptTests.test_verify_local_fails_missing_local_prompt_rule) ... ok
+test_verify_local_fails_missing_zhouheng_policy_value (test_issue57_policy.ScriptTests.test_verify_local_fails_missing_zhouheng_policy_value) ... ok
+test_verify_local_fails_when_local_other_seat_pid_changes (test_issue57_policy.ScriptTests.test_verify_local_fails_when_local_other_seat_pid_changes) ... ok
+test_verify_local_ignores_unmanaged_yuanbao_row_but_all_gates_it (test_issue57_policy.ScriptTests.test_verify_local_ignores_unmanaged_yuanbao_row_but_all_gates_it) ... ok
+test_verify_local_passes_without_yuanbao_process (test_issue57_policy.ScriptTests.test_verify_local_passes_without_yuanbao_process) ... ok
+test_verify_local_warns_on_yuanbao_pid_change (test_issue57_policy.ScriptTests.test_verify_local_warns_on_yuanbao_pid_change) ... ok
+test_verify_missing_values_fail (test_issue57_policy.ScriptTests.test_verify_missing_values_fail) ... ok
+test_verify_per_relay_env_pass (test_issue57_policy.ScriptTests.test_verify_per_relay_env_pass) ... ok
+test_verify_policy_sha_must_match_expectation (test_issue57_policy.ScriptTests.test_verify_policy_sha_must_match_expectation) ... ok
+test_verify_restart_compare (test_issue57_policy.ScriptTests.test_verify_restart_compare) ... ok
+test_apply_refuses_non_595_entries_without_changes (test_issue58_entries.ApplyRollbackTests.test_apply_refuses_non_595_entries_without_changes) ... ok
+test_apply_then_rollback_is_byte_identical (test_issue58_entries.ApplyRollbackTests.test_apply_then_rollback_is_byte_identical) ... ok
+test_apply_twice_refused (test_issue58_entries.ApplyRollbackTests.test_apply_twice_refused) ... ok
+test_live_target_needs_ack_and_refuses_test_hooks (test_issue58_entries.ApplyRollbackTests.test_live_target_needs_ack_and_refuses_test_hooks) ... ok
+test_rollback_from_template (test_issue58_entries.ApplyRollbackTests.test_rollback_from_template) ... ok
+test_rollback_refuses_tampered_backup (test_issue58_entries.ApplyRollbackTests.test_rollback_refuses_tampered_backup) ... ok
+test_template_matches_recorded_595_hashes (test_issue58_entries.ApplyRollbackTests.test_template_matches_recorded_595_hashes) ... ok
+test_refuses_without_codesign_and_never_execs (test_issue58_entries.BuzzEntryFailClosedTests.test_refuses_without_codesign_and_never_execs) ... ok
+test_definition_row_with_launch_command_is_not_skipped (test_issue58_entries.BuzzHealthTests.test_definition_row_with_launch_command_is_not_skipped) ... ok
+test_doctor_not_ok_fails (test_issue58_entries.BuzzHealthTests.test_doctor_not_ok_fails) ... ok
+test_extra_processes_cannot_cover_a_missing_identity (test_issue58_entries.BuzzHealthTests.test_extra_processes_cannot_cover_a_missing_identity) ... ok
+test_identity_count_is_computed_not_hardcoded (test_issue58_entries.BuzzHealthTests.test_identity_count_is_computed_not_hardcoded) ... ok
+test_launch_row_env_overrides_definition (test_issue58_entries.BuzzHealthTests.test_launch_row_env_overrides_definition) ... ok
+test_live_shape_passes_and_lists_skipped_rows (test_issue58_entries.BuzzHealthTests.test_live_shape_passes_and_lists_skipped_rows) ... ok
+test_missing_env_value_fails (test_issue58_entries.BuzzHealthTests.test_missing_env_value_fails) ... ok
+test_missing_harness_fails (test_issue58_entries.BuzzHealthTests.test_missing_harness_fails) ... ok
+test_non_local_relay_is_not_counted (test_issue58_entries.BuzzHealthTests.test_non_local_relay_is_not_counted) ... ok
+test_other_relay_proxy_is_not_probed (test_issue58_entries.BuzzHealthTests.test_other_relay_proxy_is_not_probed) ... ok
+test_policy_outside_directory_fails (test_issue58_entries.BuzzHealthTests.test_policy_outside_directory_fails) ... ok
+test_probe_tcp_reports_refused_port (test_issue58_entries.BuzzHealthTests.test_probe_tcp_reports_refused_port) ... ok
+test_proxy_credentials_are_dropped (test_issue58_entries.BuzzHealthTests.test_proxy_credentials_are_dropped) ... ok
+test_reachable_proxy_passes (test_issue58_entries.BuzzHealthTests.test_reachable_proxy_passes) ... ok
+test_reconciliation_mismatch_fails (test_issue58_entries.BuzzHealthTests.test_reconciliation_mismatch_fails) ... ok
+test_report_never_contains_private_key (test_issue58_entries.BuzzHealthTests.test_report_never_contains_private_key) ... ok
+test_shared_policy_fails (test_issue58_entries.BuzzHealthTests.test_shared_policy_fails) ... ok
+test_signature_failure_fails (test_issue58_entries.BuzzHealthTests.test_signature_failure_fails) ... ok
+test_unparseable_proxy_fails (test_issue58_entries.BuzzHealthTests.test_unparseable_proxy_fails) ... ok
+test_unreachable_proxy_fails_and_is_probed_once (test_issue58_entries.BuzzHealthTests.test_unreachable_proxy_fails_and_is_probed_once) ... ok
+test_wrong_env_value_fails (test_issue58_entries.BuzzHealthTests.test_wrong_env_value_fails) ... ok
+test_yuanbao_never_counted_or_failing (test_issue58_entries.BuzzHealthTests.test_yuanbao_never_counted_or_failing) ... ok
+test_bin_buzz_passes_and_execs_with_all_args (test_issue58_entries.RequirementGateTests.test_bin_buzz_passes_and_execs_with_all_args) ... ok
+test_bin_buzz_refuses_missing_binary (test_issue58_entries.RequirementGateTests.test_bin_buzz_refuses_missing_binary) ... ok
+test_bin_buzz_refuses_when_requirement_fails_even_if_dv_says_team (test_issue58_entries.RequirementGateTests.test_bin_buzz_refuses_when_requirement_fails_even_if_dv_says_team) ... ok
+test_bin_buzz_uses_only_absolute_external_tools (test_issue58_entries.RequirementGateTests.test_bin_buzz_uses_only_absolute_external_tools) ... ok
+test_official_signature_ok_uses_requirement (test_issue58_entries.RequirementGateTests.test_official_signature_ok_uses_requirement) ... ok
+test_requirement_text_is_identical_in_all_three_checks (test_issue58_entries.RequirementGateTests.test_requirement_text_is_identical_in_all_three_checks) ... ok
+test_dv_output_is_not_part_of_the_decision (test_issue58_entries.SignatureTests.test_dv_output_is_not_part_of_the_decision) ... ok
+test_missing_binary_fails (test_issue58_entries.SignatureTests.test_missing_binary_fails) ... ok
+test_missing_codesign_fails (test_issue58_entries.SignatureTests.test_missing_codesign_fails) ... ok
+test_requirement_text_matches_knox_p2 (test_issue58_entries.SignatureTests.test_requirement_text_matches_knox_p2) ... ok
+test_self_asserted_team_cannot_pass_without_requirement (test_issue58_entries.SignatureTests.test_self_asserted_team_cannot_pass_without_requirement) ... ok
+test_valid_signature_passes_and_records_update (test_issue58_entries.SignatureTests.test_valid_signature_passes_and_records_update) ... ok
+test_full_flow_against_local_postgres (test_issue62_sql.LocalPostgresTest.test_full_flow_against_local_postgres) ... FAIL
+test_expected_totals (test_issue62_sql.ManifestTest.test_expected_totals) ... ok
+test_readme_lists_every_target (test_issue62_sql.ManifestTest.test_readme_lists_every_target) ... ok
+test_targets_exact (test_issue62_sql.ManifestTest.test_targets_exact) ... ok
+test_apply_and_rollback_rely_on_single_transaction (test_issue62_sql.ScriptShapeTest.test_apply_and_rollback_rely_on_single_transaction) ... ok
+test_no_signing_identity (test_issue62_sql.ScriptShapeTest.test_no_signing_identity) ... ok
+test_rehearse_includes_real_apply_and_rollback_then_rolls_back (test_issue62_sql.ScriptShapeTest.test_rehearse_includes_real_apply_and_rollback_then_rolls_back) ... ok
+test_run_sh_flags (test_issue62_sql.ScriptShapeTest.test_run_sh_flags) ... ok
+test_shellcheck (test_issue62_sql.ScriptShapeTest.test_shellcheck) ... skipped 'shellcheck not installed'
+test_named_sample_is_clean (test_issue69_scripts.CheckerTest.test_named_sample_is_clean) ... ok
+test_numeric_sample_warns_and_exits_zero (test_issue69_scripts.CheckerTest.test_numeric_sample_warns_and_exits_zero) ... ok
+test_strict_fails_on_numeric (test_issue69_scripts.CheckerTest.test_strict_fails_on_numeric) ... ok
+test_apply_default_is_dry_run (test_issue69_scripts.DryRunTest.test_apply_default_is_dry_run) ... ok
+test_apply_live_refuses_blackout_window (test_issue69_scripts.DryRunTest.test_apply_live_refuses_blackout_window) ... ok
+test_apply_live_refuses_without_guard (test_issue69_scripts.DryRunTest.test_apply_live_refuses_without_guard) ... ok
+test_rollback_default_is_dry_run (test_issue69_scripts.DryRunTest.test_rollback_default_is_dry_run) ... ok
+test_local_sql_rehearsal_if_postgres_exists (test_issue69_scripts.LocalPostgresOptionalTest.test_local_sql_rehearsal_if_postgres_exists) ... skipped 'SKIP: no initdb (PGBIN=)'
+test_backup_is_whole_row (test_issue69_scripts.ScriptShapeTest.test_backup_is_whole_row) ... ok
+test_rehearse_rolls_back_and_never_commits (test_issue69_scripts.ScriptShapeTest.test_rehearse_rolls_back_and_never_commits) ... ok
+test_run_sh_does_not_sql_apply (test_issue69_scripts.ScriptShapeTest.test_run_sh_does_not_sql_apply) ... ok
+test_targets_pin_one_and_seven (test_issue69_scripts.ScriptShapeTest.test_targets_pin_one_and_seven) ... ok
+test_verify_is_read_only (test_issue69_scripts.ScriptShapeTest.test_verify_is_read_only) ... ok
+test_awake_cli_exits_two (test_missed_fires.AwakeMissTests.test_awake_cli_exits_two) ... ok
+test_drop_one_morning_fire_is_awake_miss (test_missed_fires.AwakeMissTests.test_drop_one_morning_fire_is_awake_miss) ... ok
+test_evening_sleep_rows_are_not_awake (test_missed_fires.AwakeMissTests.test_evening_sleep_rows_are_not_awake) ... ok
+test_no_advance_does_not_write (test_missed_fires.CursorAdvanceFileTests.test_no_advance_does_not_write) ... ok
+test_successful_run_writes_now_minus_grace (test_missed_fires.CursorAdvanceFileTests.test_successful_run_writes_now_minus_grace) ... ok
+test_forward_jump_lists_gap_and_advances_to_now_minus_grace (test_missed_fires.CursorJumpTests.test_forward_jump_lists_gap_and_advances_to_now_minus_grace) ... ok
+test_rewind_does_not_rewrite_cursor_file (test_missed_fires.CursorRewindTests.test_rewind_does_not_rewrite_cursor_file) ... ok
+test_rewind_skips_and_does_not_retreat (test_missed_fires.CursorRewindTests.test_rewind_skips_and_does_not_retreat) ... ok
+test_buzz_health_is_untouched_sibling (test_missed_fires.DoctorBoundaryTests.test_buzz_health_is_untouched_sibling) ... ok
+test_doctor_inventory_still_passes (test_missed_fires.DoctorBoundaryTests.test_doctor_inventory_still_passes) ... ok
+test_doctor_source_has_no_workflow_or_pmset (test_missed_fires.DoctorBoundaryTests.test_doctor_source_has_no_workflow_or_pmset) ... ok
+test_evening_cli_exits_zero (test_missed_fires.EveningReplayTests.test_evening_cli_exits_zero) ... ok
+test_four_sleep_misses_in_how_order (test_missed_fires.EveningReplayTests.test_four_sleep_misses_in_how_order) ... ok
+test_fixture_mode_does_not_call_live_tools (test_missed_fires.FixtureIsolationTests.test_fixture_mode_does_not_call_live_tools) ... ok
+test_non_dom_cron_fails_fast (test_missed_fires.FixtureIsolationTests.test_non_dom_cron_fails_fast) ... ok
+test_partial_fixture_does_not_fall_back_to_live (test_missed_fires.FixtureIsolationTests.test_partial_fixture_does_not_fall_back_to_live) ... ok
+test_f5cc62c0_friday_before_69_is_not_expected (test_missed_fires.FridaySkipTests.test_f5cc62c0_friday_before_69_is_not_expected) ... ok
+test_slot_inside_grace_is_not_a_miss (test_missed_fires.GraceLateTests.test_slot_inside_grace_is_not_a_miss) ... ok
+test_hours_long_window_lists_all_misses_once (test_missed_fires.LongSleepTests.test_hours_long_window_lists_all_misses_once) ... ok
+test_morning_miss_awake_zero (test_missed_fires.MorningReplayTests.test_morning_miss_awake_zero) ... ok
+test_cli_no_cursor_no_since_exits_two (test_missed_fires.NoCursorTests.test_cli_no_cursor_no_since_exits_two) ... ok
+test_no_cursor_no_since_is_nonzero (test_missed_fires.NoCursorTests.test_no_cursor_no_since_is_nonzero) ... ok
+test_before_horizon_is_rolled_not_awake (test_missed_fires.PmsetHorizonTests.test_before_horizon_is_rolled_not_awake) ... ok
+test_darkwake_does_not_end_sleep (test_missed_fires.PmsetHorizonTests.test_darkwake_does_not_end_sleep) ... ok
+test_readme_marks_s3_stub (test_missed_fires.S3StubTests.test_readme_marks_s3_stub) ... ok
+test_business_policy_limits_writes (test_thin.ThinLauncherTests.test_business_policy_limits_writes) ... ok
+test_business_without_production_write_does_not_expand_boundary (test_thin.ThinLauncherTests.test_business_without_production_write_does_not_expand_boundary) ... ok
+test_development_explicit_write_path_and_wrong_command (test_thin.ThinLauncherTests.test_development_explicit_write_path_and_wrong_command) ... ok
+test_development_policy_execs_grok_with_original_args (test_thin.ThinLauncherTests.test_development_policy_execs_grok_with_original_args) ... ok
+test_rejects_identity_mismatch_and_missing_sandbox (test_thin.ThinLauncherTests.test_rejects_identity_mismatch_and_missing_sandbox) ... ok
+test_rejects_policy_in_writable_root (test_thin.ThinLauncherTests.test_rejects_policy_in_writable_root) ... ok
+test_unicode_write_path_in_real_seatbelt (test_thin.ThinLauncherTests.test_unicode_write_path_in_real_seatbelt) ... skipped 'requires macOS Seatbelt'
+
+======================================================================
+FAIL: test_full_flow_against_local_postgres (test_issue62_sql.LocalPostgresTest.test_full_flow_against_local_postgres)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/workspace/tests/test_issue62_sql.py", line 121, in test_full_flow_against_local_postgres
+    self.assertEqual(proc.returncode, 0, proc.stdout[-4000:] + proc.stderr[-4000:])
+AssertionError: 1 != 0 : 
+
+----------------------------------------------------------------------
+Ran 140 tests in 7.874s
+
+FAILED (failures=1, skipped=3)

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "cursor_before": null,
+  "cursor_after": "2026-09-30T01:33:00+00:00",
+  "now": "2026-09-30T01:35:00+00:00",
+  "grace_seconds": 120,
+  "counts": {
+    "fired_ok": 6,
+    "miss_sleep": 0,
+    "miss_awake": 0,
+    "miss_pmset_rolled": 0,
+    "skipped_not_due": 0
+  },
+  "misses": []
+}

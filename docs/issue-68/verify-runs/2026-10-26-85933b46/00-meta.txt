@@ -1,0 +1,13 @@
+candidate_sha=85933b465b5373582df6ece69dc4351c25facbbf
+date_utc=2026-10-26T02:22:32Z
+python=Python 3.12.3
+wheel=buzz_team-0.1.0-py3-none-any.whl
+wheel_sha256=99aa53f3d8bae0b7589a1428017ce6c4856ad2a13c33959de575a7c75e7af00b
+venv=/tmp/buzz-team-68-verify-venv
+working_tree=clean
+doctor_blob=6317efec615d471bc9a7e387ffa2f04904c82ac3
+doctor_blob_main=6317efec615d471bc9a7e387ffa2f04904c82ac3
+buzz_health_blob=8fa0e037f12f08d31adcf55b96eb68d8a7b6a51b
+buzz_health_blob_main=8fa0e037f12f08d31adcf55b96eb68d8a7b6a51b
+map=.agents/skills/verify-buzz-team/features/missed-fires.md
+acp_desktop=down; live postgres+pmset=not_run; no live cursor write
