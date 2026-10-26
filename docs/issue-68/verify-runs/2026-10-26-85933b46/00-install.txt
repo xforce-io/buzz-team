@@ -1,0 +1,1 @@
+installed /tmp/buzz-team-68-verify-venv/lib/python3.12/site-packages/buzz_team/__init__.py

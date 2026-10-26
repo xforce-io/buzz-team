@@ -1,0 +1,27 @@
+{
+  "ok": false,
+  "cursor_before": null,
+  "cursor_after": "2026-10-02T01:03:00+00:00",
+  "now": "2026-10-02T01:05:00+00:00",
+  "grace_seconds": 120,
+  "counts": {
+    "fired_ok": 0,
+    "miss_sleep": 0,
+    "miss_awake": 1,
+    "miss_pmset_rolled": 0,
+    "skipped_not_due": 0
+  },
+  "misses": [
+    {
+      "definition_id": "97152434-1ec3-4b51-b55d-4159ecec4162",
+      "name": "能源线收集唤醒",
+      "owner_seat": "韩川",
+      "cron": "0 1,9 * * *",
+      "planned_at_cst": "2026-10-02T09:00:00+08:00",
+      "planned_at_utc": "2026-10-02T01:00:00+00:00",
+      "label": "异常（醒着漏触发）",
+      "display": "异常（醒着漏触发）",
+      "sleep_interval": null
+    }
+  ]
+}

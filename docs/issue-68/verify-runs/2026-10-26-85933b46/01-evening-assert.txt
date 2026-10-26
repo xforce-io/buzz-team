@@ -1,0 +1,9 @@
+exit_file 0
+n_misses 4
+ids ['97152434', 'cd608a18', '2d75251c', '50d27eb7']
+displays ['休眠期间', '休眠期间', '休眠期间', '休眠期间']
+labels ['未知（休眠）', '未知（休眠）', '未知（休眠）', '未知（休眠）']
+intervals ['16:58:00 Maintenance Sleep → 17:16:32 Wake', '16:58:00 Maintenance Sleep → 17:16:32 Wake', '16:58:00 Maintenance Sleep → 17:16:32 Wake', '17:17:44 Clamshell Sleep → 17:35:33 Wake']
+miss_awake 0
+miss_sleep 4
+ok True

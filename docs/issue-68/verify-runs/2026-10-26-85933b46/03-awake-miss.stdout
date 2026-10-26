@@ -1,0 +1,27 @@
+{
+  "ok": false,
+  "cursor_before": null,
+  "cursor_after": "2026-09-30T01:33:00+00:00",
+  "now": "2026-09-30T01:35:00+00:00",
+  "grace_seconds": 120,
+  "counts": {
+    "fired_ok": 5,
+    "miss_sleep": 0,
+    "miss_awake": 1,
+    "miss_pmset_rolled": 0,
+    "skipped_not_due": 0
+  },
+  "misses": [
+    {
+      "definition_id": "7d90ca75-51a1-40a6-8966-8fffc9c523c3",
+      "name": "事务秘书处当日简报-0930",
+      "owner_seat": "裴昭",
+      "cron": "30 1 * * *",
+      "planned_at_cst": "2026-09-30T09:30:00+08:00",
+      "planned_at_utc": "2026-09-30T01:30:00+00:00",
+      "label": "异常（醒着漏触发）",
+      "display": "异常（醒着漏触发）",
+      "sleep_interval": null
+    }
+  ]
+}

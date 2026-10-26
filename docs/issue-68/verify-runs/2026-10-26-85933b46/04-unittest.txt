@@ -1,0 +1,41 @@
+# python -m unittest tests.test_missed_fires tests.test_doctor -v
+# exit=0
+
+test_awake_cli_exits_two (tests.test_missed_fires.AwakeMissTests.test_awake_cli_exits_two) ... ok
+test_drop_one_morning_fire_is_awake_miss (tests.test_missed_fires.AwakeMissTests.test_drop_one_morning_fire_is_awake_miss) ... ok
+test_evening_sleep_rows_are_not_awake (tests.test_missed_fires.AwakeMissTests.test_evening_sleep_rows_are_not_awake) ... ok
+test_no_advance_does_not_write (tests.test_missed_fires.CursorAdvanceFileTests.test_no_advance_does_not_write) ... ok
+test_successful_run_writes_now_minus_grace (tests.test_missed_fires.CursorAdvanceFileTests.test_successful_run_writes_now_minus_grace) ... ok
+test_forward_jump_lists_gap_and_advances_to_now_minus_grace (tests.test_missed_fires.CursorJumpTests.test_forward_jump_lists_gap_and_advances_to_now_minus_grace) ... ok
+test_rewind_does_not_rewrite_cursor_file (tests.test_missed_fires.CursorRewindTests.test_rewind_does_not_rewrite_cursor_file) ... ok
+test_rewind_skips_and_does_not_retreat (tests.test_missed_fires.CursorRewindTests.test_rewind_skips_and_does_not_retreat) ... ok
+test_buzz_health_is_untouched_sibling (tests.test_missed_fires.DoctorBoundaryTests.test_buzz_health_is_untouched_sibling) ... ok
+test_doctor_inventory_still_passes (tests.test_missed_fires.DoctorBoundaryTests.test_doctor_inventory_still_passes) ... ok
+test_doctor_source_has_no_workflow_or_pmset (tests.test_missed_fires.DoctorBoundaryTests.test_doctor_source_has_no_workflow_or_pmset) ... ok
+test_evening_cli_exits_zero (tests.test_missed_fires.EveningReplayTests.test_evening_cli_exits_zero) ... ok
+test_four_sleep_misses_in_how_order (tests.test_missed_fires.EveningReplayTests.test_four_sleep_misses_in_how_order) ... ok
+test_fixture_mode_does_not_call_live_tools (tests.test_missed_fires.FixtureIsolationTests.test_fixture_mode_does_not_call_live_tools) ... ok
+test_non_dom_cron_fails_fast (tests.test_missed_fires.FixtureIsolationTests.test_non_dom_cron_fails_fast) ... ok
+test_partial_fixture_does_not_fall_back_to_live (tests.test_missed_fires.FixtureIsolationTests.test_partial_fixture_does_not_fall_back_to_live) ... ok
+test_f5cc62c0_friday_before_69_is_not_expected (tests.test_missed_fires.FridaySkipTests.test_f5cc62c0_friday_before_69_is_not_expected) ... ok
+test_slot_inside_grace_is_not_a_miss (tests.test_missed_fires.GraceLateTests.test_slot_inside_grace_is_not_a_miss) ... ok
+test_hours_long_window_lists_all_misses_once (tests.test_missed_fires.LongSleepTests.test_hours_long_window_lists_all_misses_once) ... ok
+test_morning_miss_awake_zero (tests.test_missed_fires.MorningReplayTests.test_morning_miss_awake_zero) ... ok
+test_cli_no_cursor_no_since_exits_two (tests.test_missed_fires.NoCursorTests.test_cli_no_cursor_no_since_exits_two) ... ok
+test_no_cursor_no_since_is_nonzero (tests.test_missed_fires.NoCursorTests.test_no_cursor_no_since_is_nonzero) ... ok
+test_before_horizon_is_rolled_not_awake (tests.test_missed_fires.PmsetHorizonTests.test_before_horizon_is_rolled_not_awake) ... ok
+test_darkwake_does_not_end_sleep (tests.test_missed_fires.PmsetHorizonTests.test_darkwake_does_not_end_sleep) ... ok
+test_readme_marks_s3_stub (tests.test_missed_fires.S3StubTests.test_readme_marks_s3_stub) ... ok
+test_definition_only_row_is_ignored (tests.test_doctor.InventoryTests.test_definition_only_row_is_ignored) ... ok
+test_duplicate_launch_identity_fails (tests.test_doctor.InventoryTests.test_duplicate_launch_identity_fails) ... ok
+test_duplicate_override_launch_identity_fails (tests.test_doctor.InventoryTests.test_duplicate_override_launch_identity_fails) ... ok
+test_empty_pubkey_fails (tests.test_doctor.InventoryTests.test_empty_pubkey_fails) ... ok
+test_unknown_shape_is_unverified (tests.test_doctor.InventoryTests.test_unknown_shape_is_unverified) ... ok
+test_valid_inventory (tests.test_doctor.InventoryTests.test_valid_inventory) ... ok
+
+----------------------------------------------------------------------
+Ran 31 tests in 0.344s
+
+OK
+
+# stdout

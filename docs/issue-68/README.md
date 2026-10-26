@@ -41,6 +41,8 @@ python -m unittest tests.test_missed_fires tests.test_doctor -v
 
 退出码：无 `miss_awake` → 0；有 `miss_awake` 或输入不足 → 2；**不用** 1。
 
+keel-verify（仓库可证，SHA `85933b465b5373582df6ece69dc4351c25facbbf`）：[verify-runs/2026-10-26-85933b46](verify-runs/2026-10-26-85933b46/README.md)。
+
 ## 活机（Hogan · human:required）
 
 本 agent 不跑。需要 Mac + `buzz-prod-postgres-1` + live `pmset`。无游标必须 `--since`。成功后只写：
